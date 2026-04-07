@@ -52,6 +52,7 @@ module "k3s" {
   vpc_id                    = module.network.vpc_id
   vpc_cidr                  = var.vpc_cidr
   private_subnet_ids        = module.network.private_subnet_ids
+  server_subnet_indexes     = var.k3s_server_subnet_indexes
   vpn_client_cidr           = var.vpn_client_cidr
   api_tls_certificate_arn   = var.private_ingress_acm_certificate_arn
   allowed_app_ingress_cidrs = var.allowed_app_ingress_cidrs

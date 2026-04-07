@@ -15,12 +15,16 @@ terraform.tfvars
 *.p12
 *.pfx
 *.jks
+*.csr
+*.srl
 *.ovpn
 *.agekey
 *.sops.yaml
 *.sops.yml
 *.secret
 *.secrets
+.local/
+.secrets/
 .env
 .env.*
 .aws/

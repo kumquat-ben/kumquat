@@ -18,6 +18,17 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
+variable "server_subnet_indexes" {
+  description = "Indexes into private_subnet_ids for placing the three control-plane nodes."
+  type        = list(number)
+  default     = [0, 1, 2]
+
+  validation {
+    condition     = length(var.server_subnet_indexes) == 3
+    error_message = "server_subnet_indexes must contain exactly three subnet indexes for the k3s servers."
+  }
+}
+
 variable "vpn_client_cidr" {
   type = string
 }

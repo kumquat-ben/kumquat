@@ -55,7 +55,9 @@ resource "aws_ec2_client_vpn_endpoint" "this" {
 }
 
 resource "aws_ec2_client_vpn_network_association" "this" {
-  for_each = toset(var.associated_subnet_ids)
+  for_each = {
+    for idx, subnet_id in var.associated_subnet_ids : idx => subnet_id
+  }
 
   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.this.id
   subnet_id              = each.value
@@ -66,15 +68,6 @@ resource "aws_ec2_client_vpn_authorization_rule" "vpc" {
   target_network_cidr    = var.vpc_cidr
   authorize_all_groups   = true
   description            = "Allow VPN clients to reach the VPC"
-}
-
-resource "aws_ec2_client_vpn_route" "vpc" {
-  for_each = aws_ec2_client_vpn_network_association.this
-
-  client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.this.id
-  destination_cidr_block = var.vpc_cidr
-  target_vpc_subnet_id   = each.value.subnet_id
-  description            = "Route VPC traffic through associated subnets"
 }
 
 resource "aws_cloudwatch_log_metric_filter" "failed_connections" {

@@ -80,6 +80,12 @@ variable "k3s_server_instance_type" {
   default     = "m6i.large"
 }
 
+variable "k3s_server_subnet_indexes" {
+  description = "Indexes into the private subnet list for placing the three k3s server nodes."
+  type        = list(number)
+  default     = [0, 1, 2]
+}
+
 variable "k3s_worker_instance_type" {
   description = "Instance type for autoscaled k3s worker nodes."
   type        = string

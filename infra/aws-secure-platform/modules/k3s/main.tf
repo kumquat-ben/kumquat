@@ -2,6 +2,10 @@ data "aws_partition" "current" {}
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  server_subnet_ids = [for idx in var.server_subnet_indexes : var.private_subnet_ids[idx]]
+}
+
 data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
@@ -154,11 +158,11 @@ resource "aws_security_group" "server" {
   }
 
   ingress {
-    description     = "etcd peer traffic between server nodes"
-    from_port       = 2379
-    to_port         = 2380
-    protocol        = "tcp"
-    security_groups = [aws_security_group.server.id]
+    description = "etcd peer traffic between server nodes"
+    from_port   = 2379
+    to_port     = 2380
+    protocol    = "tcp"
+    self        = true
   }
 
   ingress {
@@ -352,7 +356,7 @@ resource "aws_instance" "server" {
 
   ami                         = data.aws_ami.al2023.id
   instance_type               = var.server_instance_type
-  subnet_id                   = var.private_subnet_ids[count.index]
+  subnet_id                   = local.server_subnet_ids[count.index]
   iam_instance_profile        = aws_iam_instance_profile.server.name
   key_name                    = var.ssh_key_name
   vpc_security_group_ids      = [aws_security_group.server.id]
@@ -451,13 +455,9 @@ resource "aws_autoscaling_group" "worker" {
   vpc_zone_identifier       = var.private_subnet_ids
   force_delete              = false
 
-  mixed_instances_policy {
-    launch_template {
-      launch_template_specification {
-        launch_template_id = aws_launch_template.worker.id
-        version            = aws_launch_template.worker.latest_version
-      }
-    }
+  launch_template {
+    id      = aws_launch_template.worker.id
+    version = aws_launch_template.worker.latest_version
   }
 
   tag {
