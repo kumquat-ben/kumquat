@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf install -y awscli curl jq
+
+TOKEN="$(aws ssm get-parameter --region ${aws_region} --name ${cluster_token_name} --with-decryption --query 'Parameter.Value' --output text)"
+NODE_IP="$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)"
+
+if [ "${mode}" = "init" ]; then
+  curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --cluster-init --token $${TOKEN} --tls-san ${api_endpoint} --disable servicelb --disable traefik --secrets-encryption --write-kubeconfig-mode 0640 --node-ip $${NODE_IP} --node-taint node-role.kubernetes.io/control-plane=true:NoSchedule" sh -
+else
+  curl -sfL https://get.k3s.io | K3S_URL="https://${api_endpoint}:6443" INSTALL_K3S_EXEC="server --token $${TOKEN} --tls-san ${api_endpoint} --disable servicelb --disable traefik --secrets-encryption --write-kubeconfig-mode 0640 --node-ip $${NODE_IP} --node-taint node-role.kubernetes.io/control-plane=true:NoSchedule" sh -
+fi
