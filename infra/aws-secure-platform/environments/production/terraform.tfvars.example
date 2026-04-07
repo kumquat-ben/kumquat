@@ -29,9 +29,10 @@ client_vpn_server_certificate_arn     = "arn:aws:acm:us-west-2:111122223333:cert
 client_vpn_root_certificate_chain_arn = "arn:aws:acm:us-west-2:111122223333:certificate/replace-me"
 
 allowed_app_ingress_cidrs = []
+public_app_load_balancer  = true
 
-private_ingress_acm_certificate_arn = "arn:aws:acm:us-west-2:111122223333:certificate/replace-me"
-ssh_key_name                        = null
+app_ingress_acm_certificate_arn = "arn:aws:acm:us-west-2:111122223333:certificate/replace-me"
+ssh_key_name                    = null
 
 k3s_server_instance_type = "m6i.large"
 k3s_worker_instance_type = "m6i.large"

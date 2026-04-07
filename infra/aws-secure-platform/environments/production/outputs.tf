@@ -18,9 +18,9 @@ output "cluster_endpoint" {
   value       = module.k3s.api_endpoint
 }
 
-output "app_internal_alb_dns_name" {
-  description = "Private internal ALB DNS name for application ingress."
-  value       = module.k3s.app_internal_alb_dns_name
+output "app_alb_dns_name" {
+  description = "Application ALB DNS name for website ingress."
+  value       = module.k3s.app_alb_dns_name
 }
 
 output "k3s_cluster_token_parameter_name" {

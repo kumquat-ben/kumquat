@@ -55,9 +55,15 @@ variable "client_vpn_root_certificate_chain_arn" {
 }
 
 variable "allowed_app_ingress_cidrs" {
-  description = "Optional extra CIDR ranges allowed to reach the internal application ALB. Defaults to VPC and VPN CIDRs."
+  description = "Optional extra CIDR ranges allowed to reach the application ALB. Defaults to 0.0.0.0/0 when public, otherwise VPC and VPN CIDRs."
   type        = list(string)
   default     = []
+}
+
+variable "public_app_load_balancer" {
+  description = "Whether to expose the application ALB publicly on the internet."
+  type        = bool
+  default     = true
 }
 
 variable "ecr_repositories" {
@@ -107,8 +113,8 @@ variable "k3s_worker_max_size" {
   default = 6
 }
 
-variable "private_ingress_acm_certificate_arn" {
-  description = "Optional ACM certificate ARN for HTTPS on the internal application ALB."
+variable "app_ingress_acm_certificate_arn" {
+  description = "Optional ACM certificate ARN for HTTPS on the application ALB."
   type        = string
   default     = null
 }
