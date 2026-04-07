@@ -18,7 +18,7 @@ spec:
         workload: application
       containers:
         - name: sample-app
-          image: 111122223333.dkr.ecr.us-west-2.amazonaws.com/sample-app:1.0.0
+          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260407-2
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -28,7 +28,7 @@ spec:
             capabilities:
               drop:
                 - ALL
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             runAsNonRoot: true
             runAsUser: 10001
             seccompProfile:
