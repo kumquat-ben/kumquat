@@ -2,7 +2,7 @@ output "api_endpoint" {
   value = aws_lb.api.dns_name
 }
 
-output "app_internal_alb_dns_name" {
+output "app_alb_dns_name" {
   value = aws_lb.app.dns_name
 }
 

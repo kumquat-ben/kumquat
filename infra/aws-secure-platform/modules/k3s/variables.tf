@@ -18,6 +18,10 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
+variable "public_subnet_ids" {
+  type = list(string)
+}
+
 variable "server_subnet_indexes" {
   description = "Indexes into private_subnet_ids for placing the three control-plane nodes."
   type        = list(number)
@@ -40,15 +44,21 @@ variable "ssh_key_name" {
 }
 
 variable "api_tls_certificate_arn" {
-  description = "Optional ACM certificate ARN for terminating TLS on the internal application ALB."
+  description = "Optional ACM certificate ARN for terminating TLS on the application ALB."
   type        = string
   default     = null
 }
 
 variable "allowed_app_ingress_cidrs" {
-  description = "CIDRs allowed to reach the internal application ALB."
+  description = "Optional CIDRs allowed to reach the application ALB. Defaults depend on whether the ALB is public."
   type        = list(string)
   default     = []
+}
+
+variable "public_app_load_balancer" {
+  description = "Whether to expose the application ALB publicly on internet-facing subnets."
+  type        = bool
+  default     = false
 }
 
 variable "server_instance_type" {

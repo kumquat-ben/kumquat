@@ -232,7 +232,7 @@ resource "aws_security_group" "worker" {
   }
 
   ingress {
-    description     = "Ingress traffic from the internal ALB"
+    description     = "Ingress traffic from the application ALB"
     from_port       = 32080
     to_port         = 32443
     protocol        = "tcp"
@@ -487,25 +487,31 @@ resource "aws_autoscaling_policy" "worker_cpu" {
   }
 }
 
+locals {
+  app_ingress_cidrs = length(var.allowed_app_ingress_cidrs) > 0 ? var.allowed_app_ingress_cidrs : (
+    var.public_app_load_balancer ? ["0.0.0.0/0"] : [var.vpc_cidr, var.vpn_client_cidr]
+  )
+}
+
 resource "aws_security_group" "app_alb" {
   name        = "${var.name}-app-alb-sg"
-  description = "Security group for the private application ALB."
+  description = "Security group for the application ALB."
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "HTTP from approved private CIDRs"
+    description = "HTTP from approved CIDRs"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = length(var.allowed_app_ingress_cidrs) > 0 ? var.allowed_app_ingress_cidrs : [var.vpc_cidr, var.vpn_client_cidr]
+    cidr_blocks = local.app_ingress_cidrs
   }
 
   ingress {
-    description = "HTTPS from approved private CIDRs"
+    description = "HTTPS from approved CIDRs"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = length(var.allowed_app_ingress_cidrs) > 0 ? var.allowed_app_ingress_cidrs : [var.vpc_cidr, var.vpn_client_cidr]
+    cidr_blocks = local.app_ingress_cidrs
   }
 
   egress {
@@ -523,10 +529,10 @@ resource "aws_security_group" "app_alb" {
 
 resource "aws_lb" "app" {
   name               = substr("${var.name}-apps", 0, 32)
-  internal           = true
+  internal           = !var.public_app_load_balancer
   load_balancer_type = "application"
   security_groups    = [aws_security_group.app_alb.id]
-  subnets            = var.private_subnet_ids
+  subnets            = var.public_app_load_balancer ? var.public_subnet_ids : var.private_subnet_ids
 
   enable_deletion_protection = true
 

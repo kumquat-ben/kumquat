@@ -1,6 +1,6 @@
 # Secure AWS Container Platform
 
-This stack builds a private-by-default, production-minded container platform on AWS using Terraform, k3s, Amazon ECR, AWS Client VPN, ACM, CloudTrail, CloudWatch, VPC Flow Logs, SSM Parameter Store, and SSM Session Manager.
+This stack builds a production-minded container platform on AWS using Terraform, k3s, Amazon ECR, ACM, CloudTrail, CloudWatch, VPC Flow Logs, SSM Parameter Store, and SSM Session Manager.
 
 ## Architecture Summary
 
@@ -13,7 +13,7 @@ This stack builds a private-by-default, production-minded container platform on 
   - public subnets used only for NAT gateways
   - private application subnets for k3s server nodes, workers, and internal load balancers
   - isolated subnets reserved for future databases or stateful services
-- Internal ingress is handled by `ingress-nginx` inside the cluster, fronted by a Terraform-managed internal ALB with ACM TLS termination. The example application is private-by-default.
+- Ingress is handled by `ingress-nginx` inside the cluster, fronted by a Terraform-managed ALB with ACM TLS termination. The example application can be public or private depending on configuration.
 - VPC endpoints are enabled for core AWS services used by the cluster so routine platform traffic stays on AWS private networking as much as possible.
 - ECR repositories use immutable tags, on-push vulnerability scanning, lifecycle policies, and encryption at rest.
 - CloudTrail, VPC Flow Logs, Client VPN logs, and CloudWatch alarms provide baseline auditability and failure visibility.
@@ -30,7 +30,7 @@ This stack builds a private-by-default, production-minded container platform on 
 
 - NAT gateways are kept because they remain the most operationally reliable default for node bootstrap, OS updates, and package retrieval. Cost is higher than a NAT instance or endpoint-only design, but reliability and simplicity are better.
 - Self-managing k3s on EC2 adds more operational burden than EKS. That is the explicit tradeoff for choosing k3s, and it is why the stack uses three server nodes and opinionated bootstrap automation.
-- The internal ALB terminates TLS with ACM, but traffic from the ALB to the ingress controller uses private VPC networking. If strict end-to-end TLS is required, add backend TLS certificates or a service mesh as a follow-on hardening step.
+- The application ALB can terminate TLS with ACM, but traffic from the ALB to the ingress controller uses private VPC networking. If strict end-to-end TLS is required, add backend TLS certificates or a service mesh as a follow-on hardening step.
 - AWS Client VPN uses certificate-based authentication inputs rather than creating a private CA inside this stack. That keeps the platform stack focused and avoids forcing ACM PCA cost, but certificate issuance and rotation remain an explicit operational step.
 
 ## Repository Layout
@@ -99,7 +99,7 @@ infra/aws-secure-platform/
 - Existing ACM certificate ARNs for AWS Client VPN:
   - a server certificate ARN
   - a client root certificate chain ARN for mutual certificate authentication
-- An ACM certificate ARN for the internal application ALB if you want HTTPS termination there
+- An ACM certificate ARN for the application ALB if you want HTTPS termination there
 
 ## Deployment Instructions
 
@@ -121,7 +121,8 @@ Edit `terraform.tfvars` and provide real values for:
 - `vpn_client_cidr`
 - `client_vpn_server_certificate_arn`
 - `client_vpn_root_certificate_chain_arn`
-- `private_ingress_acm_certificate_arn`
+- `app_ingress_acm_certificate_arn`
+- `public_app_load_balancer`
 
 ### 2. Initialize and apply infrastructure
 
@@ -140,6 +141,7 @@ terraform output -raw aws_region
 terraform output -json ecr_repository_urls | jq
 terraform output -raw cluster_endpoint
 terraform output -raw client_vpn_endpoint_id
+terraform output -raw app_alb_dns_name
 ```
 
 ### 4. Connect through AWS Client VPN
@@ -216,7 +218,7 @@ kubectl apply -k .
 kubectl get ingress -n sample-app
 ```
 
-The example ingress is internal-only. It is exposed through the private ALB created by Terraform and should be reachable from inside the VPC or through the VPN after DNS resolution and routing are working.
+The example ingress can be exposed publicly when `public_app_load_balancer = true`. In that case, point your DNS record for `kumquat.info` or `www.kumquat.info` at the `app_alb_dns_name` Terraform output.
 
 ## Security Checklist
 
