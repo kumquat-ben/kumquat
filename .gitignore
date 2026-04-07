@@ -30,6 +30,14 @@ terraform.tfvars
 .aws/
 .kube/
 kubeconfig
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 id_rsa
 id_rsa.pub
 id_ed25519

@@ -1,0 +1,76 @@
+:root {
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  color: #1f1a17;
+  background:
+    radial-gradient(circle at top, rgba(255, 208, 122, 0.9), transparent 34%),
+    linear-gradient(160deg, #fff4d4 0%, #ffd88f 50%, #f6a03b 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.hero-card {
+  width: min(100%, 42rem);
+  padding: 3rem;
+  border: 1px solid rgba(93, 53, 13, 0.14);
+  border-radius: 28px;
+  background: rgba(255, 249, 238, 0.82);
+  box-shadow: 0 24px 60px rgba(98, 55, 8, 0.15);
+  backdrop-filter: blur(12px);
+}
+
+.eyebrow {
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #8f4d0f;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 9vw, 5.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+}
+
+.supporting-copy {
+  margin: 1rem 0 0;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: rgba(31, 26, 23, 0.78);
+}
+
+@media (max-width: 640px) {
+  .hero-card {
+    padding: 2rem;
+    border-radius: 22px;
+  }
+
+  .supporting-copy {
+    font-size: 1rem;
+  }
+}
