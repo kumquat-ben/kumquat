@@ -98,7 +98,32 @@ export default function App() {
             center, and just enough polish to feel deliberate.
           </p>
 
-          <form className="signup-form" onSubmit={handleSubmit}>
+          <div className="action-row">
+            <a
+              className="primary-link"
+              href="https://github.com/kumquatben/kumquat"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Github size={18} />
+              View on GitHub
+              <ArrowUpRight size={18} />
+            </a>
+            <p className="status-pill">
+              <SunMedium size={16} />
+              Live at kumquat.info
+            </p>
+          </div>
+        </div>
+
+        <aside className="feature-card">
+          <div className="fruit-mark" aria-hidden="true">
+            <div className="fruit-glow" />
+            <div className="fruit-core" />
+            <div className="fruit-leaf" />
+          </div>
+
+          <form className="signup-form signup-form-sidebar" onSubmit={handleSubmit}>
             <div className="signup-header">
               <p className="signup-label">Early Access Signup</p>
               <p className="signup-copy">
@@ -107,7 +132,7 @@ export default function App() {
               </p>
             </div>
 
-            <div className="signup-fields">
+            <div className="signup-fields signup-fields-sidebar">
               <label className="signup-field">
                 <span>Name</span>
                 <input
@@ -143,46 +168,6 @@ export default function App() {
               ) : null}
             </div>
           </form>
-
-          <div className="action-row">
-            <a
-              className="primary-link"
-              href="https://github.com/kumquatben/kumquat"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Github size={18} />
-              View on GitHub
-              <ArrowUpRight size={18} />
-            </a>
-            <p className="status-pill">
-              <SunMedium size={16} />
-              Live at kumquat.info
-            </p>
-          </div>
-        </div>
-
-        <aside className="feature-card">
-          <div className="fruit-mark" aria-hidden="true">
-            <div className="fruit-glow" />
-            <div className="fruit-core" />
-            <div className="fruit-leaf" />
-          </div>
-
-          <div className="feature-grid">
-            <article>
-              <p className="feature-label">Tone</p>
-              <p className="feature-value">Warm, crisp, citrus-forward.</p>
-            </article>
-            <article>
-              <p className="feature-label">Stack</p>
-              <p className="feature-value">React, Vite, Docker, ECR, k3s.</p>
-            </article>
-            <article>
-              <p className="feature-label">Delivery</p>
-              <p className="feature-value">Public HTTPS with ALB ingress.</p>
-            </article>
-          </div>
         </aside>
       </section>
     </main>
