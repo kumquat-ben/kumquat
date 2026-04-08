@@ -631,7 +631,7 @@ function SiteFooter() {
   return (
     <footer className="site-footer">
       <p>
-        Copyright © Kumquat Inc. and Benjamin Levin. All rights reserved.
+        Copyright © Benjamin Levin. All rights reserved.
       </p>
     </footer>
   );
