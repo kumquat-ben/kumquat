@@ -32,6 +32,22 @@ def _database_state():
         return f"error: {exc}"
 
 
+def _serialize_user(user):
+    full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip()
+    return {
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "full_name": full_name or user.username,
+        "username": user.username,
+        "is_staff": user.is_staff,
+        "is_superuser": user.is_superuser,
+        "is_active": user.is_active,
+        "date_joined": user.date_joined.isoformat() if getattr(user, "date_joined", None) else None,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+    }
+
+
 def index_view(_request):
     database_state = _database_state()
     return HttpResponse(
@@ -319,11 +335,8 @@ def google_oauth_exchange_view(request):
         {
             "status": "ok",
             "user": {
-                "email": user.email,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
+                **_serialize_user(user),
                 "full_name": full_name or user.username,
-                "username": user.username,
             },
         }
     )
@@ -333,17 +346,10 @@ def auth_me_view(request):
     if not request.user.is_authenticated:
         return JsonResponse({"authenticated": False})
 
-    full_name = " ".join(part for part in [request.user.first_name, request.user.last_name] if part).strip()
     return JsonResponse(
         {
             "authenticated": True,
-            "user": {
-                "email": request.user.email,
-                "first_name": request.user.first_name,
-                "last_name": request.user.last_name,
-                "full_name": full_name or request.user.username,
-                "username": request.user.username,
-            },
+            "user": _serialize_user(request.user),
         }
     )
 
@@ -405,6 +411,38 @@ def early_access_signup_view(request):
             },
         },
         status=201 if created else 200,
+    )
+
+
+def admin_dashboard_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    User = get_user_model()
+    users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
+    signups = [
+        {
+            "email": signup.email,
+            "name": signup.name,
+            "created_at": signup.created_at.isoformat(),
+            "updated_at": signup.updated_at.isoformat(),
+        }
+        for signup in EarlyAccessSignup.objects.order_by("-created_at")
+    ]
+
+    return JsonResponse(
+        {
+            "stats": {
+                "users": len(users),
+                "superusers": sum(1 for user in users if user["is_superuser"]),
+                "signups": len(signups),
+            },
+            "users": users,
+            "signups": signups,
+        }
     )
 
 

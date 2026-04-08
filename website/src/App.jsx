@@ -15,6 +15,7 @@ const GOOGLE_START_URL = "/api/auth/google/start";
 const AUTH_ME_URL = "/api/auth/me";
 const AUTH_LOGOUT_URL = "/api/auth/logout";
 const AUTH_EXCHANGE_URL = "/api/auth/google/exchange";
+const ADMIN_DASHBOARD_URL = "/api/admin/dashboard";
 
 function getCurrentPath() {
   return window.location.pathname.replace(/\/+$/, "") || "/";
@@ -70,7 +71,14 @@ function AuthSummary({ auth, onLogout }) {
             <ShieldCheck size={14} />
             Google verified
           </span>
+          {auth.user.is_superuser ? <span className="mini-pill">Superuser</span> : null}
         </div>
+        {auth.user.is_superuser ? (
+          <a className="secondary-button wide-button" href="/admin/dashboard">
+            Admin dashboard
+            <ArrowRight size={16} />
+          </a>
+        ) : null}
         <button className="secondary-button" onClick={onLogout} type="button">
           <LogOut size={16} />
           Sign out
@@ -338,6 +346,178 @@ function SignInPage({ auth }) {
   );
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "Never";
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value;
+  }
+
+  return parsedDate.toLocaleString();
+}
+
+function AdminDashboardPage({ auth }) {
+  const [dashboard, setDashboard] = useState({ status: "loading", data: null, error: "" });
+
+  useEffect(() => {
+    if (auth.status !== "ready") {
+      return;
+    }
+
+    if (!auth.user?.is_superuser) {
+      setDashboard({
+        status: "error",
+        data: null,
+        error: auth.user ? "Superuser access required." : "You need to sign in first.",
+      });
+      return;
+    }
+
+    let active = true;
+
+    async function loadDashboard() {
+      try {
+        const response = await fetch(ADMIN_DASHBOARD_URL);
+        const data = await readJson(response);
+        if (!active) {
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to load admin dashboard.");
+        }
+        setDashboard({ status: "ready", data, error: "" });
+      } catch (errorObject) {
+        if (!active) {
+          return;
+        }
+        setDashboard({
+          status: "error",
+          data: null,
+          error: errorObject.message || "Failed to load admin dashboard.",
+        });
+      }
+    }
+
+    loadDashboard();
+    return () => {
+      active = false;
+    };
+  }, [auth]);
+
+  const stats = dashboard.data?.stats;
+  const users = dashboard.data?.users ?? [];
+  const signups = dashboard.data?.signups ?? [];
+
+  return (
+    <AppShell>
+      <section className="dashboard-layout">
+        <div className="dashboard-hero">
+          <SiteMark />
+          <h1 className="auth-title">Product release dashboard.</h1>
+          <p className="supporting-copy">
+            Superusers can review signed-in users and the early access list in one place.
+          </p>
+
+          <div className="stats-grid">
+            <article className="feature-panel">
+              <p className="feature-kicker">Signed-Up Users</p>
+              <h3>{stats?.users ?? "..."}</h3>
+            </article>
+            <article className="feature-panel">
+              <p className="feature-kicker">Superusers</p>
+              <h3>{stats?.superusers ?? "..."}</h3>
+            </article>
+            <article className="feature-panel">
+              <p className="feature-kicker">Early Access Leads</p>
+              <h3>{stats?.signups ?? "..."}</h3>
+            </article>
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="dashboard-toolbar">
+            <a className="secondary-button" href="/">
+              Back home
+            </a>
+          </div>
+
+          {dashboard.status === "loading" ? (
+            <p className="dashboard-message">Loading dashboard data...</p>
+          ) : null}
+          {dashboard.status === "error" ? (
+            <p className="dashboard-message dashboard-message-error">{dashboard.error}</p>
+          ) : null}
+
+          {dashboard.status === "ready" ? (
+            <div className="dashboard-sections">
+              <section className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <p className="feature-kicker">Early Access Signups</p>
+                  <p className="account-copy">{signups.length} total</p>
+                </div>
+                <div className="data-table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {signups.map((signup) => (
+                        <tr key={signup.email}>
+                          <td>{signup.name || "Unknown"}</td>
+                          <td>{signup.email}</td>
+                          <td>{formatDate(signup.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <p className="feature-kicker">Users</p>
+                  <p className="account-copy">{users.length} total</p>
+                </div>
+                <div className="data-table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Joined</th>
+                        <th>Last Login</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr key={user.username}>
+                          <td>{user.full_name}</td>
+                          <td>{user.email || user.username}</td>
+                          <td>{user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User"}</td>
+                          <td>{formatDate(user.date_joined)}</td>
+                          <td>{formatDate(user.last_login)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </AppShell>
+  );
+}
+
 function CallbackPage({ onAuthResolved }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const hasStartedRef = useRef(false);
@@ -479,6 +659,10 @@ export default function App() {
 
   if (path === "/auth/google/callback") {
     return <CallbackPage onAuthResolved={handleAuthResolved} />;
+  }
+
+  if (path === "/admin/dashboard") {
+    return <AdminDashboardPage auth={auth} />;
   }
 
   return <HomePage auth={auth} onLogout={handleLogout} />;
