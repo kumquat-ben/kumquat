@@ -734,6 +734,22 @@ input:focus {
   padding: 5rem 0 1rem;
 }
 
+.site-footer {
+  padding: 3rem 0 1rem;
+  border-top: 0.5px solid rgba(216, 90, 48, 0.14);
+  margin-top: 3rem;
+  text-align: center;
+}
+
+.site-footer p {
+  margin: 0;
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
 .denomination-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -771,8 +787,96 @@ input:focus {
   justify-content: center;
 }
 
+.utility-layout-signin {
+  padding-top: 8rem;
+}
+
 .utility-card-centered {
   text-align: center;
+}
+
+.signin-card {
+  width: min(100%, 28.75rem);
+  margin: 0 auto;
+  border: 0.5px solid rgba(216, 90, 48, 0.16);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 16px;
+  padding: 2rem 2rem 1.75rem;
+  box-shadow: 0 20px 56px rgba(74, 27, 12, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.signin-title {
+  margin: 0;
+  font-family: "DM Serif Display", serif;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.signin-title em {
+  font-style: italic;
+  color: var(--orange);
+}
+
+.signin-copy {
+  margin-bottom: 1.5rem;
+}
+
+.signin-perks {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.signin-perk {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--ink-mid);
+  font-size: 0.88rem;
+  font-weight: 300;
+  line-height: 1.55;
+}
+
+.signin-perk-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex-shrink: 0;
+}
+
+.signin-perk-dot-gold {
+  background: var(--gold);
+}
+
+.signin-button {
+  width: fit-content;
+  min-width: 8.5rem;
+  color: var(--ink);
+  border-color: rgba(26, 18, 8, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.signin-button:hover {
+  background: var(--cream);
+  border-color: var(--orange);
+}
+
+.signin-divider {
+  height: 1px;
+  margin: 1.4rem 0 1.1rem;
+  background: rgba(216, 90, 48, 0.12);
+}
+
+.signin-footnote {
+  margin: 0;
+  font-family: "DM Mono", monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: #b4a898;
 }
 
 .dashboard-layout {

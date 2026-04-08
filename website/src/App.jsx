@@ -627,6 +627,16 @@ function DenominationGridSection() {
   );
 }
 
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <p>
+        Copyright © Kumquat Inc. and Benjamin Levin. All rights reserved.
+      </p>
+    </footer>
+  );
+}
+
 function HomePage({ auth, onLogout }) {
   const [formData, setFormData] = useState({ name: "", email: "" });
   const [status, setStatus] = useState("idle");
@@ -743,6 +753,7 @@ function HomePage({ auth, onLogout }) {
         />
         <HowItWorksSection />
         <DenominationGridSection />
+        <SiteFooter />
       </div>
     </AppShell>
   );
@@ -751,55 +762,61 @@ function HomePage({ auth, onLogout }) {
 function SignInPage({ auth }) {
   return (
     <AppShell>
-      <section className="utility-layout">
-        <div className="utility-copy">
-          <p className="section-eyebrow">Google Sign-In</p>
-          <h1 className="utility-title">
-            Sign in without losing
-            {" "}
-            <em>the product voice.</em>
+      <section className="utility-layout utility-layout-single utility-layout-signin">
+        <div className="signin-card">
+          <p className="section-eyebrow">Founding Member</p>
+          <h1 className="signin-title">
+            {auth.user ? (
+              <>
+                You’re already
+                {" "}
+                <em>inside.</em>
+              </>
+            ) : (
+              <>
+                Join before the
+                <br />
+                chain goes live.
+              </>
+            )}
           </h1>
-          <p className="body-copy">
-            Kumquat uses Google only for identity. Every state before and after consent
-            stays inside the product.
+          <p className="body-copy signin-copy">
+            {auth.user
+              ? `Your Kumquat account is active as ${auth.user.first_name || auth.user.full_name}.`
+              : "Early members earn kumquats, proof you were here first. Kumquats convert to real units on the chain when it launches."}
           </p>
-          <div className="story-principles">
-            <article>
-              <p className="principle-index">01</p>
-              <h3>Custom entry page</h3>
-              <p className="body-copy">The app owns the pre-consent framing.</p>
-            </article>
-            <article>
-              <p className="principle-index">02</p>
-              <h3>Django session exchange</h3>
-              <p className="body-copy">Identity resolves server-side and persists cleanly.</p>
-            </article>
-          </div>
-        </div>
 
-        <div className="utility-card">
-          <p className="section-eyebrow">Continue</p>
-          <h2 className="section-title section-title-compact">
-            {auth.user ? `You're already in, ${auth.user.first_name || auth.user.full_name}.` : "Use your Google account"}
-          </h2>
-          <p className="body-copy">
-            Continue with Google and Kumquat will create or reuse your Django user
-            account automatically.
-          </p>
+          <div className="signin-perks">
+            <div className="signin-perk">
+              <span className="signin-perk-dot" />
+              <span>Founding member badge on your wallet</span>
+            </div>
+            <div className="signin-perk">
+              <span className="signin-perk-dot" />
+              <span>Kumquats for every action you take in early access</span>
+            </div>
+            <div className="signin-perk">
+              <span className="signin-perk-dot signin-perk-dot-gold" />
+              <span>First allocation of minted units at launch</span>
+            </div>
+          </div>
+
           {auth.user ? (
-            <a className="button button-primary button-block" href="/">
+            <a className="button button-secondary signin-button" href="/">
               Back to home
               <ArrowRight size={16} />
             </a>
           ) : (
-            <a className="button button-primary button-block" href={GOOGLE_START_URL}>
-              Continue with Google
+            <a className="button button-secondary signin-button" href={GOOGLE_START_URL}>
+              Sign in
               <ArrowRight size={16} />
             </a>
           )}
-          <a className="button button-secondary button-block" href="/">
-            Return home
-          </a>
+
+          <div className="signin-divider" />
+          <p className="signin-footnote">
+            Google handles consent. Kumquat keeps the product story.
+          </p>
         </div>
       </section>
     </AppShell>
