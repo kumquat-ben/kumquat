@@ -14,6 +14,12 @@ spec:
         {{- include "kumquat-backend.selectorLabels" . | nindent 8 }}
     spec:
       restartPolicy: OnFailure
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

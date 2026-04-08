@@ -1,9 +1,13 @@
 import json
 from datetime import datetime, timezone
 
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import connection
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+
+from .models import EarlyAccessSignup
 
 
 def _database_state():
@@ -96,6 +100,7 @@ def index_view(_request):
       <div class="card">
         <p><strong>Current endpoints</strong></p>
         <ul>
+          <li><code>/api/early-access</code> - early access signup intake</li>
           <li><code>/api/healthz</code> - backend health and database status</li>
           <li><code>/api/messages</code> - message echo test endpoint</li>
         </ul>
@@ -118,6 +123,45 @@ def healthz_view(_request):
             "database": database_state,
         },
         status=http_status,
+    )
+
+
+@csrf_exempt
+def early_access_signup_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    email = (payload.get("email") or "").strip().lower()
+    name = (payload.get("name") or "").strip()
+
+    if not email:
+        return JsonResponse({"error": "Email is required."}, status=400)
+
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"error": "Enter a valid email address."}, status=400)
+
+    signup, created = EarlyAccessSignup.objects.update_or_create(
+        email=email,
+        defaults={"name": name},
+    )
+
+    return JsonResponse(
+        {
+            "status": "created" if created else "updated",
+            "signup": {
+                "email": signup.email,
+                "name": signup.name,
+                "created_at": signup.created_at.isoformat(),
+            },
+        },
+        status=201 if created else 200,
     )
 
 

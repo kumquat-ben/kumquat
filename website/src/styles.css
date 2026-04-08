@@ -125,6 +125,120 @@ h1 {
   color: rgba(34, 21, 18, 0.8);
 }
 
+.signup-form {
+  margin-top: 2rem;
+  padding: 1.2rem;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 239, 208, 0.95), rgba(255, 230, 181, 0.9));
+  border: 1px solid rgba(154, 83, 14, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.signup-header {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.signup-label,
+.signup-copy {
+  margin: 0;
+}
+
+.signup-label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8f480d;
+}
+
+.signup-copy {
+  color: rgba(34, 21, 18, 0.72);
+  line-height: 1.6;
+}
+
+.signup-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.signup-field {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: #6f3910;
+}
+
+.signup-field span {
+  font-size: 0.9rem;
+}
+
+.signup-field input {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(134, 73, 15, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 251, 244, 0.82);
+  color: #221512;
+  font: inherit;
+}
+
+.signup-field input:focus {
+  outline: 2px solid rgba(223, 114, 23, 0.28);
+  outline-offset: 2px;
+}
+
+.signup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.signup-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 3.1rem;
+  padding: 0.9rem 1.15rem;
+  border: 0;
+  border-radius: 999px;
+  color: #fff9f1;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  background: linear-gradient(135deg, #502308, #9b4306 60%, #d7620a);
+  box-shadow: 0 16px 28px rgba(106, 39, 4, 0.2);
+}
+
+.signup-button:disabled {
+  cursor: wait;
+  opacity: 0.84;
+}
+
+.signup-message {
+  margin: 0;
+  font-weight: 700;
+}
+
+.signup-message-success {
+  color: #2f6e1e;
+}
+
+.signup-message-error {
+  color: #9f231c;
+}
+
+.spinner {
+  animation: spin 0.9s linear infinite;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -257,6 +371,26 @@ h1 {
   }
   50% {
     transform: rotate(4deg) translateY(-6px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 860px) {
+  .hero-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-card {
+    order: -1;
+  }
+
+  .signup-fields {
+    grid-template-columns: 1fr;
   }
 }
 

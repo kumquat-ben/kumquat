@@ -14,11 +14,13 @@ spec:
       labels:
         app: sample-app
     spec:
+      imagePullSecrets:
+        - name: ecr-pull-secret
       nodeSelector:
         workload: application
       containers:
         - name: sample-app
-          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260407-181707
+          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260407-203059
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

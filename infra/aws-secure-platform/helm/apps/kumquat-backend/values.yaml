@@ -1,14 +1,16 @@
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: latest
+  tag: backend-20260407-203059
   pullPolicy: IfNotPresent
+  pullSecrets:
+    - ecr-pull-secret
 
 env:
   existingSecret: kumquat-backend-env
   common:
     PORT: "8000"
     DJANGO_DEBUG: "false"
-    DJANGO_ALLOWED_HOSTS: "kumquat.info,.kumquat.info"
+    DJANGO_ALLOWED_HOSTS: "*"
     DJANGO_CSRF_TRUSTED_ORIGINS: "https://kumquat.info"
     GUNICORN_WORKERS: "2"
     GUNICORN_THREADS: "2"

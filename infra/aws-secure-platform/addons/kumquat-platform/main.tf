@@ -146,7 +146,7 @@ resource "helm_release" "backend" {
       common = {
         PORT                        = "8000"
         DJANGO_DEBUG                = "false"
-        DJANGO_ALLOWED_HOSTS        = "${var.hostname},.${var.hostname}"
+        DJANGO_ALLOWED_HOSTS        = "*"
         DJANGO_CSRF_TRUSTED_ORIGINS = "https://${var.hostname}"
         GUNICORN_WORKERS            = "2"
         GUNICORN_THREADS            = "2"
