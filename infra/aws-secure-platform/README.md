@@ -245,10 +245,18 @@ The website ingress can be exposed publicly when `public_app_load_balancer = tru
 
 This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, and the Django backend routed at `/api/`. It also injects the Google OAuth client ID, secret, and redirect URI into the backend environment secret.
 
+Before the first `terraform init`, create a private S3 bucket for Terraform state and use it as the add-on backend:
+
+```bash
+cd ../../addons/kumquat-platform
+cp backend.hcl.example backend.hcl
+# set the bucket value in backend.hcl to your private state bucket
+terraform init -backend-config=backend.hcl
+```
+
 ```bash
 cd ../../addons/kumquat-platform
 cp terraform.tfvars.example terraform.tfvars
-terraform init
 terraform plan \
   -var="kubeconfig_path=$KUBECONFIG" \
   -var="backend_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend" \
