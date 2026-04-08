@@ -189,11 +189,11 @@ function HomePage({ auth, onLogout }) {
       <section className="hero-panel">
         <div className="hero-copy">
           <SiteMark />
-          <h1>Bright login, no borrowed auth pages.</h1>
+          <h1>Small fruit. Sharp product.</h1>
           <p className="supporting-copy">
-            Kumquat now ships a custom Google sign-in flow across the frontend and
-            Django backend, while keeping consent and identity verification where it
-            belongs.
+            Kumquat is a playful product studio project with its own identity, not an
+            Apple reference. We build crisp web experiences with custom auth, a
+            Django backend, and a little humor in the name.
           </p>
 
           <div className="action-row">
