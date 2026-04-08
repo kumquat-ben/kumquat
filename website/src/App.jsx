@@ -618,7 +618,7 @@ function DenominationGridSection() {
             <p className="denomination-kind">{item.type}</p>
             <motion.p
               className="denomination-value"
-              whileHover={item.type === "coin" ? { scale: 1.04, color: "#d85a30" } : { color: "#d85a30" }}
+              whileHover={item.type === "coin" ? { scale: 1.04, color: "#2f8f4e" } : { color: "#2f8f4e" }}
             >
               {item.label}
             </motion.p>

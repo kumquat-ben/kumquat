@@ -17,6 +17,9 @@
   --orange-dark: #4a1b0c;
   --orange-mid: #993c1d;
   --gold: #ef9f27;
+  --money-green: #2f8f4e;
+  --money-green-dark: #1f6b39;
+  --money-green-soft: rgba(47, 143, 78, 0.12);
   --ink: #1a1208;
   --ink-mid: #3d2e1a;
   --ink-soft: #7a6a52;
@@ -445,7 +448,7 @@ input:focus {
 
 .bill-value {
   font-size: 1.35rem;
-  color: var(--orange);
+  color: var(--money-green);
   line-height: 1;
 }
 
@@ -607,8 +610,8 @@ input:focus {
 
 .signup-success-icon,
 .callback-icon-success {
-  background: rgba(216, 90, 48, 0.12);
-  color: var(--orange);
+  background: var(--money-green-soft);
+  color: var(--money-green);
 }
 
 .callback-icon-loading {
@@ -641,7 +644,7 @@ input:focus {
 }
 
 .signup-message-success {
-  color: var(--orange);
+  color: var(--money-green-dark);
 }
 
 .steps-list {
@@ -688,7 +691,7 @@ input:focus {
 .wallet-total {
   margin: 0;
   font-size: clamp(2rem, 4vw, 3.1rem);
-  color: var(--ink);
+  color: var(--money-green-dark);
 }
 
 .wallet-rows {
@@ -723,8 +726,8 @@ input:focus {
 }
 
 .wallet-badge-bill {
-  background: rgba(216, 90, 48, 0.1);
-  color: var(--orange-mid);
+  background: var(--money-green-soft);
+  color: var(--money-green-dark);
 }
 
 .wallet-badge-coin {
@@ -772,7 +775,7 @@ input:focus {
 .denomination-value {
   margin: 0;
   font-size: clamp(1.8rem, 3vw, 2.6rem);
-  color: var(--ink);
+  color: var(--money-green-dark);
 }
 
 .utility-layout {
