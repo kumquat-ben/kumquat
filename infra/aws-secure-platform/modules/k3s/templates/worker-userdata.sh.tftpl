@@ -6,4 +6,4 @@ dnf install -y awscli jq
 TOKEN="$(aws ssm get-parameter --region ${aws_region} --name ${cluster_token_name} --with-decryption --query 'Parameter.Value' --output text)"
 NODE_IP="$(hostname -I | awk '{print $1}')"
 
-curl -sfL https://get.k3s.io | K3S_URL="https://${api_endpoint}:6443" INSTALL_K3S_EXEC="agent --token $${TOKEN} --node-ip $${NODE_IP}" sh -
+curl -sfL https://get.k3s.io | K3S_URL="https://${api_endpoint}:6443" INSTALL_K3S_EXEC="agent --token $${TOKEN} --node-ip $${NODE_IP} --node-label workload=application" sh -

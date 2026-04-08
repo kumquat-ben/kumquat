@@ -4,6 +4,8 @@ data "aws_caller_identity" "current" {}
 
 locals {
   server_subnet_ids = [for idx in var.server_subnet_indexes : var.private_subnet_ids[idx]]
+  server_ami_id     = coalesce(var.server_ami_id, data.aws_ami.al2023.id)
+  worker_ami_id     = coalesce(var.worker_ami_id, data.aws_ami.al2023.id)
 }
 
 data "aws_ami" "al2023" {
@@ -322,7 +324,7 @@ resource "aws_lb_listener" "api" {
 
 resource "aws_launch_template" "server" {
   name_prefix            = "${var.name}-k3s-server-"
-  image_id               = data.aws_ami.al2023.id
+  image_id               = local.server_ami_id
   instance_type          = var.server_instance_type
   key_name               = var.ssh_key_name
   update_default_version = true
@@ -364,7 +366,7 @@ resource "aws_launch_template" "server" {
 resource "aws_instance" "server" {
   count = 3
 
-  ami                         = data.aws_ami.al2023.id
+  ami                         = local.server_ami_id
   instance_type               = var.server_instance_type
   subnet_id                   = local.server_subnet_ids[count.index]
   iam_instance_profile        = aws_iam_instance_profile.server.name
@@ -410,7 +412,7 @@ resource "aws_lb_target_group_attachment" "api_servers" {
 
 resource "aws_launch_template" "worker" {
   name_prefix            = "${var.name}-k3s-worker-"
-  image_id               = data.aws_ami.al2023.id
+  image_id               = local.worker_ami_id
   instance_type          = var.worker_instance_type
   key_name               = var.ssh_key_name
   update_default_version = true

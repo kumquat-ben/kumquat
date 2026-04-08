@@ -86,6 +86,18 @@ variable "worker_max_size" {
   default = 6
 }
 
+variable "server_ami_id" {
+  description = "Pinned AMI ID for k3s server nodes. Leave null to use the latest AL2023 x86_64 AMI."
+  type        = string
+  default     = null
+}
+
+variable "worker_ami_id" {
+  description = "Pinned AMI ID for k3s worker nodes. Leave null to use the latest AL2023 x86_64 AMI."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

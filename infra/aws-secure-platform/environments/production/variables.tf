@@ -114,6 +114,18 @@ variable "k3s_worker_max_size" {
   default = 6
 }
 
+variable "k3s_server_ami_id" {
+  description = "Pinned AMI ID for the k3s server nodes."
+  type        = string
+  default     = null
+}
+
+variable "k3s_worker_ami_id" {
+  description = "Pinned AMI ID for the k3s worker nodes."
+  type        = string
+  default     = null
+}
+
 variable "app_ingress_acm_certificate_arn" {
   description = "Optional ACM certificate ARN for HTTPS on the application ALB."
   type        = string

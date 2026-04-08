@@ -39,6 +39,8 @@ k3s_worker_instance_type = "m6i.large"
 k3s_worker_min_size      = 2
 k3s_worker_desired_size  = 2
 k3s_worker_max_size      = 6
+k3s_server_ami_id        = null
+k3s_worker_ami_id        = null
 
 ecr_repositories = {
   sample_app      = "sample-app"

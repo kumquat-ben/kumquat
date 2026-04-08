@@ -63,6 +63,8 @@ module "k3s" {
   worker_min_size           = var.k3s_worker_min_size
   worker_desired_size       = var.k3s_worker_desired_size
   worker_max_size           = var.k3s_worker_max_size
+  server_ami_id             = var.k3s_server_ami_id
+  worker_ami_id             = var.k3s_worker_ami_id
   ssh_key_name              = var.ssh_key_name
   tags                      = local.tags
 }
