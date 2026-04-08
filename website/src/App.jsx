@@ -358,32 +358,32 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
   return (
     <section className="story-section" id="story">
       <div className="story-copy-panel">
-        <p className="section-eyebrow">General Direction</p>
+        <p className="section-eyebrow">Why Kumquat</p>
         <h2 className="section-title">
-          Make the chain feel
+          Digital money that keeps the
           {" "}
-          <em>tactile, calm, and exact.</em>
+          <em>logic of cash.</em>
         </h2>
         <p className="body-copy">
-          The page should feel editorial rather than startup-generic. Typography does
-          the talking. Color stays citrus-warm and restrained. Motion exists to teach
-          the model: denominations are things, not just numbers.
+          Kumquat makes value easier to understand by showing it as distinct units
+          instead of a single abstract balance. Bills, coins, and wallet rows help
+          people see what they hold and what moves in a transfer.
         </p>
         <div className="story-principles">
           <article>
             <p className="principle-index">01</p>
-            <h3>Explain through motion</h3>
+            <h3>Clear denomination hierarchy</h3>
             <p className="body-copy">
-              Use springs and sequenced reveals to show hierarchy, transfer, and object
-              arrival. If animation does not clarify behavior, remove it.
+              Larger units lead, smaller units follow, and the wallet view keeps the
+              composition readable from total down to the smallest remainder.
             </p>
           </article>
           <article>
             <p className="principle-index">02</p>
-            <h3>Keep the interface physically legible</h3>
+            <h3>Transfers you can follow</h3>
             <p className="body-copy">
-              Bills, coins, trays, and wallet rows need visible boundaries, subtle
-              lift, and enough spacing to read as units with weight.
+              The interface is built so incoming units, denomination mix, and wallet
+              totals can be understood at a glance instead of decoded after the fact.
             </p>
           </article>
         </div>
