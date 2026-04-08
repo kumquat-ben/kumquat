@@ -59,5 +59,13 @@ For the detailed rollout procedure, including Google OAuth secret injection for 
 
 For the operator VPN connection procedure used to reach the private k3s API, use [infra/aws-secure-platform/VPN.md](infra/aws-secure-platform/VPN.md).
 
+## Contributing
+
+Code contributions are welcome through GitHub:
+
+- Open an issue: <https://github.com/kumquatben/kumquat/issues>
+- Submit a pull request: <https://github.com/kumquatben/kumquat/pulls>
+- Sponsor the project: <https://github.com/sponsors/kumquatben>
+
 © 2026 Benjamin Levin. All Rights Reserved.
 Unauthorized use, copying, or distribution is strictly prohibited.
