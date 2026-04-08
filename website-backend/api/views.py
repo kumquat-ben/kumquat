@@ -1,13 +1,24 @@
 import json
+import secrets
 from datetime import datetime, timezone
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
+from django.conf import settings
+from django.contrib.auth import get_user_model, login, logout
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import connection
-from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import EarlyAccessSignup
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+GOOGLE_OAUTH_STATE_SESSION_KEY = "google_oauth_state"
 
 
 def _database_state():
@@ -112,6 +123,204 @@ def index_view(_request):
 """,
         content_type="text/html; charset=utf-8",
     )
+
+
+def _oauth_is_configured():
+    return bool(
+        settings.GOOGLE_OAUTH_CLIENT_ID
+        and settings.GOOGLE_OAUTH_CLIENT_SECRET
+        and settings.GOOGLE_OAUTH_REDIRECT_URI
+    )
+
+
+def _google_json_request(url, *, method="GET", data=None, headers=None):
+    request_headers = {
+        "Accept": "application/json",
+        **(headers or {}),
+    }
+    payload = None
+    if data is not None:
+        payload = urlencode(data).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+
+    request = Request(url, data=payload, headers=request_headers, method=method)
+
+    try:
+        with urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Google OAuth HTTP {exc.code}: {error_body}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Google OAuth network error: {exc.reason}") from exc
+
+
+def _build_username(email, google_sub):
+    User = get_user_model()
+    base_username = (email or "").split("@", 1)[0].strip() or f"google-{google_sub}"
+    normalized = "".join(character if character.isalnum() else "-" for character in base_username.lower()).strip("-")
+    candidate = normalized[:120] or f"google-{google_sub}"
+    suffix = 1
+
+    while User.objects.filter(username=candidate).exists():
+        candidate = f"{normalized[:100] or 'google-user'}-{suffix}"
+        suffix += 1
+
+    return candidate
+
+
+def _upsert_google_user(profile):
+    User = get_user_model()
+    google_sub = profile.get("sub")
+    email = (profile.get("email") or "").strip().lower()
+    full_name = (profile.get("name") or "").strip()
+    given_name = (profile.get("given_name") or "").strip()
+    family_name = (profile.get("family_name") or "").strip()
+
+    if not google_sub or not email:
+        raise ValueError("Google account response did not include a stable subject and email.")
+
+    user = User.objects.filter(email=email).first()
+    created = False
+
+    if user is None:
+        user = User.objects.create(
+            username=_build_username(email, google_sub),
+            email=email,
+            first_name=given_name[:150],
+            last_name=family_name[:150],
+        )
+        user.set_unusable_password()
+        created = True
+    else:
+        fields_to_update = []
+        if given_name and user.first_name != given_name[:150]:
+            user.first_name = given_name[:150]
+            fields_to_update.append("first_name")
+        if family_name and user.last_name != family_name[:150]:
+            user.last_name = family_name[:150]
+            fields_to_update.append("last_name")
+        if not user.email:
+            user.email = email
+            fields_to_update.append("email")
+        if fields_to_update:
+            user.save(update_fields=fields_to_update)
+
+    if created:
+        user.save(update_fields=["password"])
+
+    return user, full_name
+
+
+def google_oauth_start_view(request):
+    if not _oauth_is_configured():
+        return JsonResponse({"error": "Google OAuth is not configured."}, status=503)
+
+    state = secrets.token_urlsafe(32)
+    request.session[GOOGLE_OAUTH_STATE_SESSION_KEY] = state
+    query = urlencode(
+        {
+            "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+            "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "access_type": "offline",
+            "prompt": "consent",
+        }
+    )
+    return HttpResponseRedirect(f"{GOOGLE_AUTH_URL}?{query}")
+
+
+@csrf_exempt
+def google_oauth_exchange_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if not _oauth_is_configured():
+        return JsonResponse({"error": "Google OAuth is not configured."}, status=503)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    returned_state = (payload.get("state") or "").strip()
+    saved_state = request.session.pop(GOOGLE_OAUTH_STATE_SESSION_KEY, "")
+    if not saved_state or returned_state != saved_state:
+        return JsonResponse({"error": "OAuth state mismatch."}, status=400)
+
+    if payload.get("error"):
+        return JsonResponse({"error": payload.get("error")}, status=400)
+
+    code = (payload.get("code") or "").strip()
+    if not code:
+        return JsonResponse({"error": "Missing Google authorization code."}, status=400)
+
+    try:
+        token_payload = _google_json_request(
+            GOOGLE_TOKEN_URL,
+            method="POST",
+            data={
+                "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+                "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+            },
+        )
+        access_token = token_payload.get("access_token")
+        if not access_token:
+            raise ValueError("Google token response did not include an access token.")
+        profile = _google_json_request(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        user, full_name = _upsert_google_user(profile)
+    except Exception:
+        return JsonResponse({"error": "Google OAuth exchange failed."}, status=502)
+
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return JsonResponse(
+        {
+            "status": "ok",
+            "user": {
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "full_name": full_name or user.username,
+                "username": user.username,
+            },
+        }
+    )
+
+
+def auth_me_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"authenticated": False})
+
+    full_name = " ".join(part for part in [request.user.first_name, request.user.last_name] if part).strip()
+    return JsonResponse(
+        {
+            "authenticated": True,
+            "user": {
+                "email": request.user.email,
+                "first_name": request.user.first_name,
+                "last_name": request.user.last_name,
+                "full_name": full_name or request.user.username,
+                "username": request.user.username,
+            },
+        }
+    )
+
+
+@csrf_exempt
+def auth_logout_view(request):
+    if request.method not in {"POST", "GET"}:
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    logout(request)
+    return JsonResponse({"status": "ok"})
 
 
 def healthz_view(_request):
