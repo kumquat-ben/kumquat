@@ -7,7 +7,7 @@
 
 ![Kumquat Team](team.kumquat.png)
 
-Kumquat is a small web platform built around a public React website at `/`, a Django backend served at `/api/`, and AWS-hosted k3s infrastructure managed as code.
+Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. This repository contains the public React website at `/`, the Django backend at `/api/`, and the AWS-hosted k3s infrastructure that supports the product.
 
 Live at **[kumquat.info](https://kumquat.info)**.
 
