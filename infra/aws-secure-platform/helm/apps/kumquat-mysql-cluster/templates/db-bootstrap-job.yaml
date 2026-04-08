@@ -1,0 +1,50 @@
+{{- if .Values.bootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.bootstrap.jobName }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: "{{ .Values.bootstrap.image.repository }}:{{ .Values.bootstrap.image.tag }}"
+          imagePullPolicy: {{ .Values.bootstrap.image.pullPolicy }}
+          env:
+            - name: MYSQL_HOST
+              value: "{{ .Release.Name }}-router"
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_DATABASE
+              value: {{ .Values.bootstrap.databaseName | quote }}
+            - name: MYSQL_APP_USER
+              value: {{ .Values.bootstrap.appUser | quote }}
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.secretName }}
+                  key: root-password
+            - name: MYSQL_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.secretName }}
+                  key: app-password
+          command:
+            - sh
+            - -c
+            - |
+              until mysqladmin ping -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -uroot -p"${MYSQL_ROOT_PASSWORD}" --silent; do
+                sleep 5
+              done
+              mysql -h"${MYSQL_HOST}" -P"${MYSQL_PORT}" -uroot -p"${MYSQL_ROOT_PASSWORD}" <<SQL
+              CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+              CREATE USER IF NOT EXISTS '${MYSQL_APP_USER}'@'%' IDENTIFIED BY '${MYSQL_APP_PASSWORD}';
+              ALTER USER '${MYSQL_APP_USER}'@'%' IDENTIFIED BY '${MYSQL_APP_PASSWORD}';
+              GRANT ALL PRIVILEGES ON \`${MYSQL_DATABASE}\`.* TO '${MYSQL_APP_USER}'@'%';
+              FLUSH PRIVILEGES;
+              SQL
+{{- end }}

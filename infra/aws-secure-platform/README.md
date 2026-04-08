@@ -208,6 +208,15 @@ docker tag sample-app:1.0.0 "$REPO_URL:1.0.0"
 docker push "$REPO_URL:1.0.0"
 ```
 
+For the Django backend image:
+
+```bash
+REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.website_backend')"
+
+cd ../../../website-backend
+docker buildx build --platform linux/amd64 -t "$REPO_URL:backend-20260407-1" --push .
+```
+
 ### 8. Deploy the example application
 
 Update the image in the manifests, then apply:
@@ -219,6 +228,30 @@ kubectl get ingress -n sample-app
 ```
 
 The example ingress can be exposed publicly when `public_app_load_balancer = true`. In that case, point your DNS record for `kumquat.info` or `www.kumquat.info` at the `app_alb_dns_name` Terraform output.
+
+### 9. Deploy the Kumquat backend platform add-on
+
+This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, and the Django backend routed at `/api/`.
+
+```bash
+cd ../../addons/kumquat-platform
+cp terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan \
+  -var="kubeconfig_path=$KUBECONFIG" \
+  -var="backend_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend" \
+  -var="backend_image_tag=backend-20260407-1" \
+  -var="backend_secret_key=replace-me" \
+  -var="mysql_root_password=replace-me" \
+  -var="mysql_app_password=replace-me"
+terraform apply \
+  -var="kubeconfig_path=$KUBECONFIG" \
+  -var="backend_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend" \
+  -var="backend_image_tag=backend-20260407-1" \
+  -var="backend_secret_key=replace-me" \
+  -var="mysql_root_password=replace-me" \
+  -var="mysql_app_password=replace-me"
+```
 
 ## Security Checklist
 

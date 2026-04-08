@@ -88,6 +88,16 @@ resource "aws_iam_role_policy_attachment" "worker_ssm" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy_attachment" "server_ebs_csi" {
+  role       = aws_iam_role.server.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "worker_ebs_csi" {
+  role       = aws_iam_role.worker.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
 data "aws_iam_policy_document" "cluster_token_access" {
   statement {
     effect = "Allow"

@@ -1,0 +1,50 @@
+image:
+  repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+env:
+  existingSecret: kumquat-backend-env
+  common:
+    PORT: "8000"
+    DJANGO_DEBUG: "false"
+    DJANGO_ALLOWED_HOSTS: "kumquat.info,.kumquat.info"
+    DJANGO_CSRF_TRUSTED_ORIGINS: "https://kumquat.info"
+    GUNICORN_WORKERS: "2"
+    GUNICORN_THREADS: "2"
+    GUNICORN_TIMEOUT: "60"
+
+service:
+  port: 8000
+  targetPort: http
+
+ingress:
+  enabled: true
+  className: nginx
+  host: kumquat.info
+  path: /api
+  pathType: Prefix
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector:
+  workload: application
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+podSecurityContext: {}
