@@ -87,6 +87,17 @@ For the detailed rollout procedure, including Google OAuth secret injection for 
 
 For the operator VPN connection procedure used to reach the private k3s API, use [infra/aws-secure-platform/VPN.md](infra/aws-secure-platform/VPN.md).
 
+## Documents
+
+Top-level team documentation now lives in [documents](documents):
+
+- [documents/README.md](documents/README.md)
+- [documents/aws-environment-deployment.md](documents/aws-environment-deployment.md)
+- [documents/vpn-and-helm-deployment.md](documents/vpn-and-helm-deployment.md)
+- [documents/developer-onboarding.md](documents/developer-onboarding.md)
+- [documents/operator-onboarding.md](documents/operator-onboarding.md)
+- [documents/product-requirements.md](documents/product-requirements.md)
+
 ## Getting Started
 
 ```bash
