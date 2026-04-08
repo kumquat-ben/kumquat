@@ -406,6 +406,11 @@ h3 {
   gap: 1rem;
 }
 
+.dashboard-card-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .dashboard-sections {
   margin-top: 1.25rem;
 }
@@ -426,6 +431,28 @@ h3 {
   color: #9a1f1f;
 }
 
+.dashboard-tabs,
+.dashboard-pagination-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.dashboard-tab {
+  min-height: 2.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(122, 61, 12, 0.14);
+  background: rgba(255, 251, 243, 0.75);
+  color: var(--orange-deep);
+}
+
+.dashboard-tab-active {
+  color: #fff8ef;
+  background: linear-gradient(135deg, #c8540d, #eb7b18);
+  box-shadow: 0 10px 24px rgba(200, 84, 13, 0.18);
+}
+
 .data-table-wrap {
   overflow-x: auto;
   margin-top: 1rem;
@@ -433,8 +460,9 @@ h3 {
 
 .data-table {
   width: 100%;
-  min-width: 42rem;
+  min-width: 0;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .data-table th,
@@ -443,6 +471,7 @@ h3 {
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid rgba(124, 54, 7, 0.1);
+  overflow-wrap: anywhere;
 }
 
 .data-table th {
@@ -450,6 +479,15 @@ h3 {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8e470d;
+}
+
+.dashboard-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .auth-copy-panel {
@@ -572,6 +610,11 @@ h3 {
   .feature-grid {
     grid-template-columns: 1fr;
   }
+
+  .data-table {
+    min-width: 40rem;
+    table-layout: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -597,6 +640,17 @@ h3 {
   .signup-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .dashboard-toolbar,
+  .dashboard-pagination,
+  .dashboard-pagination-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-tab {
+    width: 100%;
   }
 
   .primary-link,

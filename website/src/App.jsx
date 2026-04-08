@@ -359,8 +359,22 @@ function formatDate(value) {
   return parsedDate.toLocaleString();
 }
 
+function paginateItems(items, page, pageSize) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * pageSize;
+
+  return {
+    totalPages,
+    safePage,
+    items: items.slice(start, start + pageSize),
+  };
+}
+
 function AdminDashboardPage({ auth }) {
   const [dashboard, setDashboard] = useState({ status: "loading", data: null, error: "" });
+  const [activeTab, setActiveTab] = useState("signups");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (auth.status !== "ready") {
@@ -410,6 +424,13 @@ function AdminDashboardPage({ auth }) {
   const stats = dashboard.data?.stats;
   const users = dashboard.data?.users ?? [];
   const signups = dashboard.data?.signups ?? [];
+  const pageSize = activeTab === "signups" ? 8 : 6;
+  const activeItems = activeTab === "signups" ? signups : users;
+  const pagination = paginateItems(activeItems, page, pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, signups.length, users.length]);
 
   return (
     <AppShell>
@@ -455,59 +476,99 @@ function AdminDashboardPage({ auth }) {
             <div className="dashboard-sections">
               <section className="dashboard-card">
                 <div className="dashboard-card-header">
-                  <p className="feature-kicker">Early Access Signups</p>
-                  <p className="account-copy">{signups.length} total</p>
+                  <div className="dashboard-tabs" role="tablist" aria-label="Dashboard data views">
+                    <button
+                      className={`dashboard-tab ${activeTab === "signups" ? "dashboard-tab-active" : ""}`}
+                      onClick={() => setActiveTab("signups")}
+                      role="tab"
+                      aria-selected={activeTab === "signups"}
+                      type="button"
+                    >
+                      Early signups
+                    </button>
+                    <button
+                      className={`dashboard-tab ${activeTab === "users" ? "dashboard-tab-active" : ""}`}
+                      onClick={() => setActiveTab("users")}
+                      role="tab"
+                      aria-selected={activeTab === "users"}
+                      type="button"
+                    >
+                      Users
+                    </button>
+                  </div>
+                  <p className="account-copy">{activeItems.length} total</p>
                 </div>
-                <div className="data-table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Created</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {signups.map((signup) => (
-                        <tr key={signup.email}>
-                          <td>{signup.name || "Unknown"}</td>
-                          <td>{signup.email}</td>
-                          <td>{formatDate(signup.created_at)}</td>
+                {activeTab === "signups" ? (
+                  <div className="data-table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Email</th>
+                          <th>Created</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section className="dashboard-card">
-                <div className="dashboard-card-header">
-                  <p className="feature-kicker">Users</p>
-                  <p className="account-copy">{users.length} total</p>
-                </div>
-                <div className="data-table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Joined</th>
-                        <th>Last Login</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => (
-                        <tr key={user.username}>
-                          <td>{user.full_name}</td>
-                          <td>{user.email || user.username}</td>
-                          <td>{user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User"}</td>
-                          <td>{formatDate(user.date_joined)}</td>
-                          <td>{formatDate(user.last_login)}</td>
+                      </thead>
+                      <tbody>
+                        {pagination.items.map((signup) => (
+                          <tr key={signup.email}>
+                            <td>{signup.name || "Unknown"}</td>
+                            <td>{signup.email}</td>
+                            <td>{formatDate(signup.created_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="data-table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th>Joined</th>
+                          <th>Last Login</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {pagination.items.map((user) => (
+                          <tr key={user.username}>
+                            <td>{user.full_name}</td>
+                            <td>{user.email || user.username}</td>
+                            <td>{user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User"}</td>
+                            <td>{formatDate(user.date_joined)}</td>
+                            <td>{formatDate(user.last_login)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="dashboard-pagination">
+                  <p className="account-copy">
+                    Page {pagination.safePage} of {pagination.totalPages}
+                  </p>
+                  <div className="dashboard-pagination-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={pagination.safePage === 1}
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      type="button"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={pagination.safePage === pagination.totalPages}
+                      onClick={() =>
+                        setPage((current) => Math.min(pagination.totalPages, current + 1))
+                      }
+                      type="button"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               </section>
             </div>
