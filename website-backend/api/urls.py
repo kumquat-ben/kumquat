@@ -4,6 +4,7 @@ from .views import (
     auth_logout_view,
     auth_me_view,
     early_access_signup_view,
+    google_oauth_callback_view,
     google_oauth_exchange_view,
     google_oauth_start_view,
     healthz_view,
@@ -14,6 +15,7 @@ from .views import (
 urlpatterns = [
     path("", index_view, name="api-index"),
     path("auth/google/start", google_oauth_start_view, name="api-auth-google-start"),
+    path("auth/google/callback", google_oauth_callback_view, name="api-auth-google-callback"),
     path("auth/google/exchange", google_oauth_exchange_view, name="api-auth-google-exchange"),
     path("auth/logout", auth_logout_view, name="api-auth-logout"),
     path("auth/me", auth_me_view, name="api-auth-me"),

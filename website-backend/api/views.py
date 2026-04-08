@@ -254,6 +254,14 @@ def google_oauth_start_view(request):
     return HttpResponseRedirect(f"{GOOGLE_AUTH_URL}?{query}")
 
 
+def google_oauth_callback_view(request):
+    callback_url = "/auth/google/callback"
+    query = request.META.get("QUERY_STRING", "")
+    if query:
+        callback_url = f"{callback_url}?{query}"
+    return HttpResponseRedirect(callback_url)
+
+
 @csrf_exempt
 def google_oauth_exchange_view(request):
     if request.method != "POST":
