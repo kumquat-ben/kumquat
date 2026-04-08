@@ -30,6 +30,20 @@ variable "backend_secret_key" {
   sensitive = true
 }
 
+variable "google_oauth_client_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "google_oauth_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "google_oauth_redirect_uri" {
+  type = string
+}
+
 variable "mysql_root_password" {
   type      = string
   sensitive = true

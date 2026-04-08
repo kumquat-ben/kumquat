@@ -20,7 +20,7 @@ spec:
         workload: application
       containers:
         - name: sample-app
-          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260407-205032
+          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260407-210833
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

@@ -121,12 +121,15 @@ resource "kubernetes_secret_v1" "backend_env" {
   }
 
   data = {
-    DJANGO_SECRET_KEY = var.backend_secret_key
-    MYSQL_DATABASE    = var.mysql_database_name
-    MYSQL_USER        = var.mysql_app_user
-    MYSQL_PASSWORD    = var.mysql_app_password
-    MYSQL_HOST        = local.mysql_router_host
-    MYSQL_PORT        = "3306"
+    DJANGO_SECRET_KEY          = var.backend_secret_key
+    GOOGLE_OAUTH_CLIENT_ID     = var.google_oauth_client_id
+    GOOGLE_OAUTH_CLIENT_SECRET = var.google_oauth_client_secret
+    GOOGLE_OAUTH_REDIRECT_URI  = var.google_oauth_redirect_uri
+    MYSQL_DATABASE             = var.mysql_database_name
+    MYSQL_USER                 = var.mysql_app_user
+    MYSQL_PASSWORD             = var.mysql_app_password
+    MYSQL_HOST                 = local.mysql_router_host
+    MYSQL_PORT                 = "3306"
   }
 }
 
