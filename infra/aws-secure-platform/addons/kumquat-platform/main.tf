@@ -2,7 +2,7 @@ locals {
   mysql_release_name          = "kumquat-mysql"
   backend_secret_name         = "kumquat-backend-env"
   mysql_bootstrap_secret_name = "kumquat-mysql-bootstrap"
-  mysql_router_host           = "${local.mysql_release_name}-router.${var.namespace}.svc.cluster.local"
+  mysql_service_host          = "${local.mysql_release_name}.${var.namespace}.svc.cluster.local"
 }
 
 resource "kubernetes_namespace_v1" "mysql_operator" {
@@ -128,7 +128,7 @@ resource "kubernetes_secret_v1" "backend_env" {
     MYSQL_DATABASE             = var.mysql_database_name
     MYSQL_USER                 = var.mysql_app_user
     MYSQL_PASSWORD             = var.mysql_app_password
-    MYSQL_HOST                 = local.mysql_router_host
+    MYSQL_HOST                 = local.mysql_service_host
     MYSQL_PORT                 = "3306"
   }
 }
