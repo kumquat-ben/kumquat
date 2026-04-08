@@ -148,7 +148,7 @@ terraform output -raw app_alb_dns_name
 
 Export the Client VPN configuration from AWS after the endpoint is created, then connect using your approved client certificate.
 
-For the concrete Kumquat production operator flow, including the current endpoint ID, local cert paths, export command, and verification steps, use [VPN.md](/Users/armenmerikyan/Desktop/wd/kumquat/infra/aws-secure-platform/VPN.md).
+For the concrete Kumquat production operator flow, including the current endpoint ID, local cert paths, export command, and verification steps, use [VPN.md](VPN.md).
 
 Typical flow:
 
