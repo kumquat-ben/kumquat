@@ -161,11 +161,11 @@ function AuthSummary({ auth, onLogout }) {
 
   return (
     <div className="identity-card">
-      <p className="section-eyebrow">Identity</p>
-      <h3>Custom sign-in flow</h3>
+      <p className="section-eyebrow">Founding Member</p>
+      <h3>Join before launch</h3>
       <p className="body-copy">
-        Google handles consent. Kumquat keeps the product story, loading states, and
-        account surface on-brand.
+        Sign in to start earning kumquats in early access and secure your place
+        before the chain goes live.
       </p>
       <a className="button button-secondary" href="/auth/sign-in">
         Sign in
