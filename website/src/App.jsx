@@ -106,6 +106,7 @@ function HomePage({ auth, onLogout }) {
   const [formData, setFormData] = useState({ name: "", email: "" });
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
+  const isSignedUp = status === "success";
 
   useEffect(() => {
     const savedSignup = window.localStorage.getItem(STORAGE_KEY);
@@ -241,50 +242,67 @@ function HomePage({ auth, onLogout }) {
         <aside className="right-rail">
           <AuthSummary auth={auth} onLogout={onLogout} />
 
-          <form className="signup-form" onSubmit={handleSubmit}>
-            <div className="signup-header">
-              <p className="signup-label">Early Access Signup</p>
-              <p className="signup-copy">
-                Join the list and the backend will keep the record synced.
+          <section className={`signup-shell ${isSignedUp ? "signup-shell-success" : ""}`}>
+            <form className="signup-form" onSubmit={handleSubmit}>
+              <div className="signup-header">
+                <p className="signup-label">Early Access Signup</p>
+                <p className="signup-copy">
+                  Join the list and the backend will keep the record synced.
+                </p>
+              </div>
+
+              <div className="signup-fields">
+                <label className="signup-field">
+                  <span>Name</span>
+                  <input
+                    autoComplete="name"
+                    name="name"
+                    onChange={handleChange}
+                    placeholder="Kumquat fan"
+                    type="text"
+                    value={formData.name}
+                  />
+                </label>
+                <label className="signup-field">
+                  <span>Email</span>
+                  <input
+                    autoComplete="email"
+                    name="email"
+                    onChange={handleChange}
+                    placeholder="you@example.com"
+                    required
+                    type="email"
+                    value={formData.email}
+                  />
+                </label>
+              </div>
+
+              <div className="signup-actions">
+                <button className="signup-button" disabled={status === "loading"} type="submit">
+                  {status === "loading" ? <LoaderCircle className="spinner" size={18} /> : null}
+                  Join early access
+                </button>
+                {message && !isSignedUp ? (
+                  <p className={`signup-message signup-message-${status}`}>{message}</p>
+                ) : null}
+              </div>
+            </form>
+
+            <div
+              aria-live="polite"
+              className="signup-success-card"
+              role="status"
+            >
+              <div className="signup-success-badge">
+                <CheckCircle2 size={22} strokeWidth={2.4} />
+              </div>
+              <p className="signup-success-kicker">Early Access Confirmed</p>
+              <h3 className="signup-success-title">You're on the early access list.</h3>
+              <p className="signup-success-copy">
+                We saved your spot and will reach out when Kumquat is ready for you.
               </p>
             </div>
-
-            <div className="signup-fields">
-              <label className="signup-field">
-                <span>Name</span>
-                <input
-                  autoComplete="name"
-                  name="name"
-                  onChange={handleChange}
-                  placeholder="Kumquat fan"
-                  type="text"
-                  value={formData.name}
-                />
-              </label>
-              <label className="signup-field">
-                <span>Email</span>
-                <input
-                  autoComplete="email"
-                  name="email"
-                  onChange={handleChange}
-                  placeholder="you@example.com"
-                  required
-                  type="email"
-                  value={formData.email}
-                />
-              </label>
-            </div>
-
-            <div className="signup-actions">
-              <button className="signup-button" disabled={status === "loading"} type="submit">
-                {status === "loading" ? <LoaderCircle className="spinner" size={18} /> : null}
-                {status === "success" ? "Signed up" : "Join early access"}
-              </button>
-              {message ? (
-                <p className={`signup-message signup-message-${status}`}>{message}</p>
-              ) : null}
-            </div>
-          </form>
+          </section>
         </aside>
       </section>
     </AppShell>
