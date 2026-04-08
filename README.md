@@ -58,3 +58,6 @@ Production runs on k3s behind `kumquat.info`.
 For the detailed rollout procedure, including Google OAuth secret injection for the backend, use [infra/aws-secure-platform/README.md](infra/aws-secure-platform/README.md).
 
 For the operator VPN connection procedure used to reach the private k3s API, use [infra/aws-secure-platform/VPN.md](infra/aws-secure-platform/VPN.md).
+
+© 2026 Benjamin Levin. All Rights Reserved.
+Unauthorized use, copying, or distribution is strictly prohibited.

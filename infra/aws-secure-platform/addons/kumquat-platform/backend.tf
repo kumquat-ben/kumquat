@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 terraform {
   backend "s3" {
     key          = "aws-secure-platform/addons/kumquat-platform/terraform.tfstate"

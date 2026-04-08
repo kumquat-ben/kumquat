@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
   tag: backend-20260407-222027

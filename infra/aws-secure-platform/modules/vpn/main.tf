@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 resource "aws_cloudwatch_log_group" "this" {
   name              = "/aws/${var.name}/client-vpn"
   retention_in_days = var.cloudwatch_log_retention_in_days

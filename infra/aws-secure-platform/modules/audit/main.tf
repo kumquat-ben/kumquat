@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "audit_kms" {

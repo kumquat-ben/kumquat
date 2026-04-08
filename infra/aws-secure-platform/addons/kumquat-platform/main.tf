@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 locals {
   mysql_release_name          = "kumquat-mysql"
   backend_secret_name         = "kumquat-backend-env"

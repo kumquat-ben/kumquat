@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +22,7 @@ spec:
         workload: application
       containers:
         - name: sample-app
-          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260408-124906-301952b
+          image: 351381968847.dkr.ecr.us-west-2.amazonaws.com/sample-app:website-20260408-125945-4c988e5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

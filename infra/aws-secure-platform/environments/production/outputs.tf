@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 output "aws_region" {
   description = "AWS region used by the deployment."
   value       = var.aws_region

@@ -1,3 +1,5 @@
+{{/* Copyright (c) 2026 Benjamin Levin. All Rights Reserved. */}}
+{{/* Unauthorized use or distribution is strictly prohibited. */}}
 {{- define "kumquat-backend.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

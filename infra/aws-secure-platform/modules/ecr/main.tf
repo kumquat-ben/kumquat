@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
 resource "aws_kms_key" "ecr" {
   description             = "KMS key for ECR repositories in ${var.name}"
   deletion_window_in_days = 30
