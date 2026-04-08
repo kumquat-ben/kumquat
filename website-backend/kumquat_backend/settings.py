@@ -5,6 +5,32 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def load_env_file(*paths):
+    for path in paths:
+        if not path.exists():
+            continue
+
+        for raw_line in path.read_text().splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            name, value = line.split("=", 1)
+            name = name.strip()
+            value = value.strip()
+
+            if not name:
+                continue
+
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+
+            os.environ.setdefault(name, value)
+
+
+load_env_file(BASE_DIR / ".env", BASE_DIR.parent / ".env")
+
+
 def env(name, default=None):
     value = os.getenv(name)
     if value is None:
@@ -31,7 +57,7 @@ GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", "")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", "")
 GOOGLE_OAUTH_REDIRECT_URI = env(
     "GOOGLE_OAUTH_REDIRECT_URI",
-    "http://localhost:8000/api/auth/google/callback/",
+    "http://localhost:5173/auth/google/callback",
 )
 
 INSTALLED_APPS = [

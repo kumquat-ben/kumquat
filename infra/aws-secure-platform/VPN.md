@@ -14,8 +14,8 @@ The production k3s API is intentionally private-only.
 
 The Terraform wiring for this lives in:
 
-- [modules/vpn/main.tf](/Users/armenmerikyan/Desktop/wd/kumquat/infra/aws-secure-platform/modules/vpn/main.tf)
-- [environments/production/main.tf](/Users/armenmerikyan/Desktop/wd/kumquat/infra/aws-secure-platform/environments/production/main.tf)
+- [modules/vpn/main.tf](modules/vpn/main.tf)
+- [environments/production/main.tf](environments/production/main.tf)
 
 The VPN uses:
 
@@ -28,9 +28,9 @@ The VPN uses:
 
 This repo already contains local certificate material under `.local/aws-secure-platform/certs/`:
 
-- [.local/aws-secure-platform/certs/vpn-ca.crt](/Users/armenmerikyan/Desktop/wd/kumquat/.local/aws-secure-platform/certs/vpn-ca.crt)
-- [.local/aws-secure-platform/certs/vpn-client.crt](/Users/armenmerikyan/Desktop/wd/kumquat/.local/aws-secure-platform/certs/vpn-client.crt)
-- [.local/aws-secure-platform/certs/vpn-client.key](/Users/armenmerikyan/Desktop/wd/kumquat/.local/aws-secure-platform/certs/vpn-client.key)
+- [.local/aws-secure-platform/certs/vpn-ca.crt](../../.local/aws-secure-platform/certs/vpn-ca.crt)
+- [.local/aws-secure-platform/certs/vpn-client.crt](../../.local/aws-secure-platform/certs/vpn-client.crt)
+- [.local/aws-secure-platform/certs/vpn-client.key](../../.local/aws-secure-platform/certs/vpn-client.key)
 
 Treat the client key as sensitive.
 
@@ -92,7 +92,7 @@ Import `.local/aws-secure-platform/kumquat-production.ovpn`, then connect.
 After connecting, verify cluster reachability:
 
 ```bash
-KUBECONFIG=/Users/armenmerikyan/Desktop/wd/kumquat/.local/aws-secure-platform/kubeconfig-production \
+KUBECONFIG="$(pwd)/.local/aws-secure-platform/kubeconfig-production" \
 kubectl get nodes
 ```
 
