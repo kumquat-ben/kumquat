@@ -2,7 +2,7 @@ import json
 import secrets
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -19,6 +19,7 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 GOOGLE_OAUTH_STATE_SESSION_KEY = "google_oauth_state"
+GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY = "google_oauth_redirect_uri"
 
 
 def _database_state():
@@ -155,6 +156,29 @@ def _google_json_request(url, *, method="GET", data=None, headers=None):
         raise RuntimeError(f"Google OAuth network error: {exc.reason}") from exc
 
 
+def _request_origin(request):
+    for header_name in ("HTTP_ORIGIN", "HTTP_REFERER"):
+        value = (request.META.get(header_name) or "").strip()
+        if not value:
+            continue
+
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    return ""
+
+
+def _google_redirect_uri_for_request(request):
+    request_origin = _request_origin(request)
+    if request_origin:
+        return f"{request_origin}/auth/google/callback"
+
+    return settings.GOOGLE_OAUTH_REDIRECT_URI
+
+
 def _build_username(email, google_sub):
     User = get_user_model()
     base_username = (email or "").split("@", 1)[0].strip() or f"google-{google_sub}"
@@ -217,11 +241,13 @@ def google_oauth_start_view(request):
         return JsonResponse({"error": "Google OAuth is not configured."}, status=503)
 
     state = secrets.token_urlsafe(32)
+    redirect_uri = _google_redirect_uri_for_request(request)
     request.session[GOOGLE_OAUTH_STATE_SESSION_KEY] = state
+    request.session[GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY] = redirect_uri
     query = urlencode(
         {
             "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": "openid email profile",
             "state": state,
@@ -247,6 +273,10 @@ def google_oauth_exchange_view(request):
 
     returned_state = (payload.get("state") or "").strip()
     saved_state = request.session.pop(GOOGLE_OAUTH_STATE_SESSION_KEY, "")
+    redirect_uri = request.session.pop(
+        GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY,
+        settings.GOOGLE_OAUTH_REDIRECT_URI,
+    )
     if not saved_state or returned_state != saved_state:
         return JsonResponse({"error": "OAuth state mismatch."}, status=400)
 
@@ -266,7 +296,7 @@ def google_oauth_exchange_view(request):
                 "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+                "redirect_uri": redirect_uri,
             },
         )
         access_token = token_payload.get("access_token")
