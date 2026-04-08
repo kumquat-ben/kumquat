@@ -775,7 +775,7 @@ input:focus {
 .denomination-value {
   margin: 0;
   font-size: clamp(1.8rem, 3vw, 2.6rem);
-  color: var(--money-green-dark);
+  color: var(--ink);
 }
 
 .utility-layout {
