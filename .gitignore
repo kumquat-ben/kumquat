@@ -27,6 +27,7 @@ terraform.tfvars
 .secrets/
 .env
 .env.*
+!.env.example
 .aws/
 .kube/
 kubeconfig
