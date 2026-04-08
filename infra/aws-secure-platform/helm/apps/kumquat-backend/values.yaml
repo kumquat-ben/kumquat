@@ -1,6 +1,6 @@
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260407-210833
+  tag: backend-20260407-222027
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
