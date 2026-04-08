@@ -156,7 +156,11 @@ def _google_json_request(url, *, method="GET", data=None, headers=None):
         raise RuntimeError(f"Google OAuth network error: {exc.reason}") from exc
 
 
-def _request_origin(request):
+def _google_redirect_uri_for_request(request):
+    configured_redirect_uri = (settings.GOOGLE_OAUTH_REDIRECT_URI or "").strip()
+    if configured_redirect_uri:
+        return configured_redirect_uri
+
     for header_name in ("HTTP_ORIGIN", "HTTP_REFERER"):
         value = (request.META.get(header_name) or "").strip()
         if not value:
@@ -166,17 +170,9 @@ def _request_origin(request):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue
 
-        return f"{parsed.scheme}://{parsed.netloc}"
+        return f"{parsed.scheme}://{parsed.netloc}/auth/google/callback"
 
-    return ""
-
-
-def _google_redirect_uri_for_request(request):
-    request_origin = _request_origin(request)
-    if request_origin:
-        return f"{request_origin}/auth/google/callback"
-
-    return settings.GOOGLE_OAUTH_REDIRECT_URI
+    return "http://localhost:5173/auth/google/callback"
 
 
 def _build_username(email, google_sub):
