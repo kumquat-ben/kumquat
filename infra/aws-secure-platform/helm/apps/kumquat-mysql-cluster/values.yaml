@@ -1,0 +1,53 @@
+mysql-innodbcluster:
+  tls:
+    useSelfSigned: true
+
+  credentials:
+    root:
+      user: root
+      password: change-me-before-deploy
+      host: "%"
+
+  serverInstances: 3
+  routerInstances: 2
+  baseServerId: 1000
+
+  datadirVolumeClaimTemplate:
+    accessModes: ReadWriteOnce
+    storageClassName: kumquat-mysql-gp3
+    resources:
+      requests:
+        storage: 50Gi
+
+  podSpec:
+    nodeSelector:
+      workload: application
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                component: mysqld
+            topologyKey: kubernetes.io/hostname
+
+  router:
+    instances: 2
+
+  serverConfig:
+    mycnf: |
+      [mysqld]
+      innodb_buffer_pool_size=1073741824
+      innodb_flush_log_at_trx_commit=1
+      sync_binlog=1
+      max_connections=300
+
+bootstrap:
+  enabled: true
+  jobName: kumquat-mysql-bootstrap
+  image:
+    repository: mysql
+    tag: "8.4"
+    pullPolicy: IfNotPresent
+  secretName: kumquat-mysql-bootstrap
+  databaseName: kumquat
+  appUser: kumquat

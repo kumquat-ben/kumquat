@@ -41,7 +41,8 @@ k3s_worker_desired_size  = 2
 k3s_worker_max_size      = 6
 
 ecr_repositories = {
-  sample_app = "sample-app"
+  sample_app      = "sample-app"
+  website_backend = "website-backend"
 }
 
 tags = {

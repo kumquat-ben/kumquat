@@ -70,7 +70,8 @@ variable "ecr_repositories" {
   description = "Map of logical repository keys to ECR repository names."
   type        = map(string)
   default = {
-    sample_app = "sample-app"
+    sample_app      = "sample-app"
+    website_backend = "website-backend"
   }
 }
 

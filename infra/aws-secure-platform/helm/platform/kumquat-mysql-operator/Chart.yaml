@@ -1,0 +1,9 @@
+apiVersion: v2
+name: kumquat-mysql-operator
+description: Repository-managed MySQL Operator install for Kumquat.
+type: application
+version: 0.1.0
+dependencies:
+  - name: mysql-operator
+    version: 2.2.7
+    repository: https://mysql.github.io/mysql-operator/

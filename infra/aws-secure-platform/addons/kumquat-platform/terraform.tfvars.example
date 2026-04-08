@@ -1,0 +1,6 @@
+kubeconfig_path          = "/path/to/kubeconfig"
+backend_image_repository = "351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend"
+backend_image_tag        = "backend-20260407-1"
+backend_secret_key       = "replace-me"
+mysql_root_password      = "replace-me"
+mysql_app_password       = "replace-me"
