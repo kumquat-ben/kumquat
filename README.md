@@ -1,14 +1,42 @@
 # kumquat
 
+![React](https://img.shields.io/badge/React-Vite-61DAFB?style=flat-square&logo=react)
+![Django](https://img.shields.io/badge/Backend-Django-092E20?style=flat-square&logo=django)
+![Terraform](https://img.shields.io/badge/Infra-Terraform-7B42BC?style=flat-square&logo=terraform)
+![k3s](https://img.shields.io/badge/Cluster-k3s-FFC61C?style=flat-square&logo=k3s)
+
 ![Kumquat Team](team.kumquat.png)
 
 Kumquat is a small web platform built around a public React website at `/`, a Django backend served at `/api/`, and AWS-hosted k3s infrastructure managed as code.
+
+Live at **[kumquat.info](https://kumquat.info)**.
 
 The frontend lives in [website](website) and is packaged as a containerized Vite app served through the cluster ingress. The backend lives in [website-backend](website-backend) and is set up as a Django service with health and API endpoints intended to sit behind the same `kumquat.info` hostname at `/api/`.
 
 Infrastructure for the AWS private container platform lives in [infra/aws-secure-platform](infra/aws-secure-platform). That folder contains the Terraform for the VPC, VPN, ECR, and k3s cluster, plus Helm and Terraform add-on code for the Kumquat backend platform, including the MySQL operator, a MySQL InnoDB cluster, and EBS-backed persistent storage.
 
 The repository is organized so application code and infrastructure code stay separate, but the deployment flow remains repo-native: build images, publish to ECR, apply the website manifests to k3s, and update the backend platform add-on through Terraform and Helm from the same codebase.
+
+## Architecture
+
+| Layer | Stack | Notes |
+|---|---|---|
+| **Frontend** | React + Vite | Containerized and served via k3s ingress at `/` |
+| **Backend** | Django | Health and API endpoints served at `/api/` on the same hostname |
+| **Infrastructure** | AWS + k3s + Terraform + Helm | VPC, VPN, ECR, MySQL InnoDB cluster, and EBS-backed storage |
+
+## Repository Layout
+
+```text
+kumquat/
+├── website/                  React + Vite frontend
+├── website-backend/          Django backend service
+└── infra/
+    └── aws-secure-platform/
+        ├── terraform/        VPC, VPN, ECR, and k3s cluster infrastructure
+        └── addons/           MySQL operator, InnoDB cluster,
+                              EBS storage, and Helm-managed platform releases
+```
 
 ## Website UI Guidelines
 
@@ -58,6 +86,28 @@ Production runs on k3s behind `kumquat.info`.
 For the detailed rollout procedure, including Google OAuth secret injection for the backend, use [infra/aws-secure-platform/README.md](infra/aws-secure-platform/README.md).
 
 For the operator VPN connection procedure used to reach the private k3s API, use [infra/aws-secure-platform/VPN.md](infra/aws-secure-platform/VPN.md).
+
+## Getting Started
+
+```bash
+git clone https://github.com/kumquatben/kumquat
+cd kumquat
+
+# Frontend dev server
+cd website
+npm install
+npm run dev
+
+# Backend
+cd ../website-backend
+pip install -r requirements.txt
+python manage.py runserver
+
+# Infrastructure
+cd ../infra/aws-secure-platform
+terraform init
+terraform plan
+```
 
 ## Contributing
 
