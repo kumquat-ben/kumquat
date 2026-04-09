@@ -4,12 +4,15 @@
 
 - Document type: initial draft
 - Source basis: `/Users/armenmerikyan/Downloads/kumquat_whitepaper_skeleton.html`
+- Additional source basis: `/Users/armenmerikyan/Downloads/kumquat-farm-concept.html`
 - Intended audience: GitHub readers, contributors, and early protocol reviewers
 - Current maturity: structure-first draft with explicit open questions
 
 ## Abstract
 
 Kumquat proposes a proof-of-work system centered on non-fungible coins rather than a purely fungible balance model. In this framing, newly minted units are treated as individually identifiable objects, with protocol design built around uniqueness, ownership, transfer, and cumulative work.
+
+The broader operating concept is the **Kumquat Farm**: a self-contained node that produces value across three dimensions at once. A farm settles transactions on its own chain, rents compute capacity, and monetizes harvested data, while using a shared native token and common settlement layer across all three activities.
 
 This draft is meant to give readers a high-level map of the protocol direction before the design is fully locked. It outlines the motivating problem, the non-fungible coin model, the role of proof-of-work, the proposed "hash-time" concept, the transaction and networking surfaces, and the major unresolved design questions that still need specification.
 
@@ -21,11 +24,35 @@ Kumquat starts from the idea that a proof-of-work chain does not need to treat e
 
 The motivating question is whether a non-fungible proof-of-work chain can create a different incentive model, different transaction semantics, and a different relationship between mining and ownership than Bitcoin-like systems or general-purpose smart contract chains.
 
+The farm concept extends that question beyond the chain alone. Kumquat is not only asking how a non-fungible proof-of-work ledger should work. It is also asking what happens when one operator-controlled node combines:
+
+- a financial layer with native minting, settlement, and liquidity
+- a compute layer with hardware rental and workload execution
+- a data layer with continuous harvesting and query-based monetization
+
+In that model, one node is not merely a validator or miner. It is an economic unit.
+
 This design direction is motivated by three broad goals:
 
 - move from abstract balance accounting toward identity-bearing units
 - explore how proof-of-work behaves when each minted output is unique
 - define a protocol whose core concepts are legible enough to discuss directly in a GitHub-native whitepaper
+
+## 1A. The Kumquat Farm
+
+A **Kumquat Farm** is a sovereign economic node: a single piece of hardware or virtual machine that simultaneously operates a financial system, a compute marketplace, and a data exchange, with everything settled on its own chain.
+
+The name is deliberate. A kumquat is small and self-contained, with nothing wasted. The farm concept applies that logic to infrastructure. The node should not leave hardware, data exhaust, or settlement capacity idle if those resources can be turned into productive markets.
+
+The closest real-world analogy is a bank, a cloud provider, and a data broker collapsed into one operator-owned machine with a shared ledger and a shared native token.
+
+Three properties define the farm concept:
+
+- **Three unified economies**: finance, compute, and data operate as co-equal layers rather than isolated products
+- **Shared settlement**: each market uses the same chain and token rails rather than external exchanges or separate billing systems
+- **Operator sovereignty**: the farm operator controls their node locally, while the protocol enforces network-wide floors through governance
+
+This section matters because the protocol is not only about non-fungible coins in isolation. It is about the full economic environment those coins are meant to coordinate.
 
 ## 2. The Non-Fungible Coin Model
 
@@ -118,6 +145,13 @@ Questions this section must resolve:
 
 If Kumquat chooses whole-coin transfers only, the wallet and market model will likely feel more object-native but less flexible. If it allows splitting or recomposition, it may gain usability while giving up some conceptual purity.
 
+The farm concept adds another layer to the transaction discussion: the same payment system is expected to settle several different markets. Compute leases, job execution, liquidity participation, and data purchases may all use the same token and settlement surface. That suggests the eventual transaction model may need:
+
+- escrow or contract-style payment holds
+- proof-of-delivery release logic
+- support for cross-market payment forms such as data credits or pool-derived claims
+- atomic settlement across multiple service types
+
 ## 7. Network And Peer-To-Peer Layer
 
 The networking layer must support propagation of blocks, transactions, and coin-state knowledge across nodes.
@@ -131,6 +165,13 @@ At minimum, the final whitepaper should specify:
 - light client or SPV assumptions
 
 Because Kumquat is not centered on a standard fungible fee market, mempool ordering may need special treatment. If fees are expressed in non-standard terms, the network layer cannot simply inherit the usual miner-priority assumptions from other proof-of-work chains.
+
+At network scale, farms are intended to interoperate rather than remain isolated. That introduces additional architectural questions:
+
+- how compute demand routes to available farm capacity
+- how data queries span multiple farms without requiring buyers to know the harvesting node in advance
+- how liquidity depth grows across a network of farms using the same token
+- how RPC and API gateways expose farm services consistently to external users
 
 ## 8. Security Analysis
 
@@ -149,12 +190,34 @@ Additional security questions likely belong here as the design matures:
 - wallet confusion during short reorgs
 - miner incentives under non-fungible issuance
 - denial-of-service risks if coin metadata grows too large
+- service-delivery fraud in compute or data markets
+- false proofs of execution or proof-of-delivery
+- abuse of local operator configuration that conflicts with protocol floors
 
 This section should distinguish between attacks inherited from proof-of-work generally and attacks unique to Kumquat’s design choices.
 
 ## 9. Implementation Notes
 
 The whitepaper should remain readable to non-implementers, but a GitHub-native protocol draft benefits from concrete implementation guidance.
+
+From the farm perspective, each node may run up to six major modules on top of shared runtime services.
+
+### Farm Modules
+
+- **Chain layer**: consensus, block production, transaction validation, and finality
+- **Mint**: issuance and burning of the native token under protocol rules
+- **Liquidity**: pool mechanisms for price discovery and fee-bearing market depth
+- **Hardware rental**: advertising and leasing raw CPU, GPU, RAM, and storage capacity
+- **Workload execution**: running submitted containers or WASM-style jobs and returning results with execution proofs
+- **Data marketplace**: registering harvested datasets, exposing queries, and recording provenance and access logs
+
+### Shared Runtime Services
+
+- node runtime and orchestration
+- wallet, key management, and signing
+- node identity and reputation
+- RPC, REST, and WebSocket interfaces
+- local operator configuration and governance wiring
 
 This chapter should eventually define:
 
@@ -167,6 +230,20 @@ This chapter should eventually define:
 
 This is also the right place to state what belongs in the reference implementation versus what belongs in future research or optional modules.
 
+## 9A. Governance Model
+
+The farm concept introduces a two-layer governance model.
+
+Local configuration controls the farm. On-chain governance controls the protocol.
+
+That means:
+
+- the operator sets local fees, enabled modules, and hardware allocation
+- the protocol sets floors such as minimum fees, proof formats, module standards, and treasury parameters
+- if local settings conflict with protocol floors, the protocol floors win
+
+This division preserves operator sovereignty without letting individual farms violate shared network guarantees.
+
 ## 10. Open Questions And Future Work
 
 The skeleton correctly treats unresolved issues as first-class content rather than something to hide. For an initial draft, this is a strength.
@@ -177,6 +254,10 @@ The largest open questions currently visible are:
 - how a fee market works without default fungibility
 - whether miner identity is required, optional, or intentionally anonymous
 - whether Kumquat remains narrowly scoped or grows a smart contract layer
+- how much of the farm should be mandatory versus optional per operator
+- what proof system governs workload execution and proof of delivery
+- how cross-farm routing works for compute and data requests
+- whether liquidity is local to each farm, shared network-wide, or both
 
 This section should remain explicit and candid in future revisions. If the protocol is still evolving, the whitepaper should say so clearly.
 
@@ -189,6 +270,8 @@ The final paper should include a concise notation and glossary section. Suggeste
 - **hash-time**: cumulative proof-of-work used as a protocol time signal
 - **cumulative work**: total accepted proof-of-work over a chain history
 - **mint**: the creation of a new unique coin when a valid block is accepted
+- **Kumquat Farm**: one self-contained operator-run node participating in the protocol economy
+- **proof of delivery**: evidence used to release escrow after a compute, data, or rental service is fulfilled
 
 References, symbol tables, and implementation cross-links can also live here once the specification matures.
 
