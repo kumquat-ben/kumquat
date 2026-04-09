@@ -1,11 +1,9 @@
-FROM alpine:3.21
+FROM mysql:8.4
 
-RUN apk add --no-cache \
-    bash \
-    coreutils \
-    mysql-client \
-    aws-cli \
-    tzdata
+RUN microdnf install -y \
+    awscli \
+    tzdata \
+  && microdnf clean all
 
 COPY backup.sh /usr/local/bin/backup.sh
 
