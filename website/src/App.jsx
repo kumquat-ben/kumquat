@@ -195,7 +195,7 @@ function NavBar({ ctaControls }) {
       <motion.a
         animate={ctaControls}
         className="button button-nav"
-        href="https://github.com/kumquatben/kumquat"
+        href="https://github.com/kumquat-ben/kumquat"
         rel="noreferrer"
         target="_blank"
       >
@@ -374,7 +374,7 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
         <div className="story-links" aria-label="Project links">
           <a
             className="story-link"
-            href="https://github.com/users/kumquatben/projects/1"
+            href="https://github.com/users/kumquat-ben/projects/1"
             rel="noreferrer"
             target="_blank"
           >
@@ -651,7 +651,7 @@ function SiteFooter() {
   return (
     <footer className="site-footer">
       <div className="footer-links" aria-label="Footer links">
-        <a href="https://github.com/users/kumquatben/projects/1" rel="noreferrer" target="_blank">
+        <a href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">
           GitHub project
         </a>
         <a href="https://x.com/kumquatben" rel="noreferrer" target="_blank">
