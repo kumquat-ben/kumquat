@@ -77,4 +77,4 @@ See [docs](./docs) for architecture, API, and module documentation.
 
 ## Status
 
-This blockchain folder was copied forward from an earlier project and is still carrying legacy names internally. The README set is now being rewritten to reflect Kumquat's current product and protocol direction without changing the underlying code yet.
+This blockchain folder was copied forward from earlier standalone project work and is now being integrated into the main Kumquat repository. It still carries legacy names internally, so the documentation is being aligned first while the underlying implementation is brought over in stages.
