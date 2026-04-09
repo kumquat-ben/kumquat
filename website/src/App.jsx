@@ -371,6 +371,24 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
           instead of a single abstract balance. Bills, coins, and wallet rows help
           people see what they hold and what moves in a transfer.
         </p>
+        <div className="story-links" aria-label="Project links">
+          <a
+            className="story-link"
+            href="https://github.com/users/kumquatben/projects/1"
+            rel="noreferrer"
+            target="_blank"
+          >
+            Track the project
+          </a>
+          <a
+            className="story-link"
+            href="https://x.com/kumquatben"
+            rel="noreferrer"
+            target="_blank"
+          >
+            Founder: Benjamin Levin
+          </a>
+        </div>
         <div className="story-principles">
           <article>
             <p className="principle-index">01</p>
@@ -632,6 +650,14 @@ function DenominationGridSection() {
 function SiteFooter() {
   return (
     <footer className="site-footer">
+      <div className="footer-links" aria-label="Footer links">
+        <a href="https://github.com/users/kumquatben/projects/1" rel="noreferrer" target="_blank">
+          GitHub project
+        </a>
+        <a href="https://x.com/kumquatben" rel="noreferrer" target="_blank">
+          Benjamin Levin on X
+        </a>
+      </div>
       <p>
         Copyright © Benjamin Levin. All rights reserved.
       </p>
