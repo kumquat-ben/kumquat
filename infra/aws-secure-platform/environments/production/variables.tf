@@ -74,6 +74,7 @@ variable "ecr_repositories" {
   default = {
     sample_app      = "sample-app"
     website_backend = "website-backend"
+    mysql_backup    = "mysql-backup"
   }
 }
 

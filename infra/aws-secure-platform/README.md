@@ -228,6 +228,15 @@ cd ../../../website-backend
 docker buildx build --platform linux/amd64 -t "$REPO_URL:backend-YYYYMMDD-HHMMSS" --push .
 ```
 
+For the MySQL backup job image:
+
+```bash
+REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.mysql_backup')"
+
+cd ../../../images/mysql-backup
+docker buildx build --platform linux/amd64 -t "$REPO_URL:mysql-backup-YYYYMMDD-HHMMSS" --push .
+```
+
 ### 8. Deploy the website manifests to k3s
 
 Update the image in `kubernetes/example-app/deployment.yaml`, then apply:
@@ -243,7 +252,7 @@ The website ingress can be exposed publicly when `public_app_load_balancer = tru
 
 ### 9. Deploy the Kumquat backend platform add-on
 
-This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, and the Django backend routed at `/api/`. It also injects the Google OAuth client ID, secret, and redirect URI into the backend environment secret.
+This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, a private/versioned/KMS-encrypted S3 bucket for MySQL dumps, a Kubernetes CronJob that uploads compressed backups to that bucket, and the Django backend routed at `/api/`. It also injects the Google OAuth client ID, secret, and redirect URI into the backend environment secret.
 
 Before the first `terraform init`, create a private S3 bucket for Terraform state and use it as the add-on backend:
 
@@ -258,9 +267,12 @@ terraform init -backend-config=backend.hcl
 cd ../../addons/kumquat-platform
 cp terraform.tfvars.example terraform.tfvars
 terraform plan \
+  -var="aws_region=$(cd ../../environments/production && terraform output -raw aws_region)" \
   -var="kubeconfig_path=$KUBECONFIG" \
   -var="backend_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend" \
   -var="backend_image_tag=backend-20260407-1" \
+  -var="mysql_backup_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/mysql-backup" \
+  -var="mysql_backup_image_tag=mysql-backup-20260409-1" \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
@@ -268,9 +280,12 @@ terraform plan \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 terraform apply \
+  -var="aws_region=$(cd ../../environments/production && terraform output -raw aws_region)" \
   -var="kubeconfig_path=$KUBECONFIG" \
   -var="backend_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend" \
   -var="backend_image_tag=backend-20260407-1" \
+  -var="mysql_backup_image_repository=351381968847.dkr.ecr.us-west-2.amazonaws.com/mysql-backup" \
+  -var="mysql_backup_image_tag=mysql-backup-20260409-1" \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
@@ -278,6 +293,13 @@ terraform apply \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 ```
+
+Tune these backup-specific variables as needed:
+
+- `mysql_backup_schedule` to change the Cron expression
+- `mysql_backup_suspend` to pause the CronJob without deleting it
+- `mysql_backup_bucket_name` to override the generated private bucket name
+- `mysql_backup_retention_days` to change S3 lifecycle retention
 
 ### 10. Verify the live rollout
 

@@ -4,6 +4,10 @@ variable "kubeconfig_path" {
   type = string
 }
 
+variable "aws_region" {
+  type = string
+}
+
 variable "namespace" {
   type    = string
   default = "kumquat"
@@ -74,4 +78,42 @@ variable "mysql_storage_size" {
 variable "mysql_storage_class_name" {
   type    = string
   default = "kumquat-mysql-gp3"
+}
+
+variable "mysql_backup_bucket_name" {
+  type    = string
+  default = null
+}
+
+variable "mysql_backup_bucket_prefix" {
+  type    = string
+  default = "mysql"
+}
+
+variable "mysql_backup_retention_days" {
+  type    = number
+  default = 30
+}
+
+variable "mysql_backup_schedule" {
+  type    = string
+  default = "0 3 * * *"
+}
+
+variable "mysql_backup_suspend" {
+  type    = bool
+  default = false
+}
+
+variable "mysql_backup_image_repository" {
+  type = string
+}
+
+variable "mysql_backup_image_tag" {
+  type = string
+}
+
+variable "mysql_backup_image_pull_policy" {
+  type    = string
+  default = "IfNotPresent"
 }
