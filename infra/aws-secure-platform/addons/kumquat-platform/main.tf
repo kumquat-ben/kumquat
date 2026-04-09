@@ -281,6 +281,28 @@ resource "kubernetes_cron_job_v1" "mysql_backup" {
     namespace = kubernetes_namespace_v1.kumquat.metadata[0].name
   }
 
+  lifecycle {
+    ignore_changes = [
+      metadata[0].annotations,
+      metadata[0].labels,
+      spec[0].job_template[0].metadata[0],
+      spec[0].job_template[0].spec[0].completions,
+      spec[0].job_template[0].spec[0].parallelism,
+      spec[0].job_template[0].spec[0].template[0].metadata[0],
+      spec[0].job_template[0].spec[0].template[0].spec[0].automount_service_account_token,
+      spec[0].job_template[0].spec[0].template[0].spec[0].enable_service_links,
+      spec[0].job_template[0].spec[0].template[0].spec[0].scheduler_name,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].resources,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].termination_message_policy,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[4].value_from[0].secret_key_ref[0].optional,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[6].value_from[0].secret_key_ref[0].optional,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[7].value_from[0].secret_key_ref[0].optional,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[8].value_from[0].secret_key_ref[0].optional,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[9].value_from[0].secret_key_ref[0].optional,
+      spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env[10].value_from[0].secret_key_ref[0].optional,
+    ]
+  }
+
   spec {
     schedule                      = var.mysql_backup_schedule
     concurrency_policy            = "Forbid"
@@ -302,9 +324,14 @@ resource "kubernetes_cron_job_v1" "mysql_backup" {
           }
 
           spec {
-            restart_policy = "Never"
+            restart_policy                  = "Never"
+            automount_service_account_token = true
             node_selector = {
               workload = "application"
+            }
+
+            image_pull_secrets {
+              name = "ecr-registry"
             }
 
             container {
@@ -422,15 +449,18 @@ resource "kubernetes_secret_v1" "backend_env" {
   }
 
   data = {
-    DJANGO_SECRET_KEY          = var.backend_secret_key
-    GOOGLE_OAUTH_CLIENT_ID     = var.google_oauth_client_id
-    GOOGLE_OAUTH_CLIENT_SECRET = var.google_oauth_client_secret
-    GOOGLE_OAUTH_REDIRECT_URI  = var.google_oauth_redirect_uri
-    MYSQL_DATABASE             = var.mysql_database_name
-    MYSQL_USER                 = var.mysql_app_user
-    MYSQL_PASSWORD             = var.mysql_app_password
-    MYSQL_HOST                 = local.mysql_service_host
-    MYSQL_PORT                 = "3306"
+    DJANGO_SECRET_KEY              = var.backend_secret_key
+    GOOGLE_OAUTH_CLIENT_ID         = var.google_oauth_client_id
+    GOOGLE_OAUTH_CLIENT_SECRET     = var.google_oauth_client_secret
+    GOOGLE_OAUTH_REDIRECT_URI      = var.google_oauth_redirect_uri
+    VONAGE_ACCOUNT_SECRET          = var.vonage_account_secret
+    VONAGE_SMS_SIGNATURE_SECRET    = var.vonage_sms_signature_secret
+    VONAGE_SMS_SIGNATURE_ALGORITHM = var.vonage_sms_signature_algorithm
+    MYSQL_DATABASE                 = var.mysql_database_name
+    MYSQL_USER                     = var.mysql_app_user
+    MYSQL_PASSWORD                 = var.mysql_app_password
+    MYSQL_HOST                     = local.mysql_service_host
+    MYSQL_PORT                     = "3306"
   }
 }
 
@@ -461,8 +491,16 @@ resource "helm_release" "backend" {
       enabled   = true
       className = "nginx"
       host      = var.hostname
-      path      = "/api"
-      pathType  = "Prefix"
+      paths = [
+        {
+          path     = "/api"
+          pathType = "Prefix"
+        },
+        {
+          path     = "/admin"
+          pathType = "Prefix"
+        },
+      ]
     }
     nodeSelector = {
       workload = "application"

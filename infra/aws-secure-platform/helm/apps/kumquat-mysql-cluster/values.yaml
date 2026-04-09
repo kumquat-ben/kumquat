@@ -46,6 +46,8 @@ mysql-innodbcluster:
 bootstrap:
   enabled: true
   jobName: kumquat-mysql-bootstrap
+  host: ""
+  port: 3306
   image:
     repository: mysql
     tag: "8.4"

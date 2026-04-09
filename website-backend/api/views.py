@@ -1,5 +1,7 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+import hashlib
+import hmac
 import json
 import secrets
 from datetime import datetime, timezone
@@ -12,10 +14,11 @@ from django.contrib.auth import get_user_model, login, logout
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import connection
+from django.utils.dateparse import parse_datetime
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup
+from .models import EarlyAccessSignup, VonageInboundSms
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -47,6 +50,166 @@ def _serialize_user(user):
         "is_active": user.is_active,
         "date_joined": user.date_joined.isoformat() if getattr(user, "date_joined", None) else None,
         "last_login": user.last_login.isoformat() if user.last_login else None,
+    }
+
+
+def _parse_unix_timestamp(raw_value):
+    raw_value = str(raw_value or "").strip()
+    if not raw_value:
+        return None
+
+    try:
+        return datetime.fromtimestamp(int(raw_value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _parse_vonage_datetime(raw_value):
+    raw_value = str(raw_value or "").strip()
+    if not raw_value:
+        return None
+
+    parsed = parse_datetime(raw_value)
+    if parsed is not None:
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%y%m%d%H%M"):
+        try:
+            return datetime.strptime(raw_value, pattern).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
+    return None
+
+
+def _flatten_request_data(request):
+    payload = {}
+    content_type = (request.content_type or "").lower()
+
+    if "application/json" in content_type:
+        try:
+            decoded = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            decoded = {}
+        if isinstance(decoded, dict):
+            payload.update({str(key): value for key, value in decoded.items()})
+
+    for source in (request.POST, request.GET):
+        for key in source.keys():
+            values = source.getlist(key)
+            if not values:
+                continue
+            payload[key] = values[-1] if len(values) == 1 else values
+
+    return payload
+
+
+def _sanitize_signature_value(value):
+    return str(value).replace("&", "_").replace("=", "_")
+
+
+def _validate_vonage_signature(payload):
+    provided_signature = str(payload.get("sig") or "").strip()
+    signature_secret = (settings.VONAGE_SMS_SIGNATURE_SECRET or "").strip()
+    account_secret = (settings.VONAGE_ACCOUNT_SECRET or "").strip()
+    algorithm = (settings.VONAGE_SMS_SIGNATURE_ALGORITHM or "md5hash").strip().lower()
+
+    if not provided_signature:
+        return None, ""
+
+    active_secret = signature_secret or account_secret
+    if not active_secret:
+        return None, "Signature received but no VONAGE_SMS_SIGNATURE_SECRET or VONAGE_ACCOUNT_SECRET is configured."
+
+    signed_items = []
+    for key in sorted(payload.keys()):
+        if key == "sig":
+            continue
+        value = payload.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            normalized = ",".join(_sanitize_signature_value(item) for item in value)
+        else:
+            normalized = _sanitize_signature_value(value)
+        signed_items.append(f"&{key}={normalized}")
+
+    signature_input = "".join(signed_items)
+
+    if algorithm == "md5hash":
+        expected_signature = hashlib.md5(
+            f"{signature_input}{active_secret}".encode("utf-8")
+        ).hexdigest()
+    else:
+        digest_name = {
+            "md5": "md5",
+            "sha1": "sha1",
+            "sha256": "sha256",
+            "sha512": "sha512",
+        }.get(algorithm)
+        if not digest_name:
+            return None, f"Unsupported Vonage signature algorithm: {algorithm}"
+        expected_signature = hmac.new(
+            active_secret.encode("utf-8"),
+            signature_input.encode("utf-8"),
+            getattr(hashlib, digest_name),
+        ).hexdigest()
+
+    signature_error = ""
+    if not signature_secret and account_secret:
+        signature_error = "Validated with VONAGE_ACCOUNT_SECRET fallback because VONAGE_SMS_SIGNATURE_SECRET is not configured."
+
+    return hmac.compare_digest(expected_signature.lower(), provided_signature.lower()), signature_error
+
+
+def _parse_positive_int(value):
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None
+
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return None
+
+    return parsed if parsed >= 0 else None
+
+
+def _serialize_vonage_sms(message):
+    return {
+        "id": message.id,
+        "api_key": message.api_key,
+        "message_id": message.message_id,
+        "from_number": message.from_number,
+        "to_number": message.to_number,
+        "text": message.text,
+        "message_type": message.message_type,
+        "keyword": message.keyword,
+        "message_timestamp": message.message_timestamp.isoformat() if message.message_timestamp else None,
+        "message_timestamp_raw": message.message_timestamp_raw,
+        "event_timestamp": message.event_timestamp.isoformat() if message.event_timestamp else None,
+        "event_timestamp_raw": message.event_timestamp_raw,
+        "nonce": message.nonce,
+        "signature": message.signature,
+        "signature_valid": message.signature_valid,
+        "signature_error": message.signature_error,
+        "is_concatenated": message.is_concatenated,
+        "concat_ref": message.concat_ref,
+        "concat_total": message.concat_total,
+        "concat_part": message.concat_part,
+        "data": message.data,
+        "udh": message.udh,
+        "content_type": message.content_type,
+        "request_method": message.request_method,
+        "remote_addr": message.remote_addr,
+        "user_agent": message.user_agent,
+        "payload": message.payload,
+        "raw_body": message.raw_body,
+        "received_at": message.received_at.isoformat(),
+        "created_at": message.created_at.isoformat(),
+        "updated_at": message.updated_at.isoformat(),
     }
 
 
@@ -133,10 +296,302 @@ def index_view(_request):
           <li><code>/api/early-access</code> - early access signup intake</li>
           <li><code>/api/healthz</code> - backend health and database status</li>
           <li><code>/api/messages</code> - message echo test endpoint</li>
+          <li><code>/api/vonage/sms/callback</code> - Vonage inbound SMS webhook</li>
         </ul>
         <p><strong>Database</strong>: <code>{database_state}</code></p>
       </div>
     </main>
+  </body>
+</html>
+""",
+        content_type="text/html; charset=utf-8",
+    )
+
+
+def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href="/", back_label="Back home"):
+    return HttpResponse(
+        f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #faf7f2;
+        --card: rgba(255, 255, 255, 0.82);
+        --border: rgba(216, 90, 48, 0.18);
+        --ink: #1a1208;
+        --muted: #6f624d;
+        --accent: #d85a30;
+        --shadow: 0 28px 80px rgba(74, 27, 12, 0.08);
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: "DM Sans", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(239, 159, 39, 0.12), transparent 30%),
+          radial-gradient(circle at left 20%, rgba(216, 90, 48, 0.08), transparent 24%),
+          var(--bg);
+        color: var(--ink);
+      }}
+      main {{
+        max-width: 1160px;
+        margin: 0 auto;
+        padding: 56px 20px 72px;
+      }}
+      .eyebrow {{
+        margin: 0 0 14px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }}
+      h1 {{
+        margin: 0 0 12px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(40px, 6vw, 68px);
+        line-height: 0.95;
+      }}
+      .copy {{
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.6;
+      }}
+      .toolbar {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }}
+      .button {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0.8rem 1.1rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        color: var(--ink);
+        text-decoration: none;
+      }}
+      .button:hover {{
+        border-color: rgba(216, 90, 48, 0.36);
+      }}
+      .button-primary {{
+        border-color: transparent;
+        background: var(--ink);
+        color: #fffaf2;
+      }}
+      .grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-top: 28px;
+      }}
+      .card, .panel {{
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+      }}
+      .card {{
+        padding: 20px;
+      }}
+      .panel {{
+        margin-top: 24px;
+        padding: 22px;
+      }}
+      .label {{
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }}
+      .value {{
+        margin: 0;
+        font-size: 34px;
+        font-weight: 700;
+      }}
+      .status {{
+        color: var(--muted);
+      }}
+      .error {{
+        color: #9c2f1a;
+      }}
+      table {{
+        width: 100%;
+        border-collapse: collapse;
+      }}
+      th, td {{
+        padding: 14px 12px;
+        text-align: left;
+        border-bottom: 1px solid rgba(216, 90, 48, 0.12);
+        vertical-align: top;
+      }}
+      th {{
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }}
+      pre {{
+        margin: 0;
+        padding: 16px;
+        overflow: auto;
+        border-radius: 16px;
+        background: rgba(26, 18, 8, 0.92);
+        color: #fffaf2;
+        font-size: 12px;
+        line-height: 1.6;
+      }}
+      .stack {{
+        display: grid;
+        gap: 16px;
+      }}
+      @media (max-width: 840px) {{
+        main {{
+          padding-left: 16px;
+          padding-right: 16px;
+        }}
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">{eyebrow}</p>
+      <h1>{heading}</h1>
+      <p class="copy">{copy}</p>
+      <div class="toolbar">
+        <a class="button" href="{back_href}">{back_label}</a>
+        <a class="button" href="/admin/dashboard">Dashboard</a>
+        <a class="button" href="/admin/vonage/sms">SMS Inbox</a>
+        <a class="button button-primary" href="/api/auth/logout">Sign out</a>
+      </div>
+      <div id="app" class="panel">
+        <p class="status">Loading…</p>
+      </div>
+    </main>
+    <script>
+      window.__KUMQUAT_BOOTSTRAP_URL__ = {json.dumps(bootstrap_url)};
+    </script>
+    <script>
+      const mount = document.getElementById("app");
+      const endpoint = window.__KUMQUAT_BOOTSTRAP_URL__;
+
+      function escapeHtml(value) {{
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }}
+
+      function formatDate(value) {{
+        if (!value) return "Never";
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+      }}
+
+      fetch(endpoint, {{ credentials: "same-origin" }})
+        .then(async (response) => {{
+          const payload = await response.json().catch(() => ({{}}));
+          if (!response.ok) {{
+            throw new Error(payload.error || "Failed to load admin data.");
+          }}
+          return payload;
+        }})
+        .then((payload) => {{
+          if (endpoint.includes("/api/admin/vonage/sms")) {{
+            const rows = (payload.messages || []).map((message) => `
+              <tr>
+                <td>${{escapeHtml(message.from_number || "Unknown")}}</td>
+                <td>${{escapeHtml(message.to_number || "Unknown")}}</td>
+                <td>${{escapeHtml(message.text || "No body")}}</td>
+                <td>${{escapeHtml(message.signature_valid === true ? "Valid" : message.signature_valid === false ? "Invalid" : message.signature ? "Present" : "None")}}</td>
+                <td>${{escapeHtml(formatDate(message.received_at))}}</td>
+              </tr>
+              <tr>
+                <td colspan="5">
+                  <div class="stack">
+                    <div><strong>Message ID:</strong> ${{escapeHtml(message.message_id || "Not provided")}}</div>
+                    <div><strong>Signature error:</strong> ${{escapeHtml(message.signature_error || "None")}}</div>
+                    <pre>${{escapeHtml(JSON.stringify(message.payload || {{}}, null, 2))}}</pre>
+                  </div>
+                </td>
+              </tr>
+            `).join("");
+            mount.innerHTML = `
+              <div class="grid">
+                <div class="card"><p class="label">Messages</p><p class="value">${{escapeHtml(payload.stats?.messages ?? 0)}}</p></div>
+                <div class="card"><p class="label">Signed</p><p class="value">${{escapeHtml(payload.stats?.signed_messages ?? 0)}}</p></div>
+                <div class="card"><p class="label">Unsigned</p><p class="value">${{escapeHtml(payload.stats?.unsigned_messages ?? 0)}}</p></div>
+                <div class="card"><p class="label">Failed Sig</p><p class="value">${{escapeHtml(payload.stats?.failed_signatures ?? 0)}}</p></div>
+              </div>
+              <div class="panel">
+                <table>
+                  <thead>
+                    <tr><th>From</th><th>To</th><th>Text</th><th>Signature</th><th>Received</th></tr>
+                  </thead>
+                  <tbody>${{rows || '<tr><td colspan="5">No inbound SMS records yet.</td></tr>'}}</tbody>
+                </table>
+              </div>
+            `;
+            return;
+          }}
+
+          const users = (payload.users || []).map((user) => `
+            <tr>
+              <td>${{escapeHtml(user.full_name)}}</td>
+              <td>${{escapeHtml(user.email || user.username)}}</td>
+              <td>${{escapeHtml(user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User")}}</td>
+              <td>${{escapeHtml(formatDate(user.date_joined))}}</td>
+            </tr>
+          `).join("");
+          const signups = (payload.signups || []).map((signup) => `
+            <tr>
+              <td>${{escapeHtml(signup.name || "Unknown")}}</td>
+              <td>${{escapeHtml(signup.email)}}</td>
+              <td>${{escapeHtml(formatDate(signup.created_at))}}</td>
+            </tr>
+          `).join("");
+          mount.innerHTML = `
+            <div class="grid">
+              <div class="card"><p class="label">Users</p><p class="value">${{escapeHtml(payload.stats?.users ?? 0)}}</p></div>
+              <div class="card"><p class="label">Superusers</p><p class="value">${{escapeHtml(payload.stats?.superusers ?? 0)}}</p></div>
+              <div class="card"><p class="label">Signups</p><p class="value">${{escapeHtml(payload.stats?.signups ?? 0)}}</p></div>
+              <div class="card"><p class="label">Inbound SMS</p><p class="value">${{escapeHtml(payload.stats?.inbound_sms ?? 0)}}</p></div>
+            </div>
+            <div class="panel">
+              <p class="label">Users</p>
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+                <tbody>${{users || '<tr><td colspan="4">No users found.</td></tr>'}}</tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <p class="label">Early Signups</p>
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Created</th></tr></thead>
+                <tbody>${{signups || '<tr><td colspan="3">No signups found.</td></tr>'}}</tbody>
+              </table>
+            </div>
+          `;
+        }})
+        .catch((error) => {{
+          mount.innerHTML = `<p class="error">${{escapeHtml(error.message)}}</p>`;
+        }});
+    </script>
   </body>
 </html>
 """,
@@ -434,6 +889,10 @@ def admin_dashboard_view(request):
         }
         for signup in EarlyAccessSignup.objects.order_by("-created_at")
     ]
+    sms_messages = [
+        _serialize_vonage_sms(message)
+        for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")[:10]
+    ]
 
     return JsonResponse(
         {
@@ -441,10 +900,140 @@ def admin_dashboard_view(request):
                 "users": len(users),
                 "superusers": sum(1 for user in users if user["is_superuser"]),
                 "signups": len(signups),
+                "inbound_sms": VonageInboundSms.objects.count(),
             },
             "users": users,
             "signups": signups,
+            "recent_sms": sms_messages,
         }
+    )
+
+
+def admin_dashboard_page_view(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    return _admin_html_shell(
+        title="Kumquat Admin Dashboard",
+        eyebrow="Admin",
+        heading="Product release dashboard.",
+        copy="Review signed-in users, early access signups, and inbound SMS from the backend-owned admin surface.",
+        bootstrap_url="/api/admin/dashboard",
+    )
+
+
+def admin_vonage_sms_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    messages = [
+        _serialize_vonage_sms(message)
+        for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")
+    ]
+
+    return JsonResponse(
+        {
+            "stats": {
+                "messages": len(messages),
+                "signed_messages": sum(1 for message in messages if message["signature_valid"] is True),
+                "unsigned_messages": sum(1 for message in messages if not message["signature"]),
+                "failed_signatures": sum(1 for message in messages if message["signature_valid"] is False),
+            },
+            "messages": messages,
+        }
+    )
+
+
+def admin_vonage_sms_page_view(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    return _admin_html_shell(
+        title="Kumquat Inbound SMS",
+        eyebrow="Vonage",
+        heading="Inbound SMS inbox.",
+        copy="Review webhook deliveries handled by the Django backend, including payload details and signature validation state.",
+        bootstrap_url="/api/admin/vonage/sms",
+        back_href="/admin/dashboard",
+        back_label="Back to dashboard",
+    )
+
+
+@csrf_exempt
+def vonage_sms_callback_view(request):
+    if request.method not in {"GET", "POST"}:
+        return HttpResponseNotAllowed(["GET", "POST"])
+
+    payload = _flatten_request_data(request)
+    if not payload:
+        return JsonResponse({"error": "Webhook payload is empty."}, status=400)
+
+    signature_valid, signature_error = _validate_vonage_signature(payload)
+    message_timestamp_raw = str(payload.get("message-timestamp") or "").strip()
+    event_timestamp_raw = str(payload.get("timestamp") or "").strip()
+    received_at = _parse_unix_timestamp(event_timestamp_raw) or datetime.now(timezone.utc)
+
+    defaults = {
+        "api_key": str(payload.get("api-key") or "").strip(),
+        "from_number": str(payload.get("msisdn") or "").strip(),
+        "to_number": str(payload.get("to") or "").strip(),
+        "text": str(payload.get("text") or "").strip(),
+        "message_type": str(payload.get("type") or "").strip(),
+        "keyword": str(payload.get("keyword") or "").strip(),
+        "message_timestamp": _parse_vonage_datetime(message_timestamp_raw),
+        "message_timestamp_raw": message_timestamp_raw,
+        "event_timestamp": _parse_unix_timestamp(event_timestamp_raw),
+        "event_timestamp_raw": event_timestamp_raw,
+        "nonce": str(payload.get("nonce") or "").strip(),
+        "signature": str(payload.get("sig") or "").strip(),
+        "signature_valid": signature_valid,
+        "signature_error": signature_error,
+        "is_concatenated": str(payload.get("concat") or "").strip().lower() in {"true", "1"},
+        "concat_ref": str(payload.get("concat-ref") or "").strip(),
+        "concat_total": _parse_positive_int(payload.get("concat-total")),
+        "concat_part": _parse_positive_int(payload.get("concat-part")),
+        "data": str(payload.get("data") or "").strip(),
+        "udh": str(payload.get("udh") or "").strip(),
+        "content_type": request.content_type or "",
+        "request_method": request.method,
+        "remote_addr": (
+            request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", 1)[0].strip()
+            or request.META.get("REMOTE_ADDR", "")
+        ),
+        "user_agent": request.META.get("HTTP_USER_AGENT", "")[:255],
+        "payload": payload,
+        "raw_body": request.body.decode("utf-8", errors="replace"),
+        "received_at": received_at,
+    }
+
+    message_id = str(payload.get("messageId") or "").strip()
+    if message_id:
+        sms_message, created = VonageInboundSms.objects.update_or_create(
+            message_id=message_id,
+            defaults=defaults,
+        )
+    else:
+        sms_message = VonageInboundSms.objects.create(
+            message_id="",
+            **defaults,
+        )
+        created = True
+
+    return JsonResponse(
+        {
+            "status": "created" if created else "updated",
+            "id": sms_message.id,
+        },
+        status=201 if created else 200,
     )
 
 

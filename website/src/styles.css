@@ -932,7 +932,7 @@ input:focus {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 1rem;
   margin-top: 2rem;
 }
@@ -997,6 +997,69 @@ input:focus {
   color: #9c2f1a;
 }
 
+.dashboard-inline-summary {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border: 0.5px solid rgba(216, 90, 48, 0.14);
+  background: rgba(255, 255, 255, 0.58);
+  border-radius: 16px;
+}
+
+.sms-inbox-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(20rem, 0.95fr);
+  gap: 1.25rem;
+}
+
+.sms-detail-card {
+  align-self: start;
+}
+
+.sms-detail-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.sms-detail-block {
+  padding: 1rem 1.1rem;
+  border: 0.5px solid rgba(216, 90, 48, 0.14);
+  background: rgba(255, 255, 255, 0.52);
+  border-radius: 16px;
+}
+
+.sms-message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sms-detail-warning {
+  color: #9c2f1a;
+}
+
+.code-block {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: rgba(26, 18, 8, 0.92);
+  color: var(--cream);
+  font-family: "DM Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.data-row-selected {
+  background: rgba(239, 159, 39, 0.12);
+}
+
+.data-table tbody tr {
+  cursor: pointer;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(216, 90, 48, 0.06);
+}
+
 .spinner {
   animation: spin 900ms linear infinite;
 }
@@ -1018,6 +1081,7 @@ input:focus {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .sms-inbox-grid,
   .stats-grid,
   .story-principles {
     grid-template-columns: 1fr;

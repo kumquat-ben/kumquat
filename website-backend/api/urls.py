@@ -4,6 +4,9 @@ from django.urls import path
 
 from .views import (
     admin_dashboard_view,
+    admin_dashboard_page_view,
+    admin_vonage_sms_view,
+    admin_vonage_sms_page_view,
     auth_logout_view,
     auth_me_view,
     early_access_signup_view,
@@ -13,11 +16,15 @@ from .views import (
     healthz_view,
     index_view,
     messages_view,
+    vonage_sms_callback_view,
 )
 
 urlpatterns = [
     path("", index_view, name="api-index"),
+    path("admin/dashboard-page", admin_dashboard_page_view, name="api-admin-dashboard-page"),
     path("admin/dashboard", admin_dashboard_view, name="api-admin-dashboard"),
+    path("admin/vonage/sms-page", admin_vonage_sms_page_view, name="api-admin-vonage-sms-page"),
+    path("admin/vonage/sms", admin_vonage_sms_view, name="api-admin-vonage-sms"),
     path("auth/google/start", google_oauth_start_view, name="api-auth-google-start"),
     path("auth/google/callback", google_oauth_callback_view, name="api-auth-google-callback"),
     path("auth/google/exchange", google_oauth_exchange_view, name="api-auth-google-exchange"),
@@ -26,4 +33,5 @@ urlpatterns = [
     path("early-access", early_access_signup_view, name="api-early-access"),
     path("healthz", healthz_view, name="api-healthz"),
     path("messages", messages_view, name="api-messages"),
+    path("vonage/sms/callback", vonage_sms_callback_view, name="api-vonage-sms-callback"),
 ]

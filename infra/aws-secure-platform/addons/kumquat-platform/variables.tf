@@ -50,6 +50,23 @@ variable "google_oauth_redirect_uri" {
   type = string
 }
 
+variable "vonage_account_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "vonage_sms_signature_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "vonage_sms_signature_algorithm" {
+  type    = string
+  default = "md5hash"
+}
+
 variable "mysql_root_password" {
   type      = string
   sensitive = true

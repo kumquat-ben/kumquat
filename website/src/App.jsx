@@ -25,6 +25,7 @@ const AUTH_ME_URL = "/api/auth/me";
 const AUTH_LOGOUT_URL = "/api/auth/logout";
 const AUTH_EXCHANGE_URL = "/api/auth/google/exchange";
 const ADMIN_DASHBOARD_URL = "/api/admin/dashboard";
+const ADMIN_VONAGE_SMS_URL = "/api/admin/vonage/sms";
 
 const BILL_ITEMS = [
   { label: "$100", kind: "bill", id: "KMQ-00100000" },
@@ -148,10 +149,16 @@ function AuthSummary({ auth, onLogout }) {
           {auth.user.is_superuser ? <span className="meta-pill">Superuser</span> : null}
         </div>
         {auth.user.is_superuser ? (
-          <a className="button button-secondary button-block" href="/admin/dashboard">
-            Admin dashboard
-            <ArrowRight size={16} />
-          </a>
+          <>
+            <a className="button button-secondary button-block" href="/admin/dashboard">
+              Admin dashboard
+              <ArrowRight size={16} />
+            </a>
+            <a className="button button-secondary button-block" href="/admin/vonage/sms">
+              SMS inbox
+              <ArrowRight size={16} />
+            </a>
+          </>
         ) : null}
         <button className="button button-secondary" onClick={onLogout} type="button">
           <LogOut size={16} />
@@ -929,6 +936,7 @@ function AdminDashboardPage({ auth }) {
   const stats = dashboard.data?.stats;
   const users = dashboard.data?.users ?? [];
   const signups = dashboard.data?.signups ?? [];
+  const recentSms = dashboard.data?.recent_sms ?? [];
   const pageSize = activeTab === "signups" ? 8 : 6;
   const activeItems = activeTab === "signups" ? signups : users;
   const pagination = paginateItems(activeItems, page, pageSize);
@@ -959,6 +967,10 @@ function AdminDashboardPage({ auth }) {
               <p className="section-eyebrow">Signups</p>
               <h3>{stats?.signups ?? "..."}</h3>
             </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Inbound SMS</p>
+              <h3>{stats?.inbound_sms ?? "..."}</h3>
+            </article>
           </div>
         </div>
 
@@ -966,6 +978,9 @@ function AdminDashboardPage({ auth }) {
           <div className="dashboard-toolbar">
             <a className="button button-secondary" href="/">
               Back home
+            </a>
+            <a className="button button-secondary" href="/admin/vonage/sms">
+              Open SMS inbox
             </a>
           </div>
 
@@ -1001,6 +1016,16 @@ function AdminDashboardPage({ auth }) {
                 </div>
                 <p className="body-copy">{activeItems.length} total</p>
               </div>
+              {recentSms.length ? (
+                <div className="dashboard-inline-summary">
+                  <p className="section-eyebrow">Latest inbound SMS</p>
+                  <p className="body-copy">
+                    {recentSms[0].from_number || "Unknown sender"} to {recentSms[0].to_number || "Unknown recipient"}
+                    {" "}
+                    at {formatDate(recentSms[0].received_at)}
+                  </p>
+                </div>
+              ) : null}
               <div className="data-table-wrap">
                 <table className="data-table">
                   <thead>
@@ -1067,6 +1092,244 @@ function AdminDashboardPage({ auth }) {
                 </div>
               </div>
             </section>
+          ) : null}
+        </div>
+      </section>
+    </AppShell>
+  );
+}
+
+function SmsInboxPage({ auth }) {
+  const [inbox, setInbox] = useState({ status: "loading", data: null, error: "" });
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState(null);
+
+  useEffect(() => {
+    if (auth.status !== "ready") {
+      return;
+    }
+
+    if (!auth.user?.is_superuser) {
+      setInbox({
+        status: "error",
+        data: null,
+        error: auth.user ? "Superuser access required." : "You need to sign in first.",
+      });
+      return;
+    }
+
+    let active = true;
+
+    async function loadInbox() {
+      try {
+        const response = await fetch(ADMIN_VONAGE_SMS_URL);
+        const data = await readJson(response);
+        if (!active) {
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to load SMS inbox.");
+        }
+        setInbox({ status: "ready", data, error: "" });
+      } catch (errorObject) {
+        if (!active) {
+          return;
+        }
+        setInbox({
+          status: "error",
+          data: null,
+          error: errorObject.message || "Failed to load SMS inbox.",
+        });
+      }
+    }
+
+    loadInbox();
+    return () => {
+      active = false;
+    };
+  }, [auth]);
+
+  const messages = inbox.data?.messages ?? [];
+  const stats = inbox.data?.stats;
+  const pagination = paginateItems(messages, page, 8);
+  const selectedMessage =
+    messages.find((message) => message.id === selectedId)
+    || pagination.items[0]
+    || null;
+
+  useEffect(() => {
+    setPage(1);
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (!selectedMessage) {
+      return;
+    }
+    setSelectedId(selectedMessage.id);
+  }, [selectedMessage]);
+
+  return (
+    <AppShell>
+      <section className="dashboard-layout">
+        <div className="dashboard-hero">
+          <p className="section-eyebrow">Vonage</p>
+          <h1 className="utility-title">Inbound SMS inbox.</h1>
+          <p className="body-copy">
+            Review every webhook delivered to `/api/vonage/sms/callback`, including signature state and raw payload data.
+          </p>
+          <div className="stats-grid">
+            <article className="stat-card">
+              <p className="section-eyebrow">Messages</p>
+              <h3>{stats?.messages ?? "..."}</h3>
+            </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Signed</p>
+              <h3>{stats?.signed_messages ?? "..."}</h3>
+            </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Unsigned</p>
+              <h3>{stats?.unsigned_messages ?? "..."}</h3>
+            </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Failed Sig</p>
+              <h3>{stats?.failed_signatures ?? "..."}</h3>
+            </article>
+          </div>
+        </div>
+
+        <div className="dashboard-panel">
+          <div className="dashboard-toolbar">
+            <a className="button button-secondary" href="/admin/dashboard">
+              Back to dashboard
+            </a>
+            <a className="button button-secondary" href="/">
+              Back home
+            </a>
+          </div>
+
+          {inbox.status === "loading" ? (
+            <p className="dashboard-message">Loading SMS inbox...</p>
+          ) : null}
+          {inbox.status === "error" ? (
+            <p className="dashboard-message dashboard-message-error">{inbox.error}</p>
+          ) : null}
+
+          {inbox.status === "ready" ? (
+            <div className="sms-inbox-grid">
+              <section className="dashboard-card">
+                <div className="dashboard-card-header">
+                  <div>
+                    <p className="section-eyebrow">Messages</p>
+                    <p className="body-copy">{messages.length} total</p>
+                  </div>
+                </div>
+                <div className="data-table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Text</th>
+                        <th>Received</th>
+                        <th>Signature</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagination.items.map((message) => (
+                        <tr
+                          className={selectedMessage?.id === message.id ? "data-row-selected" : ""}
+                          key={message.id}
+                          onClick={() => setSelectedId(message.id)}
+                        >
+                          <td>{message.from_number || "Unknown"}</td>
+                          <td>{message.to_number || "Unknown"}</td>
+                          <td>{message.text || "No body"}</td>
+                          <td>{formatDate(message.received_at)}</td>
+                          <td>
+                            {message.signature_valid === true
+                              ? "Valid"
+                              : message.signature_valid === false
+                                ? "Invalid"
+                                : message.signature
+                                  ? "Unchecked"
+                                  : "None"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="dashboard-pagination">
+                  <p className="body-copy">
+                    Page {pagination.safePage} of {pagination.totalPages}
+                  </p>
+                  <div className="dashboard-pagination-actions">
+                    <button
+                      className="button button-secondary"
+                      disabled={pagination.safePage === 1}
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      type="button"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      disabled={pagination.safePage === pagination.totalPages}
+                      onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+                      type="button"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="dashboard-card sms-detail-card">
+                <div className="dashboard-card-header">
+                  <div>
+                    <p className="section-eyebrow">Selected message</p>
+                    <p className="body-copy">
+                      {selectedMessage ? `Message ID: ${selectedMessage.message_id || "Not provided"}` : "No messages yet."}
+                    </p>
+                  </div>
+                </div>
+                {selectedMessage ? (
+                  <div className="sms-detail-stack">
+                    <div className="sms-detail-block">
+                      <p className="section-eyebrow">Envelope</p>
+                      <p className="body-copy">From: {selectedMessage.from_number || "Unknown"}</p>
+                      <p className="body-copy">To: {selectedMessage.to_number || "Unknown"}</p>
+                      <p className="body-copy">Received: {formatDate(selectedMessage.received_at)}</p>
+                    </div>
+                    <div className="sms-detail-block">
+                      <p className="section-eyebrow">Body</p>
+                      <p className="body-copy sms-message-body">{selectedMessage.text || "No text body."}</p>
+                    </div>
+                    <div className="sms-detail-block">
+                      <p className="section-eyebrow">Signature</p>
+                      <p className="body-copy">
+                        {selectedMessage.signature_valid === true
+                          ? "Valid"
+                          : selectedMessage.signature_valid === false
+                            ? "Invalid"
+                            : selectedMessage.signature
+                              ? "Present but unchecked"
+                              : "Not provided"}
+                      </p>
+                      {selectedMessage.signature_error ? (
+                        <p className="body-copy sms-detail-warning">{selectedMessage.signature_error}</p>
+                      ) : null}
+                    </div>
+                    <div className="sms-detail-block">
+                      <p className="section-eyebrow">Raw payload</p>
+                      <pre className="code-block">{JSON.stringify(selectedMessage.payload, null, 2)}</pre>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="dashboard-message">No inbound SMS records yet.</p>
+                )}
+              </section>
+            </div>
           ) : null}
         </div>
       </section>
@@ -1180,6 +1443,10 @@ function RoutedPage({ auth, handleAuthResolved, handleLogout, path }) {
 
   if (path === "/admin/dashboard") {
     return <AdminDashboardPage auth={auth} />;
+  }
+
+  if (path === "/admin/vonage/sms") {
+    return <SmsInboxPage auth={auth} />;
   }
 
   return <HomePage auth={auth} onLogout={handleLogout} />;

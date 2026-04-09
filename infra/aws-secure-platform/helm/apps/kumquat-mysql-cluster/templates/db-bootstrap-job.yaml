@@ -18,9 +18,9 @@ spec:
           imagePullPolicy: {{ .Values.bootstrap.image.pullPolicy }}
           env:
             - name: MYSQL_HOST
-              value: "{{ .Release.Name }}-router"
+              value: "{{ default .Release.Name .Values.bootstrap.host }}"
             - name: MYSQL_PORT
-              value: "3306"
+              value: {{ .Values.bootstrap.port | quote }}
             - name: MYSQL_DATABASE
               value: {{ .Values.bootstrap.databaseName | quote }}
             - name: MYSQL_APP_USER
