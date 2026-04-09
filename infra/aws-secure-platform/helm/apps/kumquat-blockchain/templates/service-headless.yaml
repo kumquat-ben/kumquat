@@ -1,0 +1,27 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kumquat-blockchain.fullname" . }}-headless
+  labels:
+    {{- include "kumquat-blockchain.labels" . | nindent 4 }}
+  {{- with .Values.service.headless.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "kumquat-blockchain.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: p2p
+      port: {{ .Values.ports.p2p }}
+      targetPort: p2p
+    - name: rpc
+      port: {{ .Values.ports.rpc }}
+      targetPort: rpc
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: metrics

@@ -1,0 +1,86 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kumquat-blockchain.fullname" . }}-config
+  labels:
+    {{- include "kumquat-blockchain.labels" . | nindent 4 }}
+data:
+  config.toml.tpl: |
+    [node]
+    node_name = "__NODE_NAME__"
+    data_dir = "/data/kumquat"
+    log_level = {{ .Values.config.logLevel | quote }}
+    enable_metrics = {{ .Values.config.enableMetrics }}
+    metrics_port = {{ int .Values.ports.metrics }}
+    enable_api = {{ .Values.config.enableApi }}
+    api_port = {{ int .Values.ports.rpc }}
+    api_host = "0.0.0.0"
+
+    [network]
+    listen_addr = "0.0.0.0"
+    listen_port = {{ int .Values.ports.p2p }}
+    bootstrap_nodes = [
+    {{- range $index, $node := .Values.config.bootstrapNodes }}
+      {{- if $index }},{{ end }}
+      {{ $node | quote }}
+    {{- end }}
+    ]
+    max_peers = {{ int .Values.config.maxPeers }}
+    min_peers = {{ int .Values.config.minPeers }}
+    discovery_interval = {{ int .Values.config.discoveryInterval }}
+    connection_timeout = {{ int .Values.config.connectionTimeout }}
+    handshake_timeout = {{ int .Values.config.handshakeTimeout }}
+    enable_upnp = {{ .Values.config.enableUpnp }}
+    enable_natpmp = {{ .Values.config.enableNatPmp }}
+    enable_dht = {{ .Values.config.enableDht }}
+    dht_bootstrap_nodes = [
+    {{- range $index, $node := .Values.config.dhtBootstrapNodes }}
+      {{- if $index }},{{ end }}
+      {{ $node | quote }}
+    {{- end }}
+    ]
+
+    [consensus]
+    chain_id = {{ int .Values.config.chainId }}
+    enable_mining = {{ .Values.config.enableMining }}
+    mining_threads = {{ int .Values.config.miningThreads }}
+    target_block_time = {{ int .Values.config.targetBlockTime }}
+    initial_difficulty = {{ int .Values.config.initialDifficulty }}
+    difficulty_adjustment_interval = {{ int .Values.config.difficultyAdjustmentInterval }}
+    max_transactions_per_block = {{ int .Values.config.maxTransactionsPerBlock }}
+    max_block_size = {{ int .Values.config.maxBlockSize }}
+    max_gas_per_block = {{ int .Values.config.maxGasPerBlock }}
+    gas_price_minimum = {{ int .Values.config.gasPriceMinimum }}
+    enable_poh = {{ .Values.config.enablePoh }}
+    poh_tick_interval = {{ int .Values.config.pohTickInterval }}
+    poh_ticks_per_block = {{ int .Values.config.pohTicksPerBlock }}
+
+    [storage]
+    db_path = "/data/kumquat/db"
+    cache_size = {{ int .Values.config.cacheSize }}
+    max_open_files = {{ int .Values.config.maxOpenFiles }}
+    write_buffer_size = {{ int .Values.config.writeBufferSize }}
+    max_write_buffer_number = {{ int .Values.config.maxWriteBufferNumber }}
+    enable_wal = {{ .Values.config.enableWal }}
+    enable_statistics = {{ .Values.config.enableStatistics }}
+    enable_compression = {{ .Values.config.enableCompression }}
+    compression_type = {{ .Values.config.compressionType | quote }}
+    enable_bloom_filters = {{ .Values.config.enableBloomFilters }}
+    bloom_filter_bits_per_key = {{ int .Values.config.bloomFilterBitsPerKey }}
+    enable_auto_compaction = {{ .Values.config.enableAutoCompaction }}
+    compaction_style = {{ .Values.config.compactionStyle | quote }}
+    enable_pruning = {{ .Values.config.enablePruning }}
+    pruning_keep_recent = {{ int .Values.config.pruningKeepRecent }}
+    pruning_interval = {{ int .Values.config.pruningInterval }}
+  genesis.toml: |
+    chain_id = {{ int .Values.genesis.chainId }}
+    timestamp = {{ int .Values.genesis.timestamp }}
+    initial_difficulty = {{ int .Values.genesis.initialDifficulty }}
+    {{- range .Values.genesis.initialAccounts }}
+
+    [initial_accounts.{{ .address }}]
+    balance = {{ int .balance }}
+    account_type = {{ .accountType | quote }}
+    {{- end }}

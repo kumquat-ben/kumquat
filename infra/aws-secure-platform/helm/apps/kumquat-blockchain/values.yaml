@@ -1,0 +1,108 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+image:
+  repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
+  tag: blockchain-20260409-1
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - ecr-pull-secret
+
+replicaCount: 1
+
+networkName: dev
+
+ports:
+  p2p: 30333
+  rpc: 8545
+  metrics: 9100
+
+service:
+  headless:
+    annotations: {}
+  rpc:
+    enabled: true
+    type: ClusterIP
+
+config:
+  logLevel: info
+  enableApi: true
+  enableMetrics: true
+  bootstrapNodes: []
+  dhtBootstrapNodes: []
+  maxPeers: 50
+  minPeers: 10
+  discoveryInterval: 30
+  connectionTimeout: 10
+  handshakeTimeout: 5
+  enableUpnp: false
+  enableNatPmp: false
+  enableDht: true
+  chainId: 1337
+  enableMining: false
+  miningThreads: 1
+  targetBlockTime: 5
+  initialDifficulty: 100
+  difficultyAdjustmentInterval: 2016
+  maxTransactionsPerBlock: 10000
+  maxBlockSize: 1048576
+  maxGasPerBlock: 10000000
+  gasPriceMinimum: 1
+  enablePoh: true
+  pohTickInterval: 10
+  pohTicksPerBlock: 1000
+  cacheSize: 512
+  maxOpenFiles: 1000
+  writeBufferSize: 64
+  maxWriteBufferNumber: 3
+  enableWal: true
+  enableStatistics: false
+  enableCompression: true
+  compressionType: lz4
+  enableBloomFilters: true
+  bloomFilterBitsPerKey: 10
+  enableAutoCompaction: true
+  compactionStyle: level
+  enablePruning: false
+  pruningKeepRecent: 10000
+  pruningInterval: 100
+
+genesis:
+  chainId: 1337
+  timestamp: 1744067299
+  initialDifficulty: 100
+  initialAccounts:
+    - address: "0000000000000000000000000000000000000000000000000000000000000001"
+      balance: 1000000000
+      accountType: User
+    - address: "0000000000000000000000000000000000000000000000000000000000000002"
+      balance: 1000000000
+      accountType: User
+
+persistence:
+  storageClassName: kumquat-blockchain-gp3
+  accessModes:
+    - ReadWriteOnce
+  size: 200Gi
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+nodeSelector:
+  workload: application
+
+podSecurityContext:
+  fsGroup: 10001
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL

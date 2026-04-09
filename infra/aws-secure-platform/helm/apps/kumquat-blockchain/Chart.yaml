@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+apiVersion: v2
+name: kumquat-blockchain
+description: Repository-managed stateful blockchain node deployment for Kumquat.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

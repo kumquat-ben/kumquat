@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+{{- if .Values.service.rpc.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kumquat-blockchain.fullname" . }}
+  labels:
+    {{- include "kumquat-blockchain.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.rpc.type }}
+  selector:
+    {{- include "kumquat-blockchain.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: rpc
+      port: {{ .Values.ports.rpc }}
+      targetPort: rpc
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: metrics
+{{- end }}
