@@ -17,6 +17,28 @@ Infrastructure for the AWS private container platform lives in [infra/aws-secure
 
 The repository is organized so application code and infrastructure code stay separate, but the deployment flow remains repo-native: build images, publish to ECR, apply the website manifests to k3s, and update the backend platform add-on through Terraform and Helm from the same codebase.
 
+## Kumquat Farm
+
+A single running instance of this repository should be understood as a **Kumquat Farm**: one self-contained node running the farm services together.
+
+In the farm architecture model, a Kumquat Farm combines:
+
+- the **chain layer** for settlement and shared state
+- the **mint layer** for coin creation and issuance logic
+- the **liquidity layer** for market and provider participation
+- the **compute rental layer** for rentable node capacity
+- the **workload execution layer** for submitted jobs
+- the **data marketplace layer** for publishing and purchasing data products
+
+These modules sit on top of shared farm services such as:
+
+- node runtime and orchestration
+- wallet, key management, and signing
+- RPC, REST, and WebSocket interfaces
+- farm configuration, operator controls, and governance settings
+
+That framing matters for deployment: when you stand up one full instance of the Kumquat stack, you are standing up one Kumquat Farm.
+
 ## Architecture
 
 | Layer | Stack | Notes |
