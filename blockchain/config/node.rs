@@ -35,8 +35,8 @@ impl Default for NodeConfig {
     fn default() -> Self {
         Self {
             node_id: None,
-            node_name: "vibecoin-node".to_string(),
-            data_dir: "./data/vibecoin".to_string(),
+            node_name: "kumquat-node".to_string(),
+            data_dir: "./data/kumquat".to_string(),
             log_level: "info".to_string(),
             enable_metrics: false,
             metrics_port: 9100,

@@ -1,4 +1,4 @@
-use vibecoin::storage::{
+use kumquat::storage::{
     RocksDBStore, KVStore,
     Block, BlockStore,
     TransactionRecord, TxStore,

@@ -1,6 +1,6 @@
 # Storage Enhancement
 
-This file documents the enhancements made to the VibeCoin storage system.
+This file documents the enhancements made to the Kumquat storage system.
 
 ## Enhanced RocksDB Integration
 
@@ -32,4 +32,4 @@ This file documents the enhancements made to the VibeCoin storage system.
 - Integration tests for the storage system
 - Benchmarks for performance monitoring
 
-These enhancements provide VibeCoin with a robust, efficient, and scalable storage system that can handle the demands of a production blockchain.
+These enhancements provide Kumquat with a robust, efficient, and scalable storage system that can handle the demands of a production blockchain.

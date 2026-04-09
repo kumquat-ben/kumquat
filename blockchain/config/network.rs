@@ -54,8 +54,8 @@ impl Default for NetworkConfig {
             external_addr: None,
             external_port: None,
             bootstrap_nodes: vec![
-                "/dns4/bootstrap1.vibecoin.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                "/dns4/bootstrap2.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
             ],
             max_peers: 50,
             min_peers: 10,
@@ -66,8 +66,8 @@ impl Default for NetworkConfig {
             enable_natpmp: true,
             enable_dht: true,
             dht_bootstrap_nodes: vec![
-                "/dns4/dht1.vibecoin.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                "/dns4/dht2.vibecoin.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                "/dns4/dht1.kumquat.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                "/dns4/dht2.kumquat.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
             ],
         }
     }

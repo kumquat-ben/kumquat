@@ -1,4 +1,4 @@
-//! Debug tools for VibeCoin blockchain
+//! Debug tools for Kumquat blockchain
 //!
 //! This module provides debugging tools for the blockchain,
 //! including state inspection, transaction tracing, and block analysis.

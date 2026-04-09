@@ -13,7 +13,7 @@ pub use consensus::ConsensusConfig;
 pub use storage::StorageConfig;
 pub use node::NodeConfig;
 
-/// Main configuration for the VibeCoin node
+/// Main configuration for the Kumquat node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Node configuration

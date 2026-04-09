@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vibecoin maintains a strict policy that no Rust source file should exceed 1000 lines of code. This policy is enforced through a pre-commit Git hook that prevents commits containing Rust files larger than this limit.
+Kumquat maintains a strict policy that no Rust source file should exceed 1000 lines of code. This policy is enforced through a pre-commit Git hook that prevents commits containing Rust files larger than this limit.
 
 ## Rationale
 
@@ -45,7 +45,7 @@ The file size limit is enforced through a pre-commit Git hook located at `.git/h
 #!/bin/bash
 # Check for files > 1000 lines
 echo "🔍 Checking file lengths..."
-violations=$(find ./vibecoin -type f -name "*.rs" -exec wc -l {} + | awk '$1 > 1000')
+violations=$(find ./kumquat -type f -name "*.rs" -exec wc -l {} + | awk '$1 > 1000')
 if [ ! -z "$violations" ]; then
   echo "❌ Files exceeding 1000 lines:"
   echo "$violations"

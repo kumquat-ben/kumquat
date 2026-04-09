@@ -1,4 +1,4 @@
-//! Advanced message router for VibeCoin blockchain
+//! Advanced message router for Kumquat blockchain
 //!
 //! This module provides an advanced message routing system for the blockchain,
 //! with support for prioritization, load balancing, and specialized routing.

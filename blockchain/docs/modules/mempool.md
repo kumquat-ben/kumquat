@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Mempool Module provides a thread-safe, prioritized transaction pool for the VibeCoin blockchain. It serves as the interface between the network and consensus layers, accepting transactions from users and the network, validating them, and providing them to block producers for inclusion in blocks.
+The Mempool Module provides a thread-safe, prioritized transaction pool for the Kumquat blockchain. It serves as the interface between the network and consensus layers, accepting transactions from users and the network, validating them, and providing them to block producers for inclusion in blocks.
 
 ## Components
 

@@ -1,6 +1,6 @@
 FROM rust:1.67-slim-bullseye as builder
 
-WORKDIR /usr/src/vibecoin
+WORKDIR /usr/src/kumquat
 
 # Install dependencies
 RUN apt-get update && \
@@ -31,19 +31,19 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
-COPY --from=builder /usr/src/vibecoin/target/release/vibecoin /usr/local/bin/vibecoin
+COPY --from=builder /usr/src/kumquat/target/release/kumquat /usr/local/bin/kumquat
 
 # Create a directory for the data
-RUN mkdir -p /data/vibecoin
+RUN mkdir -p /data/kumquat
 
 # Set the working directory
-WORKDIR /data/vibecoin
+WORKDIR /data/kumquat
 
 # Expose the ports
 EXPOSE 30333 8545 9100
 
 # Set the entrypoint
-ENTRYPOINT ["vibecoin"]
+ENTRYPOINT ["kumquat"]
 
 # Set the default command
-CMD ["--config", "/data/vibecoin/config.toml"]
+CMD ["--config", "/data/kumquat/config.toml"]

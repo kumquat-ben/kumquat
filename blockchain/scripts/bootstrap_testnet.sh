@@ -9,11 +9,11 @@ mkdir -p monitoring/grafana/provisioning/dashboards
 
 # Generate default config
 echo "Generating config..."
-cargo run --bin vibecoin-config -- --generate --output data/testnet/config.toml --node-name "vibecoin-testnet" --network testnet --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true
+cargo run --bin kumquat-config -- --generate --output data/testnet/config.toml --node-name "kumquat-testnet" --network testnet --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true
 
 # Generate genesis block
 echo "Generating genesis block..."
-cargo run --bin vibecoin-genesis -- --generate --output data/testnet/genesis.toml --network testnet
+cargo run --bin kumquat-genesis -- --generate --output data/testnet/genesis.toml --network testnet
 
 # Create Prometheus config
 cat > monitoring/prometheus.yml << EOF
@@ -22,7 +22,7 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'vibecoin'
+  - job_name: 'kumquat'
     static_configs:
       - targets: ['node:9100']
 EOF
@@ -40,11 +40,11 @@ datasources:
 EOF
 
 # Create Grafana dashboard config
-cat > monitoring/grafana/provisioning/dashboards/vibecoin.yml << EOF
+cat > monitoring/grafana/provisioning/dashboards/kumquat.yml << EOF
 apiVersion: 1
 
 providers:
-  - name: 'VibeCoin'
+  - name: 'Kumquat'
     orgId: 1
     folder: ''
     type: file
@@ -55,6 +55,6 @@ providers:
 EOF
 
 # Download Grafana dashboard
-curl -o monitoring/grafana/dashboards/vibecoin.json https://raw.githubusercontent.com/vibecoin/vibecoin-dashboards/main/grafana/vibecoin.json
+curl -o monitoring/grafana/dashboards/kumquat.json https://raw.githubusercontent.com/kumquat/kumquat-dashboards/main/grafana/kumquat.json
 
 echo "Bootstrap complete! Start the testnet with: docker-compose -f docker-compose.testnet.yml up -d"

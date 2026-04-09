@@ -1,4 +1,4 @@
-//! State synchronization for VibeCoin blockchain
+//! State synchronization for Kumquat blockchain
 //!
 //! This module provides functionality for synchronizing blockchain state
 //! between nodes, enabling fast catch-up and state verification.

@@ -1,7 +1,7 @@
-use vibecoin::crypto::keys::{VibeKeypair, address_from_pubkey, VibePublicKey};
-use vibecoin::crypto::signer::{sign_message, verify_signature, VibeSignature};
-use vibecoin::crypto::hash::{sha256, double_sha256, Hash};
-use vibecoin::mempool::types::TransactionRecord;
+use kumquat::crypto::keys::{VibeKeypair, address_from_pubkey, VibePublicKey};
+use kumquat::crypto::signer::{sign_message, verify_signature, VibeSignature};
+use kumquat::crypto::hash::{sha256, double_sha256, Hash};
+use kumquat::mempool::types::TransactionRecord;
 
 #[test]
 fn test_keypair_generation() {

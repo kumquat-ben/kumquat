@@ -1,6 +1,6 @@
-// VibeCoin Network Module
+// Kumquat Network Module
 //
-// This module provides the peer-to-peer networking layer for the VibeCoin blockchain:
+// This module provides the peer-to-peer networking layer for the Kumquat blockchain:
 // - Peer discovery and connection management
 // - Message broadcasting (blocks, transactions)
 // - Blockchain data synchronization

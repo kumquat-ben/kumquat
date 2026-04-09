@@ -1,4 +1,4 @@
-//! Development tools for VibeCoin blockchain
+//! Development tools for Kumquat blockchain
 //!
 //! This module provides development tools for the blockchain,
 //! including testing utilities, simulation tools, and benchmarking.

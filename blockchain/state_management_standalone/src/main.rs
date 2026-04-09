@@ -445,7 +445,7 @@ impl StateShardingManager {
 }
 
 fn main() {
-    println!("VibeCoin State Management Demo");
+    println!("Kumquat State Management Demo");
     println!("------------------------------");
     
     // Create a temporary directory for the database

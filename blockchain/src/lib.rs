@@ -1,4 +1,4 @@
-// Vibecoin - A next-generation blockchain combining Proof-of-Work with Solana-style Proof of History
+// Kumquat - A next-generation blockchain combining Proof-of-Work with Solana-style Proof of History
 
 // Export modules
 pub mod storage;

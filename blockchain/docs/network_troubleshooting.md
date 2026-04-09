@@ -1,6 +1,6 @@
-# Vibecoin Network Troubleshooting Guide
+# Kumquat Network Troubleshooting Guide
 
-This guide provides steps to diagnose and resolve common network connectivity issues with Vibecoin nodes.
+This guide provides steps to diagnose and resolve common network connectivity issues with Kumquat nodes.
 
 ## Checking Node Connectivity
 
@@ -19,7 +19,7 @@ If this fails, the seed server might be down or there might be a firewall blocki
 Look for network-related log messages:
 
 ```bash
-grep "network\|peer\|connection" vibecoin.log
+grep "network\|peer\|connection" kumquat.log
 ```
 
 Common error messages and their solutions:
@@ -59,10 +59,10 @@ Run two nodes on the same machine with different ports to test local networking:
 
 ```bash
 # Node 1
-./vibecoin --config config.toml --genesis genesis.toml
+./kumquat --config config.toml --genesis genesis.toml
 
 # Node 2
-./vibecoin --config config_node2.toml --genesis genesis.toml
+./kumquat --config config_node2.toml --genesis genesis.toml
 ```
 
 ## Advanced Troubleshooting
@@ -72,7 +72,7 @@ Run two nodes on the same machine with different ports to test local networking:
 Use `tcpdump` to capture network traffic:
 
 ```bash
-sudo tcpdump -i any port 30334 -w vibecoin_network.pcap
+sudo tcpdump -i any port 30334 -w kumquat_network.pcap
 ```
 
 Analyze the capture file with Wireshark to see the actual network communication.
@@ -83,7 +83,7 @@ Each node has a unique ID derived from its public key. Make sure your node ID is
 
 ```bash
 # Look for the node ID in the logs
-grep "node_id" vibecoin.log
+grep "node_id" kumquat.log
 ```
 
 ### 3. Test NAT Traversal
@@ -95,7 +95,7 @@ If your node is behind NAT, test if UPnP or NAT-PMP is working:
 grep "enable_upnp" config.toml
 
 # Look for UPnP-related messages in the logs
-grep "UPnP\|NAT" vibecoin.log
+grep "UPnP\|NAT" kumquat.log
 ```
 
 ### 4. Check DHT Functionality
@@ -107,7 +107,7 @@ The Distributed Hash Table (DHT) is used for peer discovery:
 grep "enable_dht" config.toml
 
 # Look for DHT-related messages in the logs
-grep "DHT" vibecoin.log
+grep "DHT" kumquat.log
 ```
 
 ## Common Issues and Solutions
@@ -148,7 +148,7 @@ If you're still experiencing issues after trying these troubleshooting steps, pl
 1. Collect your node logs
 2. Note your node configuration (with sensitive information removed)
 3. Describe the steps you've already taken
-4. Open an issue on the Vibecoin GitHub repository or reach out on Discord
+4. Open an issue on the Kumquat GitHub repository or reach out on Discord
 
 ## Network Monitoring Tools
 

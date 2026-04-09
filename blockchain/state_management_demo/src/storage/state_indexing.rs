@@ -1,4 +1,4 @@
-//! State indexing for VibeCoin blockchain
+//! State indexing for Kumquat blockchain
 //!
 //! This module provides functionality for indexing blockchain state data,
 //! enabling efficient queries and analytics.

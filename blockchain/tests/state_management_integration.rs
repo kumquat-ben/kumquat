@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tempfile::tempdir;
 
-use vibecoin::storage::{
+use kumquat::storage::{
     RocksDBStore, BlockStore, StateStore,
     AccountState, AccountType, StateRoot,
     StateValidator, ValidationError, ValidationResult,

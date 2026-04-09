@@ -1,4 +1,4 @@
-//! State sharding for VibeCoin blockchain
+//! State sharding for Kumquat blockchain
 //!
 //! This module provides functionality for sharding the blockchain state,
 //! enabling horizontal scalability and improved performance.

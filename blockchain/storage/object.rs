@@ -1,4 +1,4 @@
-//! Object storage model for VibeCoin blockchain
+//! Object storage model for Kumquat blockchain
 //!
 //! This module implements a Sui-style object ID system, extending the account-based
 //! storage model into a more object-centric architecture. It provides the core

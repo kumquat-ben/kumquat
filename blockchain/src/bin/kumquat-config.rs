@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
-use vibecoin::config::{Config, NetworkConfig, ConsensusConfig, StorageConfig, NodeConfig};
-use vibecoin::init_logger;
+use kumquat::config::{Config, NetworkConfig, ConsensusConfig, StorageConfig, NodeConfig};
+use kumquat::init_logger;
 use log::{info, warn, error};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "vibecoin-config", about = "VibeCoin configuration tool")]
+#[structopt(name = "kumquat-config", about = "Kumquat configuration tool")]
 struct Opt {
     /// Generate a default configuration
     #[structopt(long)]
@@ -110,8 +110,8 @@ fn main() {
                     config.consensus.target_block_time = 10;
                     config.consensus.initial_difficulty = 1000;
                     config.network.bootstrap_nodes = vec![
-                        "/dns4/bootstrap1.vibecoin.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                        "/dns4/bootstrap2.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                        "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                        "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                     ];
                 },
                 "mainnet" => {
@@ -119,10 +119,10 @@ fn main() {
                     config.consensus.target_block_time = 10;
                     config.consensus.initial_difficulty = 10000;
                     config.network.bootstrap_nodes = vec![
-                        "/dns4/bootstrap1.vibecoin.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                        "/dns4/bootstrap2.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
-                        "/dns4/bootstrap3.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
-                        "/dns4/bootstrap4.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                        "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                        "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                        "/dns4/bootstrap3.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                        "/dns4/bootstrap4.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                     ];
                 },
                 _ => {

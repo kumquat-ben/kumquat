@@ -1,4 +1,4 @@
-//! Snapshot management for VibeCoin blockchain
+//! Snapshot management for Kumquat blockchain
 //!
 //! This module provides functionality for creating, managing, and restoring
 //! snapshots of the blockchain state. Snapshots are useful for:

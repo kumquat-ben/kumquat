@@ -1,7 +1,7 @@
-// VibeCoin Consensus Module
+// Kumquat Consensus Module
 //
 // This module implements the hybrid Proof-of-Work (PoW) and Proof-of-History (PoH)
-// consensus mechanism for the VibeCoin blockchain.
+// consensus mechanism for the Kumquat blockchain.
 
 pub mod pow;
 pub mod poh;

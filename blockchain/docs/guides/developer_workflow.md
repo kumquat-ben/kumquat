@@ -1,6 +1,6 @@
-# VibeCoin Developer Workflow Guide
+# Kumquat Developer Workflow Guide
 
-This guide provides a comprehensive overview of the development workflow for contributing to the VibeCoin project. It covers everything from setting up your development environment to submitting pull requests and getting your code merged.
+This guide provides a comprehensive overview of the development workflow for contributing to the Kumquat project. It covers everything from setting up your development environment to submitting pull requests and getting your code merged.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ This guide provides a comprehensive overview of the development workflow for con
 
 ### Prerequisites
 
-- **Rust**: VibeCoin is written in Rust. Install the latest stable version using [rustup](https://rustup.rs/).
+- **Rust**: Kumquat is written in Rust. Install the latest stable version using [rustup](https://rustup.rs/).
 - **Git**: Version control system for tracking changes.
 - **IDE/Editor**: We recommend [VS Code](https://code.visualstudio.com/) with the [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.
 - **Docker** (optional): For containerized development and testing.
@@ -28,19 +28,19 @@ This guide provides a comprehensive overview of the development workflow for con
 
 1. **Fork the Repository**
 
-   Go to the [VibeCoin GitHub repository](https://github.com/vibecoin/vibecoin) and click the "Fork" button in the top-right corner.
+   Go to the [Kumquat GitHub repository](https://github.com/kumquat/kumquat) and click the "Fork" button in the top-right corner.
 
 2. **Clone Your Fork**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/vibecoin.git
-   cd vibecoin
+   git clone https://github.com/YOUR_USERNAME/kumquat.git
+   cd kumquat
    ```
 
 3. **Add the Upstream Remote**
 
    ```bash
-   git remote add upstream https://github.com/vibecoin/vibecoin.git
+   git remote add upstream https://github.com/kumquat/kumquat.git
    ```
 
 4. **Install Development Dependencies**
@@ -96,10 +96,10 @@ This guide provides a comprehensive overview of the development workflow for con
 
 ## Project Structure
 
-VibeCoin follows a modular architecture with the following directory structure:
+Kumquat follows a modular architecture with the following directory structure:
 
 ```
-vibecoin/
+kumquat/
 ├── benches/            # Benchmarks
 ├── config/             # Configuration module
 ├── consensus/          # Consensus module
@@ -198,7 +198,7 @@ vibecoin/
 
 6. **Create a Pull Request**
 
-   - Go to the [VibeCoin GitHub repository](https://github.com/vibecoin/vibecoin)
+   - Go to the [Kumquat GitHub repository](https://github.com/kumquat/kumquat)
    - Click "New Pull Request"
    - Select your branch and provide a detailed description
    - Link any related issues
@@ -270,7 +270,7 @@ For critical bugs that need immediate attention:
 
 ### Code Style
 
-VibeCoin follows the Rust style guide with some additional conventions:
+Kumquat follows the Rust style guide with some additional conventions:
 
 - Use 4 spaces for indentation
 - Maximum line length of 100 characters
@@ -344,7 +344,7 @@ Integration tests are placed in the `tests/` directory:
 
 ```rust
 // tests/integration_test.rs
-use vibecoin::module::function;
+use kumquat::module::function;
 
 #[test]
 fn test_integration() {
@@ -360,7 +360,7 @@ Benchmarks are placed in the `benches/` directory:
 extern crate test;
 
 use test::Bencher;
-use vibecoin::module::function;
+use kumquat::module::function;
 
 #[bench]
 fn bench_function(b: &mut Bencher) {
@@ -421,8 +421,8 @@ Example:
 /// # Examples
 ///
 /// ```
-/// use vibecoin::crypto::hash_block;
-/// use vibecoin::storage::Block;
+/// use kumquat::crypto::hash_block;
+/// use kumquat::storage::Block;
 ///
 /// let block = Block::new();
 /// let hash = hash_block(&block);
@@ -476,7 +476,7 @@ cargo doc --open
 
 ## Continuous Integration
 
-VibeCoin uses GitHub Actions for CI/CD:
+Kumquat uses GitHub Actions for CI/CD:
 
 ### CI Workflow
 
@@ -506,7 +506,7 @@ You can check the CI status on the GitHub repository:
 
 ### Version Numbering
 
-VibeCoin follows [Semantic Versioning](https://semver.org/):
+Kumquat follows [Semantic Versioning](https://semver.org/):
 
 - **Major**: Incompatible API changes
 - **Minor**: Backward-compatible new features
@@ -550,7 +550,7 @@ VibeCoin follows [Semantic Versioning](https://semver.org/):
 
 7. **Create a GitHub Release**
 
-   - Go to the [Releases page](https://github.com/vibecoin/vibecoin/releases)
+   - Go to the [Releases page](https://github.com/kumquat/kumquat/releases)
    - Click "Draft a new release"
    - Select the tag
    - Add release notes

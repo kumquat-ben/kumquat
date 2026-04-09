@@ -1,14 +1,14 @@
-# VibeCoin System Architecture
+# Kumquat System Architecture
 
 ## Overview
 
-VibeCoin is a next-generation blockchain platform that combines the security of Proof-of-Work (PoW) with the speed of Solana-style Proof of History (PoH). This document provides a comprehensive overview of the system architecture, including the relationships between modules, data flow, and design principles.
+Kumquat is a next-generation blockchain platform that combines the security of Proof-of-Work (PoW) with the speed of Solana-style Proof of History (PoH). This document provides a comprehensive overview of the system architecture, including the relationships between modules, data flow, and design principles.
 
 ## System Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        VibeCoin Node                            │
+│                        Kumquat Node                            │
 ├─────────────┬─────────────┬─────────────┬─────────────┬─────────┤
 │             │             │             │             │         │
 │  Consensus  │   Network   │   Storage   │  Mempool    │ Crypto  │
@@ -25,7 +25,7 @@ VibeCoin is a next-generation blockchain platform that combines the security of 
 
 ### Runtime Environment
 
-The Runtime Environment is the foundation of the VibeCoin node, responsible for:
+The Runtime Environment is the foundation of the Kumquat node, responsible for:
 
 - Initializing and coordinating all modules
 - Managing the lifecycle of the node
@@ -35,7 +35,7 @@ The Runtime Environment is the foundation of the VibeCoin node, responsible for:
 
 ### Consensus Module
 
-The Consensus Module implements VibeCoin's hybrid PoW/PoH consensus mechanism:
+The Consensus Module implements Kumquat's hybrid PoW/PoH consensus mechanism:
 
 - **Proof of Work (PoW)**: Provides security and fair distribution
   - Dynamic difficulty adjustment
@@ -201,7 +201,7 @@ The Cryptography Module provides cryptographic primitives:
 
 ### Modularity
 
-VibeCoin is designed with a modular architecture to enable:
+Kumquat is designed with a modular architecture to enable:
 
 - **Separation of Concerns**: Each module has a specific responsibility
 - **Testability**: Modules can be tested independently
@@ -210,7 +210,7 @@ VibeCoin is designed with a modular architecture to enable:
 
 ### Concurrency
 
-VibeCoin leverages Rust's concurrency features to maximize performance:
+Kumquat leverages Rust's concurrency features to maximize performance:
 
 - **Thread Safety**: All shared state is thread-safe
 - **Async/Await**: Network operations use async/await for efficiency
@@ -219,7 +219,7 @@ VibeCoin leverages Rust's concurrency features to maximize performance:
 
 ### Error Handling
 
-VibeCoin implements robust error handling:
+Kumquat implements robust error handling:
 
 - **Error Types**: Each module defines its own error types
 - **Error Propagation**: Errors are propagated up the call stack
@@ -228,7 +228,7 @@ VibeCoin implements robust error handling:
 
 ### Security
 
-VibeCoin prioritizes security in its design:
+Kumquat prioritizes security in its design:
 
 - **Cryptographic Primitives**: Uses well-established cryptographic libraries
 - **Input Validation**: All inputs are validated before processing
@@ -237,7 +237,7 @@ VibeCoin prioritizes security in its design:
 
 ### Performance
 
-VibeCoin is optimized for performance:
+Kumquat is optimized for performance:
 
 - **Efficient Data Structures**: Uses appropriate data structures for each task
 - **Caching**: Implements caching for frequently accessed data
@@ -246,7 +246,7 @@ VibeCoin is optimized for performance:
 
 ## Deployment Architecture
 
-VibeCoin supports multiple deployment scenarios:
+Kumquat supports multiple deployment scenarios:
 
 ### Single Node Deployment
 
@@ -266,4 +266,4 @@ A minimal client that connects to full nodes to interact with the blockchain.
 
 ## Conclusion
 
-The VibeCoin architecture is designed to provide a balance of security, performance, and scalability. By combining PoW and PoH, VibeCoin achieves high throughput and low latency while maintaining strong security guarantees. The modular design enables easy maintenance and extension, while the robust error handling and security measures ensure reliable operation.
+The Kumquat architecture is designed to provide a balance of security, performance, and scalability. By combining PoW and PoH, Kumquat achieves high throughput and low latency while maintaining strong security guarantees. The modular design enables easy maintenance and extension, while the robust error handling and security measures ensure reliable operation.

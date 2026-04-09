@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Object System Module implements a Sui-style object ID system for the VibeCoin blockchain, extending the account-based storage model into a more object-centric architecture. This module provides the core structures and functionality for creating, storing, and managing objects.
+The Object System Module implements a Sui-style object ID system for the Kumquat blockchain, extending the account-based storage model into a more object-centric architecture. This module provides the core structures and functionality for creating, storing, and managing objects.
 
 ## Components
 
@@ -124,7 +124,7 @@ The object system enforces the following ownership rules:
 
 ## Integration with Existing Systems
 
-The object system integrates with the existing VibeCoin systems:
+The object system integrates with the existing Kumquat systems:
 
 - **State Store**: Used for account balances and nonces
 - **Transaction Processing**: Object transactions are processed alongside regular transactions

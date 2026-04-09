@@ -1,4 +1,4 @@
-# Vibecoin Development Guide
+# Kumquat Development Guide
 
 ## Development Environment Setup
 
@@ -13,8 +13,8 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/vibecoin.git
-   cd vibecoin
+   git clone https://github.com/your-username/kumquat.git
+   cd kumquat
    ```
 
 2. Build the project:
@@ -29,7 +29,7 @@
 
 ## Project Structure
 
-The Vibecoin project follows a modular architecture:
+The Kumquat project follows a modular architecture:
 
 - `src/` - Main source code directory
   - `lib.rs` - Library entry point

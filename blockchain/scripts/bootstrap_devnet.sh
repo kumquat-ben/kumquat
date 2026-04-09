@@ -12,19 +12,19 @@ mkdir -p monitoring/grafana/provisioning/dashboards
 
 # Generate default config for node1
 echo "Generating config for node1..."
-cargo run --bin vibecoin-config -- --generate --output data/node1/config.toml --node-name "vibecoin-node1" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true
+cargo run --bin kumquat-config -- --generate --output data/node1/config.toml --node-name "kumquat-node1" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true
 
 # Generate default config for node2
 echo "Generating config for node2..."
-cargo run --bin vibecoin-config -- --generate --output data/node2/config.toml --node-name "vibecoin-node2" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true --bootstrap "node1:30333"
+cargo run --bin kumquat-config -- --generate --output data/node2/config.toml --node-name "kumquat-node2" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining true --bootstrap "node1:30333"
 
 # Generate default config for node3
 echo "Generating config for node3..."
-cargo run --bin vibecoin-config -- --generate --output data/node3/config.toml --node-name "vibecoin-node3" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining false --bootstrap "node1:30333"
+cargo run --bin kumquat-config -- --generate --output data/node3/config.toml --node-name "kumquat-node3" --network dev --listen-port 30333 --api-port 8545 --metrics-port 9100 --enable-mining false --bootstrap "node1:30333"
 
 # Generate genesis block
 echo "Generating genesis block..."
-cargo run --bin vibecoin-genesis -- --generate --output data/node1/genesis.toml
+cargo run --bin kumquat-genesis -- --generate --output data/node1/genesis.toml
 
 # Copy genesis to other nodes
 cp data/node1/genesis.toml data/node2/
@@ -37,7 +37,7 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'vibecoin'
+  - job_name: 'kumquat'
     static_configs:
       - targets: ['node1:9100', 'node2:9100', 'node3:9100']
 EOF
@@ -55,11 +55,11 @@ datasources:
 EOF
 
 # Create Grafana dashboard config
-cat > monitoring/grafana/provisioning/dashboards/vibecoin.yml << EOF
+cat > monitoring/grafana/provisioning/dashboards/kumquat.yml << EOF
 apiVersion: 1
 
 providers:
-  - name: 'VibeCoin'
+  - name: 'Kumquat'
     orgId: 1
     folder: ''
     type: file
@@ -70,6 +70,6 @@ providers:
 EOF
 
 # Download Grafana dashboard
-curl -o monitoring/grafana/dashboards/vibecoin.json https://raw.githubusercontent.com/vibecoin/vibecoin-dashboards/main/grafana/vibecoin.json
+curl -o monitoring/grafana/dashboards/kumquat.json https://raw.githubusercontent.com/kumquat/kumquat-dashboards/main/grafana/kumquat.json
 
 echo "Bootstrap complete! Start the devnet with: docker-compose -f docker-compose.dev.yml up -d"

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Consensus Module implements Vibecoin's hybrid consensus mechanism, combining Proof-of-Work (PoW) with Proof of History (PoH). This approach provides the security benefits of PoW while achieving the high throughput and low latency of PoH.
+The Consensus Module implements Kumquat's hybrid consensus mechanism, combining Proof-of-Work (PoW) with Proof of History (PoH). This approach provides the security benefits of PoW while achieving the high throughput and low latency of PoH.
 
 ## Components
 

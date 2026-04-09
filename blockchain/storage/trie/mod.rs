@@ -1,11 +1,11 @@
-//! Merkle Patricia Trie implementation for VibeCoin
+//! Merkle Patricia Trie implementation for Kumquat
 //!
 //! This module provides a production-ready implementation of a Merkle Patricia Trie (MPT)
 //! for storing and verifying the blockchain state. The MPT enables efficient lookups,
 //! updates, and cryptographic verification of the state.
 //!
 //! The implementation follows the Ethereum Yellow Paper specification with some
-//! VibeCoin-specific optimizations.
+//! Kumquat-specific optimizations.
 
 pub mod node;
 pub mod encode;

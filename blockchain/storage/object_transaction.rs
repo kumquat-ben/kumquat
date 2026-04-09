@@ -1,4 +1,4 @@
-//! Object transaction types for VibeCoin blockchain
+//! Object transaction types for Kumquat blockchain
 //!
 //! This module defines transaction types for object operations,
 //! extending the existing transaction model to support Sui-style objects.

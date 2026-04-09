@@ -1,4 +1,4 @@
-//! State pruning for VibeCoin blockchain
+//! State pruning for Kumquat blockchain
 //!
 //! This module provides functionality for pruning old state data,
 //! reducing storage requirements while maintaining blockchain integrity.

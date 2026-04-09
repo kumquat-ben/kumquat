@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Cryptography Module provides essential cryptographic primitives for the VibeCoin blockchain. It handles key generation, digital signatures, message verification, and hashing functions.
+The Cryptography Module provides essential cryptographic primitives for the Kumquat blockchain. It handles key generation, digital signatures, message verification, and hashing functions.
 
 ## Components
 
@@ -92,7 +92,7 @@ let keypair = VibeKeypair::generate();
 let address = keypair.address();
 
 // Sign a message
-let message = b"Transfer 100 VibeCoin to Alice";
+let message = b"Transfer 100 Kumquat to Alice";
 let signature = sign_message(&keypair, message);
 
 // Verify the signature

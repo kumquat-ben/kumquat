@@ -1,10 +1,10 @@
-# VibeCoin Storage Integration
+# Kumquat Storage Integration
 
-This document explains how the VibeCoin storage system is integrated with the consensus engine and other core components.
+This document explains how the Kumquat storage system is integrated with the consensus engine and other core components.
 
 ## Overview
 
-The VibeCoin storage system provides persistent storage for blockchain data using RocksDB. It is integrated with the consensus engine to ensure atomic updates and data consistency during block processing.
+The Kumquat storage system provides persistent storage for blockchain data using RocksDB. It is integrated with the consensus engine to ensure atomic updates and data consistency during block processing.
 
 ## Key Components
 
@@ -134,7 +134,7 @@ match block_store.get_block_by_height(height) {
 
 ## Conclusion
 
-The VibeCoin storage system provides a robust foundation for the blockchain with:
+The Kumquat storage system provides a robust foundation for the blockchain with:
 
 - Persistent storage using RocksDB
 - Atomic updates for data consistency
@@ -142,4 +142,4 @@ The VibeCoin storage system provides a robust foundation for the blockchain with
 - Light client support
 - Efficient indexing and retrieval
 
-These features ensure that VibeCoin can scale to production-level readiness with reliable and efficient storage.
+These features ensure that Kumquat can scale to production-level readiness with reliable and efficient storage.

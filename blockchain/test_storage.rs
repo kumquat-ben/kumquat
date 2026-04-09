@@ -1,15 +1,15 @@
 use tempfile::tempdir;
-use vibecoin::storage::KVStore;
+use kumquat::storage::KVStore;
 
 fn main() {
-    println!("Testing VibeCoin Storage System");
+    println!("Testing Kumquat Storage System");
 
     // Create a temporary directory for the database
     let temp_dir = tempdir().unwrap();
     println!("Created temporary directory at: {:?}", temp_dir.path());
 
     // Create a RocksDB store
-    let store = match vibecoin::storage::kv_store::RocksDBStore::new(temp_dir.path()) {
+    let store = match kumquat::storage::kv_store::RocksDBStore::new(temp_dir.path()) {
         Ok(store) => {
             println!("Successfully created RocksDBStore");
             store
@@ -48,11 +48,11 @@ fn main() {
     // Test batch operations
     println!("\nTesting batch operations...");
     let mut batch = Vec::new();
-    batch.push(vibecoin::storage::WriteBatchOperation::Put {
+    batch.push(kumquat::storage::WriteBatchOperation::Put {
         key: b"batch_key1".to_vec(),
         value: b"batch_value1".to_vec(),
     });
-    batch.push(vibecoin::storage::WriteBatchOperation::Put {
+    batch.push(kumquat::storage::WriteBatchOperation::Put {
         key: b"batch_key2".to_vec(),
         value: b"batch_value2".to_vec(),
     });

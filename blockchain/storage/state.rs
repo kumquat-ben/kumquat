@@ -1,4 +1,4 @@
-//! Core state structures and abstractions for VibeCoin blockchain
+//! Core state structures and abstractions for Kumquat blockchain
 //!
 //! This module defines the fundamental state structures used throughout the blockchain,
 //! including account states, global state, and state transitions. It provides a clear

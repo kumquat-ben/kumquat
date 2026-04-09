@@ -1,6 +1,6 @@
-# Contributing to Vibecoin
+# Contributing to Kumquat
 
-Thank you for your interest in contributing to Vibecoin! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Kumquat! This document provides guidelines and instructions for contributing to the project.
 
 ## Code of Conduct
 
@@ -12,8 +12,8 @@ By participating in this project, you agree to abide by our [Code of Conduct](./
 
 Before creating a bug report:
 
-1. Check the [issue tracker](https://github.com/vibecoin/vibecoin/issues) to see if the problem has already been reported
-2. If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/vibecoin/vibecoin/issues/new)
+1. Check the [issue tracker](https://github.com/kumquat/kumquat/issues) to see if the problem has already been reported
+2. If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/kumquat/kumquat/issues/new)
 
 When creating a bug report, include as much information as possible:
 
@@ -28,9 +28,9 @@ When creating a bug report, include as much information as possible:
 Enhancement suggestions are tracked as GitHub issues:
 
 1. Check if the enhancement has already been suggested
-2. [Create a new issue](https://github.com/vibecoin/vibecoin/issues/new) with a clear description of the enhancement
+2. [Create a new issue](https://github.com/kumquat/kumquat/issues/new) with a clear description of the enhancement
 3. Provide specific examples of how the enhancement would work
-4. Explain why this enhancement would be useful to most Vibecoin users
+4. Explain why this enhancement would be useful to most Kumquat users
 
 ### Pull Requests
 
@@ -79,7 +79,7 @@ cargo test -- --nocapture
 
 ### File Size Limit
 
-Vibecoin enforces a strict 1000-line limit for all Rust files. This is checked by a pre-commit hook. See [File Size Policy](./docs/file_size_policy.md) for more details.
+Kumquat enforces a strict 1000-line limit for all Rust files. This is checked by a pre-commit hook. See [File Size Policy](./docs/file_size_policy.md) for more details.
 
 ## Git Workflow
 
@@ -118,6 +118,6 @@ Types include:
 
 ## Questions?
 
-If you have any questions about contributing, please join our [Discord community](https://discord.gg/vibecoin) or email us at team@vibecoin.io.
+If you have any questions about contributing, please join our [Discord community](https://discord.gg/kumquat) or email us at team@kumquat.io.
 
-Thank you for contributing to Vibecoin!
+Thank you for contributing to Kumquat!

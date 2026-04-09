@@ -1,14 +1,14 @@
-# Vibecoin Architecture
+# Kumquat Architecture
 
 ## Overview
 
-Vibecoin is a next-generation blockchain that combines Proof-of-Work (PoW) with Solana-style Proof of History (PoH) to achieve a balance of speed, fairness, and security. The architecture is designed to power scalable, efficient, and decentralized applications.
+Kumquat is a next-generation blockchain that combines Proof-of-Work (PoW) with Solana-style Proof of History (PoH) to achieve a balance of speed, fairness, and security. The architecture is designed to power scalable, efficient, and decentralized applications.
 
 ## Core Components
 
 ### Consensus Mechanism
 
-Vibecoin implements a hybrid consensus mechanism:
+Kumquat implements a hybrid consensus mechanism:
 
 - **Proof of Work (PoW)**: Provides security and fair distribution of tokens
 - **Proof of History (PoH)**: Enables high throughput and low latency by creating a historical record of events
@@ -21,7 +21,7 @@ Our implementation includes:
 
 ### Block Structure
 
-Each block in the Vibecoin blockchain contains:
+Each block in the Kumquat blockchain contains:
 
 - Block height and hash
 - Previous block hash for chain linking
@@ -33,7 +33,7 @@ Each block in the Vibecoin blockchain contains:
 
 ### Gas-Based Architecture
 
-Vibecoin uses a gas-based system similar to Ethereum:
+Kumquat uses a gas-based system similar to Ethereum:
 
 - Each operation costs a certain amount of gas
 - Users specify gas price and gas limit
@@ -41,7 +41,7 @@ Vibecoin uses a gas-based system similar to Ethereum:
 
 ## Network Architecture
 
-The Vibecoin network consists of several node types:
+The Kumquat network consists of several node types:
 
 - **Validator Nodes**: Participate in consensus and validate transactions
 - **Full Nodes**: Store the complete blockchain and relay transactions
@@ -61,4 +61,4 @@ The Vibecoin network consists of several node types:
 
 ## File Size Limitations
 
-To maintain code quality and readability, Vibecoin enforces a strict policy that no Rust file should exceed 1000 lines. This is enforced through a pre-commit Git hook.
+To maintain code quality and readability, Kumquat enforces a strict policy that no Rust file should exceed 1000 lines. This is enforced through a pre-commit Git hook.

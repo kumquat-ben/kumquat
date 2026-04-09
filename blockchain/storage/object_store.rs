@@ -1,4 +1,4 @@
-//! Object store for VibeCoin blockchain
+//! Object store for Kumquat blockchain
 //!
 //! This module provides storage functionality for Sui-style objects,
 //! including creating, retrieving, updating, and querying objects.

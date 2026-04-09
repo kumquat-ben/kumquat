@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use vibecoin::storage::RocksDBStore;
-use vibecoin::storage::object::{Object, Ownership};
-use vibecoin::storage::object_store::ObjectStore;
+use kumquat::storage::RocksDBStore;
+use kumquat::storage::object::{Object, Ownership};
+use kumquat::storage::object_store::ObjectStore;
 
 fn main() {
     // Create a RocksDB store
-    let db_path = Path::new("./data/vibecoin/test_objects");
+    let db_path = Path::new("./data/kumquat/test_objects");
     let kv_store = RocksDBStore::new(db_path).expect("Failed to open RocksDB");
     
     // Create an object store
@@ -20,7 +20,7 @@ fn main() {
     
     // Create a coin object
     let mut metadata = HashMap::new();
-    metadata.insert("name".to_string(), "VibeCoin".to_string());
+    metadata.insert("name".to_string(), "Kumquat".to_string());
     metadata.insert("symbol".to_string(), "VIBE".to_string());
     metadata.insert("decimals".to_string(), "18".to_string());
     

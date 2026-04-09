@@ -1,4 +1,4 @@
-// VibeCoin Transaction Pool (Mempool) Module
+// Kumquat Transaction Pool (Mempool) Module
 //
 // This module provides a thread-safe, prioritized pool for transactions:
 // - Accepts verified transactions from users/network

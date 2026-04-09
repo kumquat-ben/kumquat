@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
-use vibecoin::tools::genesis::{GenesisConfig, generate_genesis};
-use vibecoin::init_logger;
+use kumquat::tools::genesis::{GenesisConfig, generate_genesis};
+use kumquat::init_logger;
 use log::{info, warn, error};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "vibecoin-genesis", about = "VibeCoin genesis block generator")]
+#[structopt(name = "kumquat-genesis", about = "Kumquat genesis block generator")]
 struct Opt {
     /// Generate a default genesis configuration
     #[structopt(long)]

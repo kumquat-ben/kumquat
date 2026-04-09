@@ -1,6 +1,6 @@
-# VibeCoin Storage System
+# Kumquat Storage System
 
-This document provides a comprehensive overview of the VibeCoin storage system, including its architecture, components, and usage patterns.
+This document provides a comprehensive overview of the Kumquat storage system, including its architecture, components, and usage patterns.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This document provides a comprehensive overview of the VibeCoin storage system, 
 
 ## Architecture Overview
 
-The VibeCoin storage system is designed to provide a robust, efficient, and scalable persistence layer for the blockchain. It is built on top of RocksDB, a high-performance key-value store, and provides abstractions for storing and retrieving blockchain data such as blocks, transactions, and account states.
+The Kumquat storage system is designed to provide a robust, efficient, and scalable persistence layer for the blockchain. It is built on top of RocksDB, a high-performance key-value store, and provides abstractions for storing and retrieving blockchain data such as blocks, transactions, and account states.
 
 The storage system follows a layered architecture:
 
@@ -445,7 +445,7 @@ pub struct MemoryStore {
 
 ```rust
 // Create the RocksDB store
-let kv_store = Arc::new(RocksDBStore::new("./data/vibecoin").unwrap());
+let kv_store = Arc::new(RocksDBStore::new("./data/kumquat").unwrap());
 
 // Create the specialized stores
 let block_store = Arc::new(BlockStore::new(&kv_store));

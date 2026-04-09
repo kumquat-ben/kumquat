@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Configuration Module is responsible for managing VibeCoin node settings and configuration. It provides a flexible and extensible way to configure all aspects of a VibeCoin node, including network settings, consensus parameters, storage options, and more.
+The Configuration Module is responsible for managing Kumquat node settings and configuration. It provides a flexible and extensible way to configure all aspects of a Kumquat node, including network settings, consensus parameters, storage options, and more.
 
 ## Components
 
@@ -39,7 +39,7 @@ The configuration schema defines the structure and validation rules for all conf
 ### Public API
 
 ```rust
-/// Configuration manager for VibeCoin node
+/// Configuration manager for Kumquat node
 pub struct Config {
     /// Node configuration
     pub node: NodeConfig,
@@ -151,14 +151,14 @@ pub struct MempoolConfig {
 
 ### Configuration File Format
 
-VibeCoin uses TOML for configuration files. Here's an example configuration file:
+Kumquat uses TOML for configuration files. Here's an example configuration file:
 
 ```toml
 [node]
 # Node identity
-name = "my-vibecoin-node"
+name = "my-kumquat-node"
 # Data directory
-data_dir = "./data/vibecoin"
+data_dir = "./data/kumquat"
 # API settings
 api_host = "127.0.0.1"
 api_port = 8545
@@ -173,8 +173,8 @@ listen_addr = "0.0.0.0"
 listen_port = 30334
 # Bootstrap nodes
 bootstrap_nodes = [
-    "/dns4/bootstrap1.vibecoin.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
-    "/dns4/bootstrap2.vibecoin.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
+    "/dns4/bootstrap1.kumquat.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+    "/dns4/bootstrap2.kumquat.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
 ]
 # Maximum number of peers
 max_peers = 50
@@ -195,7 +195,7 @@ mining_threads = 4
 
 [storage]
 # Database path
-db_path = "./data/vibecoin/db"
+db_path = "./data/kumquat/db"
 # Cache size in MB
 cache_size = 512
 # Enable compression
@@ -219,13 +219,13 @@ transaction_timeout = 3600
 Configuration options can also be set using environment variables. The naming convention is:
 
 ```
-VIBECOIN_<SECTION>_<OPTION>
+KUMQUAT_<SECTION>_<OPTION>
 ```
 
 For example:
-- `VIBECOIN_NODE_NAME` sets the node name
-- `VIBECOIN_NETWORK_LISTEN_PORT` sets the network listen port
-- `VIBECOIN_CONSENSUS_ENABLE_MINING` sets whether mining is enabled
+- `KUMQUAT_NODE_NAME` sets the node name
+- `KUMQUAT_NETWORK_LISTEN_PORT` sets the network listen port
+- `KUMQUAT_CONSENSUS_ENABLE_MINING` sets whether mining is enabled
 
 ### Command-Line Arguments
 
@@ -256,7 +256,7 @@ The Configuration Module validates all configuration options to ensure they are 
 
 ### Network-Specific Configurations
 
-VibeCoin supports different network configurations:
+Kumquat supports different network configurations:
 
 - **Development**: For local development and testing
 - **Testnet**: For testing in a shared environment
@@ -306,7 +306,7 @@ Planned improvements for the Configuration Module include:
 ### Loading Configuration
 
 ```rust
-use vibecoin::config::Config;
+use kumquat::config::Config;
 
 // Load configuration from all sources
 let config = Config::load().expect("Failed to load configuration");
@@ -324,7 +324,7 @@ println!("Mining enabled: {}", enable_mining);
 ### Generating Default Configuration
 
 ```rust
-use vibecoin::config::Config;
+use kumquat::config::Config;
 use std::path::Path;
 
 // Generate default configuration
@@ -337,7 +337,7 @@ config.save(Path::new("config.toml")).expect("Failed to save configuration");
 ### Validating Configuration
 
 ```rust
-use vibecoin::config::Config;
+use kumquat::config::Config;
 use std::path::Path;
 
 // Load configuration from a file

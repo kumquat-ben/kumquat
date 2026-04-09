@@ -1,6 +1,6 @@
-// VibeCoin Cryptography Module
+// Kumquat Cryptography Module
 //
-// This module provides cryptographic primitives for the VibeCoin blockchain:
+// This module provides cryptographic primitives for the Kumquat blockchain:
 // - Key generation and management
 // - Digital signatures (Ed25519)
 // - Message verification

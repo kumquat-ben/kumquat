@@ -89,7 +89,7 @@ mod tests {
     
     #[test]
     fn test_double_sha256() {
-        let input = b"vibecoin";
+        let input = b"kumquat";
         let single_hash = sha256(input);
         let double_hash = double_sha256(input);
         

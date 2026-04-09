@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use vibecoin::network::types::message::NetMessage;
-use vibecoin::network::peer::broadcaster::PeerBroadcaster;
-use vibecoin::network::peer::registry::PeerRegistry;
+use kumquat::network::types::message::NetMessage;
+use kumquat::network::peer::broadcaster::PeerBroadcaster;
+use kumquat::network::peer::registry::PeerRegistry;
 
 #[tokio::main]
 async fn main() {

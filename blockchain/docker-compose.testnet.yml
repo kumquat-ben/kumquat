@@ -5,21 +5,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vibecoin-testnet-node
+    container_name: kumquat-testnet-node
     volumes:
-      - ./data/testnet:/data/vibecoin
+      - ./data/testnet:/data/kumquat
     ports:
       - "30333:30333"
       - "8545:8545"
       - "9100:9100"
-    command: ["--config", "/data/vibecoin/config.toml", "--network", "testnet"]
+    command: ["--config", "/data/kumquat/config.toml", "--network", "testnet"]
     environment:
       - RUST_LOG=info
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: vibecoin-prometheus
+    container_name: kumquat-prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./data/prometheus:/prometheus
@@ -34,7 +34,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: vibecoin-grafana
+    container_name: kumquat-grafana
     volumes:
       - ./data/grafana:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning

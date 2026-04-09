@@ -1,4 +1,4 @@
-//! Mempool storage integration for VibeCoin blockchain
+//! Mempool storage integration for Kumquat blockchain
 //!
 //! This module provides persistent storage for the mempool (transaction pool),
 //! allowing for transaction recovery after node restarts and efficient

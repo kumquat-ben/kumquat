@@ -4,18 +4,18 @@ use tokio::sync::mpsc;
 use log::{info, error, warn};
 use structopt::StructOpt;
 
-use vibecoin::init_logger;
-use vibecoin::config::Config;
-use vibecoin::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
-use vibecoin::mempool::Mempool;
-use vibecoin::consensus::start_consensus;
-use vibecoin::consensus::config::ConsensusConfig;
-use vibecoin::network::{start_network, start_enhanced_network};
-use vibecoin::network::NetworkConfig;
-use vibecoin::tools::genesis::generate_genesis;
+use kumquat::init_logger;
+use kumquat::config::Config;
+use kumquat::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
+use kumquat::mempool::Mempool;
+use kumquat::consensus::start_consensus;
+use kumquat::consensus::config::ConsensusConfig;
+use kumquat::network::{start_network, start_enhanced_network};
+use kumquat::network::NetworkConfig;
+use kumquat::tools::genesis::generate_genesis;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "vibecoin", about = "VibeCoin blockchain node")]
+#[structopt(name = "kumquat", about = "Kumquat blockchain node")]
 struct Opt {
     /// Config file
     #[structopt(short, long, parse(from_os_str))]
@@ -70,7 +70,7 @@ async fn main() {
     // Parse command line arguments
     let opt = Opt::from_args();
 
-    info!("Starting Vibecoin node...");
+    info!("Starting Kumquat node...");
 
     // Load or generate configuration
     let mut config = if let Some(config_path) = &opt.config {
@@ -104,8 +104,8 @@ async fn main() {
                 config.consensus.target_block_time = 10;
                 config.consensus.initial_difficulty = 1000;
                 config.network.bootstrap_nodes = vec![
-                    "/dns4/bootstrap1.vibecoin.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                    "/dns4/bootstrap2.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                    "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                    "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                 ];
             },
             "mainnet" => {
@@ -113,10 +113,10 @@ async fn main() {
                 config.consensus.target_block_time = 10;
                 config.consensus.initial_difficulty = 10000;
                 config.network.bootstrap_nodes = vec![
-                    "/dns4/bootstrap1.vibecoin.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
-                    "/dns4/bootstrap2.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
-                    "/dns4/bootstrap3.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
-                    "/dns4/bootstrap4.vibecoin.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                    "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
+                    "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                    "/dns4/bootstrap3.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
+                    "/dns4/bootstrap4.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                 ];
             },
             _ => {
@@ -201,32 +201,32 @@ async fn main() {
         inner: Arc<RocksDBStore>,
     }
 
-    impl vibecoin::storage::KVStore for StaticKVStore {
-        fn put(&self, key: &[u8], value: &[u8]) -> Result<(), vibecoin::storage::kv_store::KVStoreError> {
+    impl kumquat::storage::KVStore for StaticKVStore {
+        fn put(&self, key: &[u8], value: &[u8]) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.put(key, value)
         }
 
-        fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, vibecoin::storage::kv_store::KVStoreError> {
+        fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, kumquat::storage::kv_store::KVStoreError> {
             self.inner.get(key)
         }
 
-        fn delete(&self, key: &[u8]) -> Result<(), vibecoin::storage::kv_store::KVStoreError> {
+        fn delete(&self, key: &[u8]) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.delete(key)
         }
 
-        fn exists(&self, key: &[u8]) -> Result<bool, vibecoin::storage::kv_store::KVStoreError> {
+        fn exists(&self, key: &[u8]) -> Result<bool, kumquat::storage::kv_store::KVStoreError> {
             self.inner.exists(key)
         }
 
-        fn write_batch(&self, operations: Vec<vibecoin::storage::kv_store::WriteBatchOperation>) -> Result<(), vibecoin::storage::kv_store::KVStoreError> {
+        fn write_batch(&self, operations: Vec<kumquat::storage::kv_store::WriteBatchOperation>) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.write_batch(operations)
         }
 
-        fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, vibecoin::storage::kv_store::KVStoreError> {
+        fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, kumquat::storage::kv_store::KVStoreError> {
             self.inner.scan_prefix(prefix)
         }
 
-        fn flush(&self) -> Result<(), vibecoin::storage::kv_store::KVStoreError> {
+        fn flush(&self) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.flush()
         }
     }
@@ -284,9 +284,9 @@ async fn main() {
 
     // Initialize network
     info!("Initializing network...");
-    let (network_tx, network_rx) = mpsc::channel::<vibecoin::network::types::message::NetMessage>(100);
-    let (block_tx, block_rx) = mpsc::channel::<vibecoin::storage::block_store::Block>(100);
-    let (tx_tx, tx_rx) = mpsc::channel::<vibecoin::storage::tx_store::TransactionRecord>(1000);
+    let (network_tx, network_rx) = mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
+    let (block_tx, block_rx) = mpsc::channel::<kumquat::storage::block_store::Block>(100);
+    let (tx_tx, tx_rx) = mpsc::channel::<kumquat::storage::tx_store::TransactionRecord>(1000);
 
     // Convert config.network to NetworkConfig
     let network_config = NetworkConfig {
@@ -333,9 +333,9 @@ async fn main() {
         network_tx.clone(),
     ).await;
 
-    info!("Vibecoin node started successfully");
+    info!("Kumquat node started successfully");
 
     // Keep the main thread alive
     tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl-c");
-    info!("Shutting down Vibecoin node...");
+    info!("Shutting down Kumquat node...");
 }

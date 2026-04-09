@@ -1,4 +1,4 @@
-//! Message handler registry for VibeCoin blockchain
+//! Message handler registry for Kumquat blockchain
 //!
 //! This module provides a registry for message handlers.
 

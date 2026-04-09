@@ -8,7 +8,7 @@ use state_management_demo::storage::{
 };
 
 fn main() {
-    println!("VibeCoin State Management Demo");
+    println!("Kumquat State Management Demo");
     println!("------------------------------");
     
     // Create a temporary directory for the database

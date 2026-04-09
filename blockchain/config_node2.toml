@@ -1,6 +1,6 @@
 [node]
-node_name = "vibecoin-node2"
-data_dir = "./data/vibecoin2"
+node_name = "kumquat-node2"
+data_dir = "./data/kumquat2"
 log_level = "info"
 enable_metrics = false
 metrics_port = 9101
@@ -23,8 +23,8 @@ enable_upnp = true
 enable_natpmp = true
 enable_dht = true
 dht_bootstrap_nodes = [
-    "/dns4/dht1.vibecoin.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
-    "/dns4/dht2.vibecoin.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
+    "/dns4/dht1.kumquat.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+    "/dns4/dht2.kumquat.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
 ]
 
 [consensus]
@@ -43,7 +43,7 @@ poh_tick_interval = 10
 poh_ticks_per_block = 1000
 
 [storage]
-db_path = "./data/vibecoin2/db"
+db_path = "./data/kumquat2/db"
 cache_size = 512
 max_open_files = 1000
 write_buffer_size = 64

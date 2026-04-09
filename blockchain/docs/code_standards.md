@@ -1,4 +1,4 @@
-# Vibecoin Code Standards
+# Kumquat Code Standards
 
 ## General Principles
 

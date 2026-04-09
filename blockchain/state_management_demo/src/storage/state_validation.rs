@@ -1,4 +1,4 @@
-//! State transition validation for VibeCoin blockchain
+//! State transition validation for Kumquat blockchain
 //!
 //! This module provides functionality for validating state transitions,
 //! ensuring that all changes to the blockchain state follow the protocol rules.

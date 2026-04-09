@@ -1,4 +1,4 @@
-//! Object transaction processor for VibeCoin blockchain
+//! Object transaction processor for Kumquat blockchain
 //!
 //! This module provides functionality for processing object transactions,
 //! including validation and execution.

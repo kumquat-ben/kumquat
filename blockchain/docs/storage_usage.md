@@ -1,6 +1,6 @@
-# VibeCoin Storage Usage Guide
+# Kumquat Storage Usage Guide
 
-This document provides examples and best practices for using the VibeCoin storage module.
+This document provides examples and best practices for using the Kumquat storage module.
 
 ## Table of Contents
 
@@ -18,10 +18,10 @@ To initialize the storage system, you need to create a RocksDB instance and then
 
 ```rust
 use std::sync::Arc;
-use vibecoin::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
+use kumquat::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
 
 // Create the RocksDB store
-let kv_store = Arc::new(RocksDBStore::new("./data/vibecoin").unwrap());
+let kv_store = Arc::new(RocksDBStore::new("./data/kumquat").unwrap());
 
 // Create the specialized stores
 let block_store = Arc::new(BlockStore::new(&kv_store));
@@ -42,7 +42,7 @@ let batch_manager = BatchOperationManager::new(
 ### Storing a Block
 
 ```rust
-use vibecoin::storage::Block;
+use kumquat::storage::Block;
 
 // Create a block
 let block = Block {
@@ -98,7 +98,7 @@ match block_store.get_latest_block() {
 ### Storing a Transaction
 
 ```rust
-use vibecoin::storage::{TransactionRecord, TransactionStatus};
+use kumquat::storage::{TransactionRecord, TransactionStatus};
 
 // Create a transaction
 let tx = TransactionRecord {
@@ -170,7 +170,7 @@ match tx_store.update_transaction_status(&tx_id, TransactionStatus::Confirmed) {
 ### Creating an Account
 
 ```rust
-use vibecoin::storage::{AccountState, AccountType};
+use kumquat::storage::{AccountState, AccountType};
 
 let address = [1; 32];
 let state = AccountState {
@@ -294,7 +294,7 @@ opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB
 opts.set_max_write_buffer_number(3);
 opts.set_target_file_size_base(64 * 1024 * 1024); // 64MB
 
-let kv_store = Arc::new(RocksDBStore::with_options("./data/vibecoin", opts).unwrap());
+let kv_store = Arc::new(RocksDBStore::with_options("./data/kumquat", opts).unwrap());
 ```
 
 ### Flushing

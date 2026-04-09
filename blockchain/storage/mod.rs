@@ -1,4 +1,4 @@
-//! Storage module for VibeCoin blockchain
+//! Storage module for Kumquat blockchain
 //!
 //! This module provides a comprehensive storage layer for the blockchain,
 //! including block storage, transaction storage, account state storage, and PoH entries.

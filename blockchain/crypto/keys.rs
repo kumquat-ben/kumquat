@@ -6,7 +6,7 @@ use std::fmt;
 use std::convert::TryFrom;
 use crate::crypto::hash::sha256;
 
-/// VibeCoin keypair for signing and verification
+/// Kumquat keypair for signing and verification
 pub struct VibeKeypair {
     /// Public key for verification
     pub public: PublicKey,

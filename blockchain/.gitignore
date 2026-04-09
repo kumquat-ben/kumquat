@@ -1,0 +1,13 @@
+# Rust build outputs
+/target/
+**/target/
+
+# Rust and LLVM profiling artifacts
+*.profraw
+*.profdata
+
+# Local cargo config/cache
+.cargo/
+
+# Platform-local debug artifacts
+*.dSYM/

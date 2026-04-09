@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Storage Module provides persistent storage for the VibeCoin blockchain data. It uses RocksDB as the underlying key-value store and implements specialized stores for different types of blockchain data.
+The Storage Module provides persistent storage for the Kumquat blockchain data. It uses RocksDB as the underlying key-value store and implements specialized stores for different types of blockchain data.
 
 ## Components
 

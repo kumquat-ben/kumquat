@@ -1,6 +1,6 @@
-# VibeCoin Storage Schema
+# Kumquat Storage Schema
 
-This document defines the storage schema used by VibeCoin for persistent blockchain data storage using RocksDB.
+This document defines the storage schema used by Kumquat for persistent blockchain data storage using RocksDB.
 
 ## Key Format
 

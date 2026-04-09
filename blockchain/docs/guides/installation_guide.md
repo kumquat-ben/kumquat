@@ -1,6 +1,6 @@
-# VibeCoin Installation and Setup Guide
+# Kumquat Installation and Setup Guide
 
-This guide provides comprehensive instructions for installing, configuring, and running a VibeCoin node in various environments.
+This guide provides comprehensive instructions for installing, configuring, and running a Kumquat node in various environments.
 
 ## Table of Contents
 
@@ -105,8 +105,8 @@ source $HOME/.cargo/env
 
 ```bash
 # Clone the repository
-git clone https://github.com/vibecoin/vibecoin.git
-cd vibecoin
+git clone https://github.com/kumquat/kumquat.git
+cd kumquat
 ```
 
 #### 3. Build the Project
@@ -116,7 +116,7 @@ cd vibecoin
 cargo build --release
 ```
 
-The compiled binary will be available at `./target/release/vibecoin`.
+The compiled binary will be available at `./target/release/kumquat`.
 
 ### Docker Installation
 
@@ -148,8 +148,8 @@ brew install --cask docker
 
 ```bash
 # Clone the repository
-git clone https://github.com/vibecoin/vibecoin.git
-cd vibecoin
+git clone https://github.com/kumquat/kumquat.git
+cd kumquat
 ```
 
 #### 3. Start the Node
@@ -171,31 +171,31 @@ Binary installation is recommended for users who want a simple setup without bui
 #### 1. Download the Latest Release
 
 ```bash
-# Create a directory for VibeCoin
-mkdir -p ~/vibecoin
-cd ~/vibecoin
+# Create a directory for Kumquat
+mkdir -p ~/kumquat
+cd ~/kumquat
 
 # Download the latest release
-curl -L https://github.com/vibecoin/vibecoin/releases/latest/download/vibecoin-linux-x86_64.tar.gz -o vibecoin.tar.gz
+curl -L https://github.com/kumquat/kumquat/releases/latest/download/kumquat-linux-x86_64.tar.gz -o kumquat.tar.gz
 
 # Extract the archive
-tar -xzf vibecoin.tar.gz
+tar -xzf kumquat.tar.gz
 ```
 
 #### 2. Make the Binary Executable
 
 ```bash
-chmod +x ./vibecoin
+chmod +x ./kumquat
 ```
 
 ## Configuration
 
 ### Configuration File
 
-VibeCoin uses a TOML configuration file for node settings. You can generate a default configuration file using:
+Kumquat uses a TOML configuration file for node settings. You can generate a default configuration file using:
 
 ```bash
-./vibecoin-config --generate --output config.toml
+./kumquat-config --generate --output config.toml
 ```
 
 The configuration file is divided into sections:
@@ -205,9 +205,9 @@ The configuration file is divided into sections:
 ```toml
 [node]
 # Node identity
-name = "my-vibecoin-node"
+name = "my-kumquat-node"
 # Data directory
-data_dir = "./data/vibecoin"
+data_dir = "./data/kumquat"
 # API settings
 api_host = "127.0.0.1"
 api_port = 8545
@@ -226,8 +226,8 @@ listen_addr = "0.0.0.0"
 listen_port = 30334
 # Bootstrap nodes
 bootstrap_nodes = [
-    "/dns4/bootstrap1.vibecoin.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
-    "/dns4/bootstrap2.vibecoin.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
+    "/dns4/bootstrap1.kumquat.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+    "/dns4/bootstrap2.kumquat.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
 ]
 # Maximum number of peers
 max_peers = 50
@@ -256,7 +256,7 @@ mining_threads = 4
 ```toml
 [storage]
 # Database path
-db_path = "./data/vibecoin/db"
+db_path = "./data/kumquat/db"
 # Cache size in MB
 cache_size = 512
 # Enable compression
@@ -281,11 +281,11 @@ transaction_timeout = 3600
 
 ### Command-Line Options
 
-VibeCoin supports various command-line options that override the configuration file:
+Kumquat supports various command-line options that override the configuration file:
 
 ```
 USAGE:
-    vibecoin [OPTIONS]
+    kumquat [OPTIONS]
 
 OPTIONS:
     -c, --config <FILE>              Configuration file
@@ -305,20 +305,20 @@ OPTIONS:
 
 ### Environment Variables
 
-VibeCoin also supports environment variables for configuration:
+Kumquat also supports environment variables for configuration:
 
 ```
-VIBECOIN_CONFIG_FILE          Configuration file path
-VIBECOIN_GENESIS_FILE         Genesis file path
-VIBECOIN_NETWORK              Network to connect to
-VIBECOIN_DATA_DIR             Data directory
-VIBECOIN_BOOTSTRAP_NODES      Bootstrap nodes
-VIBECOIN_ENABLE_MINING        Enable mining
-VIBECOIN_MINING_THREADS       Mining threads
-VIBECOIN_API_PORT             API port
-VIBECOIN_API_HOST             API host
-VIBECOIN_LISTEN_PORT          P2P listen port
-VIBECOIN_LISTEN_ADDR          P2P listen address
+KUMQUAT_CONFIG_FILE          Configuration file path
+KUMQUAT_GENESIS_FILE         Genesis file path
+KUMQUAT_NETWORK              Network to connect to
+KUMQUAT_DATA_DIR             Data directory
+KUMQUAT_BOOTSTRAP_NODES      Bootstrap nodes
+KUMQUAT_ENABLE_MINING        Enable mining
+KUMQUAT_MINING_THREADS       Mining threads
+KUMQUAT_API_PORT             API port
+KUMQUAT_API_HOST             API host
+KUMQUAT_LISTEN_PORT          P2P listen port
+KUMQUAT_LISTEN_ADDR          P2P listen address
 ```
 
 ## Node Types
@@ -329,37 +329,37 @@ A development node is used for local development and testing:
 
 ```bash
 # Generate a development configuration
-./vibecoin-config --generate --network dev --output config.dev.toml
+./kumquat-config --generate --network dev --output config.dev.toml
 
 # Generate a development genesis block
-./vibecoin-genesis --generate --network dev --output genesis.dev.toml
+./kumquat-genesis --generate --network dev --output genesis.dev.toml
 
 # Start the development node
-./vibecoin --config config.dev.toml --genesis genesis.dev.toml
+./kumquat --config config.dev.toml --genesis genesis.dev.toml
 ```
 
 ### Testnet Node
 
-A testnet node connects to the VibeCoin testnet:
+A testnet node connects to the Kumquat testnet:
 
 ```bash
 # Generate a testnet configuration
-./vibecoin-config --generate --network testnet --output config.testnet.toml
+./kumquat-config --generate --network testnet --output config.testnet.toml
 
 # Start the testnet node
-./vibecoin --config config.testnet.toml --network testnet
+./kumquat --config config.testnet.toml --network testnet
 ```
 
 ### Mainnet Node
 
-A mainnet node connects to the VibeCoin mainnet:
+A mainnet node connects to the Kumquat mainnet:
 
 ```bash
 # Generate a mainnet configuration
-./vibecoin-config --generate --network mainnet --output config.mainnet.toml
+./kumquat-config --generate --network mainnet --output config.mainnet.toml
 
 # Start the mainnet node
-./vibecoin --config config.mainnet.toml --network mainnet
+./kumquat --config config.mainnet.toml --network mainnet
 ```
 
 ## Genesis Block
@@ -367,7 +367,7 @@ A mainnet node connects to the VibeCoin mainnet:
 The genesis block is the first block in the blockchain. You can generate a custom genesis block using:
 
 ```bash
-./vibecoin-genesis --generate --output genesis.toml
+./kumquat-genesis --generate --output genesis.toml
 ```
 
 The genesis file is a TOML file with the following structure:
@@ -399,10 +399,10 @@ account_type = "contract"
 
 ```bash
 # Start with a configuration file
-./vibecoin --config config.toml
+./kumquat --config config.toml
 
 # Start with command-line options
-./vibecoin --network testnet --data-dir ./data/vibecoin --enable-mining true
+./kumquat --network testnet --data-dir ./data/kumquat --enable-mining true
 ```
 
 ### Stopping a Node
@@ -416,20 +416,20 @@ To stop a running node, press `Ctrl+C` in the terminal where the node is running
 Create a systemd service file:
 
 ```bash
-sudo nano /etc/systemd/system/vibecoin.service
+sudo nano /etc/systemd/system/kumquat.service
 ```
 
 Add the following content:
 
 ```
 [Unit]
-Description=VibeCoin Node
+Description=Kumquat Node
 After=network.target
 
 [Service]
-User=vibecoin
-Group=vibecoin
-ExecStart=/path/to/vibecoin --config /path/to/config.toml
+User=kumquat
+Group=kumquat
+ExecStart=/path/to/kumquat --config /path/to/config.toml
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
@@ -441,23 +441,23 @@ WantedBy=multi-user.target
 Enable and start the service:
 
 ```bash
-sudo systemctl enable vibecoin
-sudo systemctl start vibecoin
+sudo systemctl enable kumquat
+sudo systemctl start kumquat
 ```
 
 ## Monitoring
 
 ### Log Files
 
-VibeCoin logs are written to the standard output and can be redirected to a file:
+Kumquat logs are written to the standard output and can be redirected to a file:
 
 ```bash
-./vibecoin --config config.toml > vibecoin.log 2>&1
+./kumquat --config config.toml > kumquat.log 2>&1
 ```
 
 ### Metrics
 
-VibeCoin exposes metrics via Prometheus:
+Kumquat exposes metrics via Prometheus:
 
 ```toml
 [node]
@@ -470,7 +470,7 @@ You can visualize these metrics using Grafana.
 
 ### Status API
 
-VibeCoin provides a status API endpoint:
+Kumquat provides a status API endpoint:
 
 ```bash
 curl -X GET http://localhost:8545/status
@@ -503,7 +503,7 @@ curl -X GET http://localhost:8545/status
 Check the logs for error messages:
 
 ```bash
-tail -f vibecoin.log
+tail -f kumquat.log
 ```
 
 ### Database Issues
@@ -511,14 +511,14 @@ tail -f vibecoin.log
 If you encounter database corruption, you can try to repair it:
 
 ```bash
-./vibecoin --repair-db
+./kumquat --repair-db
 ```
 
 Or you can delete the database and resync:
 
 ```bash
-rm -rf ./data/vibecoin/db
-./vibecoin --config config.toml
+rm -rf ./data/kumquat/db
+./kumquat --config config.toml
 ```
 
 ## Upgrading
@@ -533,14 +533,14 @@ git pull
 cargo build --release
 
 # Restart the node
-./target/release/vibecoin --config config.toml
+./target/release/kumquat --config config.toml
 ```
 
 ### Upgrading Docker Installation
 
 ```bash
 # Pull the latest image
-docker pull vibecoin/vibecoin:latest
+docker pull kumquat/kumquat:latest
 
 # Restart the container
 docker-compose -f docker-compose.yml down
@@ -551,14 +551,14 @@ docker-compose -f docker-compose.yml up -d
 
 ```bash
 # Download the new version
-curl -L https://github.com/vibecoin/vibecoin/releases/latest/download/vibecoin-linux-x86_64.tar.gz -o vibecoin.tar.gz
+curl -L https://github.com/kumquat/kumquat/releases/latest/download/kumquat-linux-x86_64.tar.gz -o kumquat.tar.gz
 
 # Extract the archive
-tar -xzf vibecoin.tar.gz
+tar -xzf kumquat.tar.gz
 
 # Make the binary executable
-chmod +x ./vibecoin
+chmod +x ./kumquat
 
 # Restart the node
-./vibecoin --config config.toml
+./kumquat --config config.toml
 ```

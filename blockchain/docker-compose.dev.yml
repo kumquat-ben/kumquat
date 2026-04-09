@@ -5,14 +5,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vibecoin-node1
+    container_name: kumquat-node1
     volumes:
-      - ./data/node1:/data/vibecoin
+      - ./data/node1:/data/kumquat
     ports:
       - "30333:30333"
       - "8545:8545"
       - "9100:9100"
-    command: ["--config", "/data/vibecoin/config.toml", "--network", "dev"]
+    command: ["--config", "/data/kumquat/config.toml", "--network", "dev"]
     environment:
       - RUST_LOG=info
     restart: unless-stopped
@@ -21,14 +21,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vibecoin-node2
+    container_name: kumquat-node2
     volumes:
-      - ./data/node2:/data/vibecoin
+      - ./data/node2:/data/kumquat
     ports:
       - "30334:30333"
       - "8546:8545"
       - "9101:9100"
-    command: ["--config", "/data/vibecoin/config.toml", "--network", "dev", "--bootstrap", "node1:30333"]
+    command: ["--config", "/data/kumquat/config.toml", "--network", "dev", "--bootstrap", "node1:30333"]
     environment:
       - RUST_LOG=info
     restart: unless-stopped
@@ -39,14 +39,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vibecoin-node3
+    container_name: kumquat-node3
     volumes:
-      - ./data/node3:/data/vibecoin
+      - ./data/node3:/data/kumquat
     ports:
       - "30335:30333"
       - "8547:8545"
       - "9102:9100"
-    command: ["--config", "/data/vibecoin/config.toml", "--network", "dev", "--bootstrap", "node1:30333"]
+    command: ["--config", "/data/kumquat/config.toml", "--network", "dev", "--bootstrap", "node1:30333"]
     environment:
       - RUST_LOG=info
     restart: unless-stopped
@@ -55,7 +55,7 @@ services:
 
   explorer:
     image: blockscout/blockscout:latest
-    container_name: vibecoin-explorer
+    container_name: kumquat-explorer
     ports:
       - "4000:4000"
     environment:
@@ -65,14 +65,14 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/blockscout
       - ECTO_USE_SSL=false
       - COIN=VIBE
-      - NETWORK=VibeCoin Dev
+      - NETWORK=Kumquat Dev
     depends_on:
       - node1
       - db
 
   db:
     image: postgres:13
-    container_name: vibecoin-db
+    container_name: kumquat-db
     ports:
       - "5432:5432"
     environment:

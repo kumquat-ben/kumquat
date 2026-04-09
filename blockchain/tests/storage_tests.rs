@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tempfile::tempdir;
 
-use vibecoin::storage::{
+use kumquat::storage::{
     RocksDBStore, BlockStore, TxStore, StateStore, StateManager, BatchOperationManager,
     Block, TransactionRecord, TransactionStatus, AccountState, AccountType, Schema,
     RocksDBManager, DatabaseStats,
@@ -24,11 +24,11 @@ fn test_rocksdb_integration() {
     
     // Test batch operations
     let mut batch = Vec::new();
-    batch.push(vibecoin::storage::WriteBatchOperation::Put {
+    batch.push(kumquat::storage::WriteBatchOperation::Put {
         key: b"batch_key1".to_vec(),
         value: b"batch_value1".to_vec(),
     });
-    batch.push(vibecoin::storage::WriteBatchOperation::Put {
+    batch.push(kumquat::storage::WriteBatchOperation::Put {
         key: b"batch_key2".to_vec(),
         value: b"batch_value2".to_vec(),
     });
@@ -395,7 +395,7 @@ fn test_rocksdb_schema() {
     
     // Test key parsing
     let key_type = Schema::parse_key(block_key.as_bytes());
-    assert_eq!(key_type, vibecoin::storage::KeyType::BlockByHeight);
+    assert_eq!(key_type, kumquat::storage::KeyType::BlockByHeight);
     
     let height = Schema::extract_block_height(&block_key);
     assert_eq!(height, Some(123));

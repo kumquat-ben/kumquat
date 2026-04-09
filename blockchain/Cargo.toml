@@ -1,8 +1,8 @@
 [package]
-name = "vibecoin"
+name = "kumquat"
 version = "0.1.0"
 edition = "2021"
-authors = ["Vibecoin Team"]
+authors = ["Kumquat Team"]
 description = "A next-generation blockchain combining Proof-of-Work with Solana-style Proof of History"
 
 [features]
@@ -66,11 +66,11 @@ tempfile = "3.5.0"
 criterion = "0.4"
 
 [lib]
-name = "vibecoin"
+name = "kumquat"
 path = "src/lib.rs"
 
 [[bin]]
-name = "vibecoin"
+name = "kumquat"
 path = "src/main.rs"
 
 [[bin]]

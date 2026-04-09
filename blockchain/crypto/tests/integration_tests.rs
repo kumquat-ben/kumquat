@@ -1,4 +1,4 @@
-use vibecoin::crypto::{
+use kumquat::crypto::{
     VibeKeypair,
     address_from_pubkey,
     sha256,
@@ -18,7 +18,7 @@ fn test_crypto_workflow() {
     assert_eq!(address, address2);
     
     // Create a message
-    let message = b"Transfer 100 VibeCoin to Alice";
+    let message = b"Transfer 100 Kumquat to Alice";
     
     // Hash the message
     let hash = sha256(message);
@@ -36,7 +36,7 @@ fn test_crypto_workflow() {
     assert!(is_valid);
     
     // Tamper with the message
-    let tampered_message = b"Transfer 1000 VibeCoin to Alice";
+    let tampered_message = b"Transfer 1000 Kumquat to Alice";
     let is_valid = verify_signature(tampered_message, &signature, &keypair.public);
     assert!(!is_valid);
 }

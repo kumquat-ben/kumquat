@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tempfile::tempdir;
 
-use vibecoin::storage::{
+use kumquat::storage::{
     RocksDBStore, BlockStore, StateStore, StateManager,
     Block, AccountState, AccountType, StateRoot,
     StateValidator, ValidationError, ValidationResult,
@@ -42,11 +42,11 @@ fn test_state_validation() {
     // Create a valid account creation change
     let address3 = [3; 32];
     let account3 = AccountState::new_user(500, block_height);
-    let creation_change = vibecoin::storage::AccountChange {
+    let creation_change = kumquat::storage::AccountChange {
         address: address3,
         prev_state: None,
         new_state: Some(account3),
-        change_type: vibecoin::storage::AccountChangeType::Created,
+        change_type: kumquat::storage::AccountChangeType::Created,
     };
     
     // Create a valid account update change
@@ -54,15 +54,15 @@ fn test_state_validation() {
     updated_account1.balance = 900;
     updated_account1.nonce = 1;
     updated_account1.last_updated = 101;
-    let update_change = vibecoin::storage::AccountChange {
+    let update_change = kumquat::storage::AccountChange {
         address: address1,
         prev_state: Some(account1),
         new_state: Some(updated_account1),
-        change_type: vibecoin::storage::AccountChangeType::Updated,
+        change_type: kumquat::storage::AccountChangeType::Updated,
     };
     
     // Create a state transition
-    let transition = vibecoin::storage::StateTransition {
+    let transition = kumquat::storage::StateTransition {
         prev_state_root,
         new_state_root,
         block_height,

@@ -1,7 +1,7 @@
-use vibecoin::network::{NetworkConfig, start_network};
-use vibecoin::network::types::message::NetMessage;
-use vibecoin::network::types::node_info::NodeInfo;
-use vibecoin::storage::block_store::Block;
+use kumquat::network::{NetworkConfig, start_network};
+use kumquat::network::types::message::NetMessage;
+use kumquat::network::types::node_info::NodeInfo;
+use kumquat::storage::block_store::Block;
 
 use std::net::SocketAddr;
 use std::sync::Arc;

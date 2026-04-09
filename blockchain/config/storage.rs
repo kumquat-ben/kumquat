@@ -55,7 +55,7 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            db_path: "./data/vibecoin/db".to_string(),
+            db_path: "./data/kumquat/db".to_string(),
             cache_size: 512, // 512MB
             max_open_files: 1000,
             write_buffer_size: 64, // 64MB

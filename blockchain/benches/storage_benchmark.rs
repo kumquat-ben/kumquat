@@ -5,7 +5,7 @@ use std::sync::Arc;
 use test::Bencher;
 use tempfile::tempdir;
 
-use vibecoin::storage::{
+use kumquat::storage::{
     RocksDBStore, BlockStore, TxStore, StateStore, StateManager, BatchOperationManager,
     Block, TransactionRecord, TransactionStatus, AccountState, AccountType, Schema,
     RocksDBManager, DatabaseStats,

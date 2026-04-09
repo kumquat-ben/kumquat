@@ -245,8 +245,8 @@ impl ConfidentialTransaction {
 fn get_generators() -> (RistrettoPoint, RistrettoPoint) {
     // In a real implementation, these would be standardized generators
     // For now, we'll derive them from fixed strings
-    let g = hash_to_point(b"vibecoin_pedersen_g");
-    let h = hash_to_point(b"vibecoin_pedersen_h");
+    let g = hash_to_point(b"kumquat_pedersen_g");
+    let h = hash_to_point(b"kumquat_pedersen_h");
 
     (g, h)
 }

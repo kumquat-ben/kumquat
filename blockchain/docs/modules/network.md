@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Network Module provides the peer-to-peer communication layer for the VibeCoin blockchain. It handles peer discovery, connection management, message broadcasting, and blockchain data synchronization.
+The Network Module provides the peer-to-peer communication layer for the Kumquat blockchain. It handles peer discovery, connection management, message broadcasting, and blockchain data synchronization.
 
 ## Components
 

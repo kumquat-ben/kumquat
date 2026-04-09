@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Script to create a Vibecoin configuration file
+# Script to create a Kumquat configuration file
 
 # Default values
-NODE_NAME="vibecoin-node"
-DATA_DIR="./data/vibecoin"
+NODE_NAME="kumquat-node"
+DATA_DIR="./data/kumquat"
 LOG_LEVEL="info"
 API_HOST="127.0.0.1"
 API_PORT=8545
@@ -80,8 +80,8 @@ while [[ $# -gt 0 ]]; do
     --help)
       echo "Usage: $0 [options]"
       echo "Options:"
-      echo "  --node-name NAME           Set the node name (default: vibecoin-node)"
-      echo "  --data-dir DIR             Set the data directory (default: ./data/vibecoin)"
+      echo "  --node-name NAME           Set the node name (default: kumquat-node)"
+      echo "  --data-dir DIR             Set the data directory (default: ./data/kumquat)"
       echo "  --log-level LEVEL          Set the log level (default: info)"
       echo "  --api-host HOST            Set the API host (default: 127.0.0.1)"
       echo "  --api-port PORT            Set the API port (default: 8545)"
@@ -144,8 +144,8 @@ enable_upnp = true
 enable_natpmp = true
 enable_dht = true
 dht_bootstrap_nodes = [
-    "/dns4/dht1.vibecoin.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
-    "/dns4/dht2.vibecoin.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
+    "/dns4/dht1.kumquat.network/tcp/30334/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+    "/dns4/dht2.kumquat.network/tcp/30334/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9"
 EOF
 
 # Add custom bootstrap node to DHT if provided
@@ -243,4 +243,4 @@ EOF
 fi
 
 echo "Configuration complete. You can now start the node with:"
-echo "./target/release/vibecoin --config config.toml"
+echo "./target/release/kumquat --config config.toml"

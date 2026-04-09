@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::env;
 
-use vibecoin::storage::RocksDBStore;
-use vibecoin::storage::BlockStore;
-use vibecoin::storage::KVStore;
+use kumquat::storage::RocksDBStore;
+use kumquat::storage::BlockStore;
+use kumquat::storage::KVStore;
 
 fn main() {
     // Parse command line arguments
@@ -19,7 +19,7 @@ fn main() {
     }
 
     // Initialize the database
-    let db_path = Path::new("./data/vibecoin/db");
+    let db_path = Path::new("./data/kumquat/db");
     let kv_store = match RocksDBStore::new(db_path) {
         Ok(store) => store,
         Err(e) => {

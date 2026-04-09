@@ -1,4 +1,4 @@
-//! Monitoring tools for VibeCoin blockchain
+//! Monitoring tools for Kumquat blockchain
 //!
 //! This module provides monitoring tools for the blockchain,
 //! including performance metrics, resource usage, and health checks.
