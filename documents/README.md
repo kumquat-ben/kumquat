@@ -10,6 +10,7 @@ This folder is the top-level operating manual for Kumquat. It consolidates the d
 - [Operator Onboarding](operator-onboarding.md): production access, deployment responsibilities, and operational checks
 - [Product Requirements Document](product-requirements.md): current product intent, audience, scope, and release assumptions
 - [White Paper Initial Draft](whitepaper-initial-draft.md): Markdown draft converted from the provided whitepaper skeleton
+- [Community Operations](community-operations.md): GitHub Discussions seeding plan, engagement cadence, and project-management integration
 
 ## Source Material
 

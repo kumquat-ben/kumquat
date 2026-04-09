@@ -115,6 +115,7 @@ Top-level team documentation now lives in [documents](documents):
 
 - [documents/README.md](documents/README.md)
 - [documents/aws-environment-deployment.md](documents/aws-environment-deployment.md)
+- [documents/community-operations.md](documents/community-operations.md)
 - [documents/vpn-and-helm-deployment.md](documents/vpn-and-helm-deployment.md)
 - [documents/developer-onboarding.md](documents/developer-onboarding.md)
 - [documents/operator-onboarding.md](documents/operator-onboarding.md)
@@ -147,8 +148,11 @@ terraform plan
 Code contributions are welcome through GitHub:
 
 - Open an issue: <https://github.com/kumquatben/kumquat/issues>
+- Join Discussions: <https://github.com/kumquatben/kumquat/discussions>
 - Submit a pull request: <https://github.com/kumquatben/kumquat/pulls>
 - Sponsor the project: <https://github.com/sponsors/kumquatben>
+
+Project management and community work should run as part of the normal delivery cycle, not outside it. Use Discussions for `Q&A`, `Ideas`, `Polls`, and `Announcements`, link relevant threads in PRs when community context exists, and keep the recurring engagement cadence documented in [documents/community-operations.md](documents/community-operations.md) visible in project planning.
 
 © 2026 Benjamin Levin. All Rights Reserved.
 Unauthorized use, copying, or distribution is strictly prohibited.
