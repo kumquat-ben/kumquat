@@ -44,18 +44,18 @@ const BILL_ITEMS = [
 const HOW_IT_WORKS_STEPS = [
   {
     number: "01",
-    title: "Mint cash as objects",
-    body: "Kumquat treats each denomination as a discrete unit with a visible identity, so value feels held rather than abstracted away into a balance row.",
+    title: "Model units as objects",
+    body: "Kumquat represents each denomination as a discrete software unit with a visible identity, so the interface stays legible instead of collapsing into one balance row.",
   },
   {
     number: "02",
-    title: "Send it like handing over cash",
-    body: "Transfers read like passing something real from one wallet to another. Motion reinforces the handoff instead of decorating it.",
+    title: "Track transfers clearly",
+    body: "Transfers read like moving distinct units between wallets. Motion reinforces the handoff instead of decorating it.",
   },
   {
     number: "03",
     title: "Read the wallet at a glance",
-    body: "The interface surfaces denomination mix, object count, and total in the same view so the mental model stays physical and legible.",
+    body: "The interface surfaces denomination mix, object count, and totals in the same view so the object model stays visible and legible.",
   },
 ];
 
@@ -74,15 +74,15 @@ const DENOMINATION_GRID = [
 ];
 
 const WALLET_ROWS = [
-  { label: "$100.00", kind: "bill", detail: "Treasury note unit", amount: 100.0 },
-  { label: "$50.00", kind: "bill", detail: "Reserve transfer", amount: 50.0 },
-  { label: "$20.00", kind: "bill", detail: "Payroll cash object", amount: 20.0 },
-  { label: "$10.00", kind: "bill", detail: "Merchant settlement", amount: 10.0 },
-  { label: "$5.00", kind: "bill", detail: "Retail change unit", amount: 5.0 },
-  { label: "$1.00", kind: "bill", detail: "Pocket balance", amount: 1.0 },
-  { label: "$0.25", kind: "coin", detail: "Coin remainder", amount: 0.25 },
-  { label: "$0.10", kind: "coin", detail: "Coin remainder", amount: 0.1 },
-  { label: "$0.01", kind: "coin", detail: "Coin remainder", amount: 0.01 },
+  { label: "$100.00", kind: "bill", detail: "Large-format unit", amount: 100.0 },
+  { label: "$50.00", kind: "bill", detail: "Transfer example", amount: 50.0 },
+  { label: "$20.00", kind: "bill", detail: "Wallet row sample", amount: 20.0 },
+  { label: "$10.00", kind: "bill", detail: "Interface unit", amount: 10.0 },
+  { label: "$5.00", kind: "bill", detail: "Smaller-format unit", amount: 5.0 },
+  { label: "$1.00", kind: "bill", detail: "Lowest bill example", amount: 1.0 },
+  { label: "$0.25", kind: "coin", detail: "Coin example", amount: 0.25 },
+  { label: "$0.10", kind: "coin", detail: "Coin example", amount: 0.1 },
+  { label: "$0.01", kind: "coin", detail: "Coin example", amount: 0.01 },
 ];
 
 function getCurrentPath() {
@@ -228,7 +228,7 @@ function HeroSection({ auth }) {
         initial={{ opacity: 0, y: -12 }}
         transition={{ duration: 0.5, delay: prefersReducedMotion ? 0 : 0.05 }}
       >
-        Physical cash mental model for the internet
+        Object-based transfer interface for the internet
       </motion.p>
       <motion.h1
         animate={{ opacity: 1, y: 0 }}
@@ -241,7 +241,7 @@ function HeroSection({ auth }) {
           damping: 18,
         }}
       >
-        Money that behaves like
+        Digital units that behave like
         {" "}
         <em>objects you can hold.</em>
       </motion.h1>
@@ -251,8 +251,9 @@ function HeroSection({ auth }) {
         initial={{ opacity: 0, y: 18 }}
         transition={{ duration: 0.55, delay: prefersReducedMotion ? 0 : 0.2 }}
       >
-        Kumquat Chain turns denominations into visible units with weight, hierarchy,
-        and transfer logic that reads like handing someone real cash.
+        Kumquat Chain is interface technology for representing denominations as
+        visible software units with weight, hierarchy, and transfer logic people can
+        follow.
       </motion.p>
       <motion.div
         animate={{ opacity: 1, y: 0 }}
@@ -369,14 +370,14 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
       <div className="story-copy-panel">
         <p className="section-eyebrow">Why Kumquat</p>
         <h2 className="section-title">
-          Digital money that keeps the
+          Software that keeps the
           {" "}
-          <em>logic of cash.</em>
+          <em>logic of objects.</em>
         </h2>
         <p className="body-copy">
-          Kumquat makes value easier to understand by showing it as distinct units
-          instead of a single abstract balance. Bills, coins, and wallet rows help
-          people see what they hold and what moves in a transfer.
+          Kumquat is building software for object-based digital units. Bills, coins,
+          and wallet rows are interface primitives that help people inspect what is
+          in a wallet and what moves in a transfer.
         </p>
         <div className="story-links" aria-label="Project links">
           <a
@@ -402,7 +403,7 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
             <h3>Clear denomination hierarchy</h3>
             <p className="body-copy">
               Larger units lead, smaller units follow, and the wallet view keeps the
-              composition readable from total down to the smallest remainder.
+              composition readable from totals down to the smallest remainder.
             </p>
           </article>
           <article>
@@ -414,6 +415,11 @@ function StorySection({ auth, onLogout, formData, handleChange, handleSubmit, me
             </p>
           </article>
         </div>
+        <p className="legal-note">
+          Kumquat is software under development. This site describes interface and
+          protocol concepts only and is not an offer to sell or distribute money,
+          commodities, securities, or financial products.
+        </p>
       </div>
 
       <div className="story-side-panel">
@@ -818,21 +824,21 @@ function SignInPage({ auth }) {
           <p className="body-copy signin-copy">
             {auth.user
               ? `Your Kumquat account is active as ${auth.user.first_name || auth.user.full_name}.`
-              : "Early members earn kumquats, proof you were here first. Kumquats convert to real units on the chain when it launches."}
+              : "Early members get access to the product, updates, and testing milestones as the software develops."}
           </p>
 
           <div className="signin-perks">
             <div className="signin-perk">
               <span className="signin-perk-dot" />
-              <span>Founding member badge on your wallet</span>
+              <span>Founding member badge in the product</span>
             </div>
             <div className="signin-perk">
               <span className="signin-perk-dot" />
-              <span>Kumquats for every action you take in early access</span>
+              <span>Early access to product walkthroughs and releases</span>
             </div>
             <div className="signin-perk">
               <span className="signin-perk-dot signin-perk-dot-gold" />
-              <span>First allocation of minted units at launch</span>
+              <span>Priority updates as the protocol and interface mature</span>
             </div>
           </div>
 
@@ -850,7 +856,7 @@ function SignInPage({ auth }) {
 
           <div className="signin-divider" />
           <p className="signin-footnote">
-            Google handles consent. Kumquat keeps the product story.
+            Google handles consent. Kumquat provides software access only.
           </p>
         </div>
       </section>

@@ -558,6 +558,7 @@ input:focus {
 .story-principles .body-copy,
 .step-content .body-copy,
 .wallet-row-detail,
+.legal-note,
 .identity-card .body-copy,
 .signup-success .body-copy,
 .utility-card .body-copy,
@@ -793,6 +794,17 @@ input:focus {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-soft);
+}
+
+.legal-note {
+  margin: 2rem 0 0;
+  padding-top: 1rem;
+  border-top: 0.5px solid rgba(216, 90, 48, 0.14);
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f8374;
 }
 
 .denomination-grid {
