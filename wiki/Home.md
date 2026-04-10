@@ -17,11 +17,12 @@ This repository contains:
 - [AWS Environment Deployment](AWS-Environment-Deployment)
 - [VPN and Deployment](VPN-and-Deployment)
 - [Product Overview](Product-Overview)
+- [Roadmap](Roadmap)
 
 ## Live Environment
 
 - Production site: <https://kumquat.info>
-- Source repository: <https://github.com/kumquatben/kumquat>
+- Source repository: <https://github.com/kumquat-ben/kumquat>
 
 ## Project Model
 
@@ -37,3 +38,14 @@ The farm architecture combines:
 - data marketplace layer for data products
 
 These sit on top of shared services such as wallet management, signing, APIs, node orchestration, and operator controls.
+
+## Roadmap
+
+The roadmap is organized across four active tracks:
+
+- product
+- protocol
+- platform
+- community
+
+For the current milestone structure and immediate priorities, see [Roadmap](Roadmap).

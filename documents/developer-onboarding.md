@@ -31,7 +31,7 @@ Install:
 ## Clone And Inspect
 
 ```bash
-git clone git@github-kumquat:kumquatben/kumquat.git
+git clone git@github-kumquat:kumquat-ben/kumquat.git
 cd kumquat
 git status
 ```

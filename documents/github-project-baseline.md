@@ -2,11 +2,11 @@
 
 ## Request
 
-Create and populate the GitHub project at `https://github.com/users/kumquatben/projects/1` using the current repository state as a baseline. The requested scope was lightweight: use the whitepaper, roadmap direction, features already present in the repo, and remaining work without going too deep.
+Create and populate the GitHub project at `https://github.com/users/kumquat-ben/projects/1` using the current repository state as a baseline. The requested scope was lightweight: use the whitepaper, roadmap direction, features already present in the repo, and remaining work without going too deep.
 
 ## What Changed
 
-- Confirmed that GitHub Project `kumquatben/projects/1` already existed and treated the task as a populate-and-structure update rather than creating a new project.
+- Confirmed that GitHub Project `kumquat-ben/projects/1` already existed and treated the task as a populate-and-structure update rather than creating a new project.
 - Updated the project README to summarize Kumquat across three active tracks:
   - product
   - platform
@@ -67,7 +67,7 @@ This keeps repository operations connected across code, docs, project planning, 
 
 ### What Was Asked
 
-- Add roadmap milestones to GitHub project `kumquatben/projects/1`
+- Add roadmap milestones to GitHub project `kumquat-ben/projects/1`
 - Associate the current project work to the first milestone, `Proof of concept`
 - Add the remaining milestone set provided by the user
 
@@ -107,3 +107,63 @@ This keeps repository operations connected across code, docs, project planning, 
   - `Maturity`
 - Replace the remaining draft cards with issue-backed project items so milestone grouping works consistently in the project UI
 - Add `Priority`, `Size`, and target dates once the milestone-to-issue mapping is stable
+
+## Roadmap Item Refresh 2026-04-09
+
+### GitHub Write Status
+
+- Direct GitHub project updates could not be applied from this workspace because the local `gh` session returned `Bad credentials (HTTP 401)`.
+- The item set below is derived from the current repository state so it can be added to `kumquat-ben/projects/1` once GitHub auth is repaired.
+
+### Recommended Project Items
+
+| Title | Track | Status | Milestone | Evidence In Repo |
+|---|---|---|---|---|
+| Public marketing site and denomination-first homepage are live | Product | Done | Proof of concept | `README.md`, `website/src/App.jsx` |
+| Google sign-in and early-access onboarding are implemented | Product | Done | Proof of concept | `website/src/App.jsx`, `website-backend/api/views.py` |
+| Backend admin and API surface exist for pre-launch operations | Product | Done | Proof of concept | `website-backend/api/views.py` |
+| AWS k3s platform, Helm releases, and operator docs are in place | Platform | Done | Proof of concept | `infra/aws-secure-platform/README.md` |
+| Turn the whitepaper draft into a protocol spec and public roadmap | Protocol | In progress | Research & Foundation | `documents/whitepaper-initial-draft.md` |
+| Align the Rust blockchain codebase with the current Kumquat product direction | Protocol | In progress | Research & Foundation | `blockchain/README.md` |
+| Define early-access rewards policy and kumquat conversion rules | Product | Backlog | Research & Foundation | `documents/product-requirements.md` |
+| Ship a real wallet model beyond the current marketing demo surfaces | Product | Backlog | Technical Development | `website/src/App.jsx`, `documents/product-requirements.md` |
+| Implement transfer flows that move discrete denomination units | Product | Backlog | Technical Development | `website/src/App.jsx`, `documents/product-requirements.md` |
+| Connect frontend wallet and auth surfaces to persistent backend state | Product | Backlog | Technical Development | `website/src/App.jsx`, `website-backend/api/views.py` |
+| Define the chain transaction and denomination object model | Protocol | Backlog | Technical Development | `blockchain/storage/README.md`, `blockchain/README.md` |
+| Finish consensus, networking, and sync integration around the current chain design | Protocol | Backlog | Technical Development | `blockchain/consensus/engine.rs`, `blockchain/network/README.md` |
+| Harden observability, backups, and operator recovery procedures | Platform | Backlog | Adoption & Scaling | `infra/aws-secure-platform/README.md` |
+| Tighten production secrets, rotation, and operational runbooks | Platform | Backlog | Adoption & Scaling | `infra/aws-secure-platform/README.md`, `documents/operator-onboarding.md` |
+| Seed Discussions and establish the recurring roadmap/community cycle | Community | Backlog | Ecosystem Growth | `documents/community-operations.md` |
+| Publish monthly roadmap and farm updates tied back to project status | Community | Backlog | Ecosystem Growth | `documents/community-operations.md` |
+
+### Suggested Issue Conversion Order
+
+Convert these items from project drafts into repository issues first so milestone filtering works cleanly:
+
+1. Turn the whitepaper draft into a protocol spec and public roadmap
+2. Align the Rust blockchain codebase with the current Kumquat product direction
+3. Define early-access rewards policy and kumquat conversion rules
+4. Ship a real wallet model beyond the current marketing demo surfaces
+5. Implement transfer flows that move discrete denomination units
+6. Connect frontend wallet and auth surfaces to persistent backend state
+7. Define the chain transaction and denomination object model
+8. Finish consensus, networking, and sync integration around the current chain design
+9. Harden observability, backups, and operator recovery procedures
+10. Tighten production secrets, rotation, and operational runbooks
+11. Seed Discussions and establish the recurring roadmap/community cycle
+12. Publish monthly roadmap and farm updates tied back to project status
+
+### Suggested Project Fields
+
+- `Status`: `Backlog`, `In progress`, `Done`
+- `Track`: `Product`, `Protocol`, `Platform`, `Community`
+- `Milestone`: `Proof of concept`, `Research & Foundation`, `Technical Development`, `Ecosystem Growth`, `Adoption & Scaling`, `Maturity`
+- `Priority`: start with `P1` for roadmap/spec, blockchain alignment, rewards policy, wallet model, and transfer flows
+- `Size`: use `S`, `M`, `L` only after the issue breakdown is stable
+
+### Next Action When Auth Is Fixed
+
+- Re-authenticate `gh`
+- Create repository issues for the backlog and in-progress items above
+- Add each issue to `kumquat-ben/projects/1`
+- Set `Status`, `Track`, and `Milestone` on each project item

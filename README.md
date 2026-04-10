@@ -124,7 +124,7 @@ Top-level team documentation now lives in [documents](documents):
 ## Getting Started
 
 ```bash
-git clone https://github.com/kumquatben/kumquat
+git clone https://github.com/kumquat-ben/kumquat
 cd kumquat
 
 # Frontend dev server
@@ -147,10 +147,10 @@ terraform plan
 
 Code contributions are welcome through GitHub:
 
-- Open an issue: <https://github.com/kumquatben/kumquat/issues>
-- Join Discussions: <https://github.com/kumquatben/kumquat/discussions>
-- Submit a pull request: <https://github.com/kumquatben/kumquat/pulls>
-- Sponsor the project: <https://github.com/sponsors/kumquatben>
+- Open an issue: <https://github.com/kumquat-ben/kumquat/issues>
+- Join Discussions: <https://github.com/kumquat-ben/kumquat/discussions>
+- Submit a pull request: <https://github.com/kumquat-ben/kumquat/pulls>
+- Sponsor the project: <https://github.com/sponsors/kumquat-ben>
 
 Project management and community work should run as part of the normal delivery cycle, not outside it. Use Discussions for `Q&A`, `Ideas`, `Polls`, and `Announcements`, link relevant threads in PRs when community context exists, and keep the recurring engagement cadence documented in [documents/community-operations.md](documents/community-operations.md) visible in project planning.
 
