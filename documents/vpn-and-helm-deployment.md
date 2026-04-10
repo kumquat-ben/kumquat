@@ -177,7 +177,7 @@ terraform plan \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
-  -var="google_oauth_redirect_uri=https://kumquat.info/auth/google/callback" \
+  -var="google_oauth_redirect_uri=https://kumquat.info/api/auth/google/callback" \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 
@@ -188,7 +188,7 @@ terraform apply \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
-  -var="google_oauth_redirect_uri=https://kumquat.info/auth/google/callback" \
+  -var="google_oauth_redirect_uri=https://kumquat.info/api/auth/google/callback" \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 ```

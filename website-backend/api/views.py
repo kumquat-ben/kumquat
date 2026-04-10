@@ -603,7 +603,6 @@ def _oauth_is_configured():
     return bool(
         settings.GOOGLE_OAUTH_CLIENT_ID
         and settings.GOOGLE_OAUTH_CLIENT_SECRET
-        and settings.GOOGLE_OAUTH_REDIRECT_URI
     )
 
 
@@ -634,6 +633,11 @@ def _google_redirect_uri_for_request(request):
     if configured_redirect_uri:
         return configured_redirect_uri
 
+    absolute_callback_url = request.build_absolute_uri("/api/auth/google/callback")
+    parsed_callback_url = urlparse(absolute_callback_url)
+    if parsed_callback_url.scheme in {"http", "https"} and parsed_callback_url.netloc:
+        return absolute_callback_url
+
     for header_name in ("HTTP_ORIGIN", "HTTP_REFERER"):
         value = (request.META.get(header_name) or "").strip()
         if not value:
@@ -643,9 +647,9 @@ def _google_redirect_uri_for_request(request):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue
 
-        return f"{parsed.scheme}://{parsed.netloc}/auth/google/callback"
+        return f"{parsed.scheme}://{parsed.netloc}/api/auth/google/callback"
 
-    return "http://localhost:5173/auth/google/callback"
+    return "http://localhost:8000/api/auth/google/callback"
 
 
 def _build_username(email, google_sub):
