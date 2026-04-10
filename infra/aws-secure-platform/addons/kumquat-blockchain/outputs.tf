@@ -5,7 +5,7 @@ output "namespace" {
 }
 
 output "storage_class_name" {
-  value = kubernetes_storage_class_v1.blockchain.metadata[0].name
+  value = local.blockchain_storage_class_name
 }
 
 output "release_name" {

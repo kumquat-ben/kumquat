@@ -3,4 +3,7 @@ image_repository = "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockch
 image_tag        = "blockchain-20260409-1"
 replica_count    = 1
 network_name     = "dev"
+create_storage_class = true
+# existing_storage_class_name = "gp3"
+# existing_pvc_name           = "kumquat-blockchain-data"
 storage_size     = "200Gi"

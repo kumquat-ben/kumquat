@@ -237,6 +237,15 @@ cd ../../../images/mysql-backup
 docker buildx build --platform linux/amd64 -t "$REPO_URL:mysql-backup-YYYYMMDD-HHMMSS" --push .
 ```
 
+For the blockchain node image:
+
+```bash
+REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.kumquat_blockchain')"
+
+cd ../../../blockchain
+IMAGE_REPOSITORY="$REPO_URL" ./scripts/build-and-push-image.sh
+```
+
 ### 8. Deploy the website manifests to k3s
 
 Update the image in `kubernetes/example-app/deployment.yaml`, then apply:
@@ -253,6 +262,18 @@ The website ingress can be exposed publicly when `public_app_load_balancer = tru
 ### 9. Deploy the Kumquat backend platform add-on
 
 This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, a private/versioned/KMS-encrypted S3 bucket for MySQL dumps, a Kubernetes CronJob that uploads compressed backups to that bucket, and the Django backend routed at `/api/`. It also injects the Google OAuth client ID, secret, and redirect URI into the backend environment secret.
+
+### 10. Deploy the blockchain add-on
+
+```bash
+cd ../../addons/kumquat-blockchain
+cp terraform.tfvars.example terraform.tfvars
+terraform init -backend-config=backend.hcl
+terraform plan -var="kubeconfig_path=$KUBECONFIG"
+terraform apply -var="kubeconfig_path=$KUBECONFIG"
+```
+
+Use `create_storage_class = false` with `existing_storage_class_name` if the cluster already has the right storage class. Use `existing_pvc_name` only for a single-node deployment that should bind to a pre-created PVC.
 
 Before the first `terraform init`, create a private S3 bucket for Terraform state and use it as the add-on backend:
 

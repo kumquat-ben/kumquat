@@ -1,5 +1,9 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+locals {
+  blockchain_storage_class_name = var.create_storage_class ? kubernetes_storage_class_v1.blockchain[0].metadata[0].name : var.existing_storage_class_name
+}
+
 resource "kubernetes_namespace_v1" "kumquat" {
   metadata {
     name = var.namespace
@@ -7,6 +11,8 @@ resource "kubernetes_namespace_v1" "kumquat" {
 }
 
 resource "kubernetes_storage_class_v1" "blockchain" {
+  count = var.create_storage_class ? 1 : 0
+
   metadata {
     name = var.storage_class_name
   }
@@ -64,13 +70,15 @@ resource "helm_release" "blockchain" {
       ]
     }
     persistence = {
-      storageClassName = kubernetes_storage_class_v1.blockchain.metadata[0].name
+      existingClaim    = var.existing_pvc_name
+      storageClassName = local.blockchain_storage_class_name
       size             = var.storage_size
     }
     nodeSelector = var.node_selector
   })]
 
   depends_on = [
+    kubernetes_namespace_v1.kumquat,
     kubernetes_storage_class_v1.blockchain,
   ]
 }

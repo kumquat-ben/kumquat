@@ -42,6 +42,21 @@ variable "storage_class_name" {
   default = "kumquat-blockchain-gp3"
 }
 
+variable "create_storage_class" {
+  type    = bool
+  default = true
+}
+
+variable "existing_storage_class_name" {
+  type    = string
+  default = null
+}
+
+variable "existing_pvc_name" {
+  type    = string
+  default = null
+}
+
 variable "storage_size" {
   type    = string
   default = "200Gi"

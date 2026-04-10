@@ -79,6 +79,7 @@ genesis:
       accountType: User
 
 persistence:
+  existingClaim: ""
   storageClassName: kumquat-blockchain-gp3
   accessModes:
     - ReadWriteOnce

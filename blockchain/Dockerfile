@@ -1,12 +1,10 @@
-FROM rust:1.67-slim-bullseye as builder
+FROM rust:1.85-slim-bookworm AS builder
 
 WORKDIR /usr/src/kumquat
 
-# Install dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
-    libssl-dev \
     pkg-config \
     libclang-dev \
     cmake \
@@ -14,36 +12,25 @@ RUN apt-get update && \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the source code
 COPY . .
 
-# Build the application
-RUN cargo build --release
+RUN cargo build --locked --release --bin kumquat
 
-# Create a new stage with a minimal image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
-# Install runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libssl1.1 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the binary from the builder stage
 COPY --from=builder /usr/src/kumquat/target/release/kumquat /usr/local/bin/kumquat
 
-# Create a directory for the data
 RUN mkdir -p /data/kumquat
 
-# Set the working directory
 WORKDIR /data/kumquat
 
-# Expose the ports
 EXPOSE 30333 8545 9100
 
-# Set the entrypoint
 ENTRYPOINT ["kumquat"]
 
-# Set the default command
 CMD ["--config", "/data/kumquat/config.toml"]

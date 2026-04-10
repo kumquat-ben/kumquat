@@ -7,6 +7,9 @@ metadata:
   labels:
     {{- include "kumquat-blockchain.labels" . | nindent 4 }}
 spec:
+  {{- if and .Values.persistence.existingClaim (ne (int .Values.replicaCount) 1) }}
+  {{- fail "persistence.existingClaim only supports replicaCount=1" }}
+  {{- end }}
   replicas: {{ .Values.replicaCount }}
   podManagementPolicy: Parallel
   serviceName: {{ include "kumquat-blockchain.fullname" . }}-headless
@@ -74,9 +77,15 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
+        {{- if .Values.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim }}
+        {{- end }}
         - name: config
           configMap:
             name: {{ include "kumquat-blockchain.fullname" . }}-config
+  {{- if not .Values.persistence.existingClaim }}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -89,3 +98,4 @@ spec:
         resources:
           requests:
             storage: {{ .Values.persistence.size }}
+  {{- end }}
