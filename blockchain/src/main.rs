@@ -5,13 +5,15 @@ use log::{info, error, warn};
 use structopt::StructOpt;
 
 use kumquat::init_logger;
+use kumquat::api;
 use kumquat::config::Config;
 use kumquat::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
 use kumquat::mempool::Mempool;
 use kumquat::consensus::start_consensus;
 use kumquat::consensus::config::ConsensusConfig;
-use kumquat::network::{start_network, start_enhanced_network};
+use kumquat::network::start_enhanced_network;
 use kumquat::network::NetworkConfig;
+use kumquat::node_runtime::NodeRuntime;
 use kumquat::tools::genesis::generate_genesis;
 
 fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
@@ -258,7 +260,7 @@ async fn main() {
     let state_store = Arc::new(StateStore::new(kv_store_static));
 
     // Create batch operation manager
-    let batch_manager = Arc::new(BatchOperationManager::new(
+    let _batch_manager = Arc::new(BatchOperationManager::new(
         kv_store.clone(),
         block_store.clone(),
         tx_store.clone(),
@@ -306,9 +308,7 @@ async fn main() {
 
     // Initialize network
     info!("Initializing network...");
-    let (network_tx, network_rx) = mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
-    let (block_tx, block_rx) = mpsc::channel::<kumquat::storage::block_store::Block>(100);
-    let (tx_tx, tx_rx) = mpsc::channel::<kumquat::storage::tx_store::TransactionRecord>(1000);
+    let (network_tx, _network_rx) = mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
 
     // Convert config.network to NetworkConfig
     let network_config = NetworkConfig {
@@ -347,7 +347,7 @@ async fn main() {
         miner_address: resolve_miner_address(config.node.node_id.as_deref(), &config.node.node_name),
     };
 
-    let consensus = start_consensus(
+    let _consensus = start_consensus(
         consensus_config,
         static_kv_store,
         block_store.clone(),
@@ -355,6 +355,44 @@ async fn main() {
         state_store.clone(),
         network_tx.clone(),
     ).await;
+
+    if config.node.enable_api {
+        let api_bind_addr = format!("{}:{}", config.node.api_host, config.node.api_port)
+            .parse()
+            .expect("Invalid API bind address");
+        let network_bind_addr = format!("{}:{}", config.network.listen_addr, config.network.listen_port)
+            .parse()
+            .expect("Invalid network bind address");
+
+        let runtime = Arc::new(NodeRuntime::new(
+            config.node.node_name.clone(),
+            config.consensus.chain_id,
+            api_bind_addr,
+            network_bind_addr,
+            PathBuf::from(&config.node.data_dir),
+            PathBuf::from(&config.storage.db_path),
+            config.consensus.enable_mining,
+            config.consensus.mining_threads,
+            true,
+            block_store.clone(),
+            mempool.clone(),
+            network.clone(),
+        ));
+
+        tokio::spawn(async move {
+            if let Err(e) = api::serve(runtime).await {
+                error!("API server exited with error: {}", e);
+            }
+        });
+
+        info!(
+            "Node API dashboard available at http://{}:{}/dashboard",
+            config.node.api_host,
+            config.node.api_port
+        );
+    } else {
+        info!("Node API is disabled in configuration");
+    }
 
     info!("Kumquat node started successfully");
 

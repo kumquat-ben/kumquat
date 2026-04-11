@@ -8,6 +8,8 @@ pub mod consensus;
 pub mod mempool;
 pub mod config;
 pub mod tools;
+pub mod node_runtime;
+pub mod api;
 
 // Initialize logging
 pub fn init_logger() {

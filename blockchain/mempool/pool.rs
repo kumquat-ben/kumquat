@@ -124,6 +124,16 @@ impl Mempool {
         self
     }
 
+    /// Return the current number of transactions in the mempool.
+    pub fn len(&self) -> usize {
+        self.transactions.len()
+    }
+
+    /// Return true when the mempool does not currently hold transactions.
+    pub fn is_empty(&self) -> bool {
+        self.transactions.is_empty()
+    }
+
     /// Insert a transaction into the mempool
     pub async fn insert(&self, tx: TransactionRecord) -> Result<(), MempoolError> {
         // Check if the transaction is already in the mempool

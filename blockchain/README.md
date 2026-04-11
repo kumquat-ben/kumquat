@@ -56,6 +56,16 @@ Use the generated config tool, genesis tool, and node binary from `./target/rele
 
 This README update is intentionally scoped to documentation only, so command examples stay generic while the underlying codebase still carries older internal names.
 
+### Node Dashboard
+
+The Rust node now exposes an embedded read-only web dashboard when `node.enable_api = true`.
+
+- dashboard: `http://<api_host>:<api_port>/dashboard`
+- JSON status: `http://<api_host>:<api_port>/api/status`
+- health check: `http://<api_host>:<api_port>/health`
+
+The first implementation reports real values where the runtime already exposes them, such as latest block height, peer count, mempool size, uptime, and database path/size. Fields like hash rate, sync progress, and operator commands are intentionally marked as not fully instrumented yet.
+
 ### Docker
 
 ```bash
