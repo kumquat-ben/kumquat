@@ -14,11 +14,22 @@ from django.contrib.auth import get_user_model, login, logout
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import connection
+from django.db.models import Max
 from django.utils.dateparse import parse_datetime
+from django.utils.text import slugify
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup, VonageInboundSms
+from .models import EarlyAccessSignup, ManagedNode, VonageInboundSms
+from .node_launcher import (
+    NodeLauncherError,
+    dashboard_proxy_path,
+    launch_node,
+    launcher_enabled,
+    refresh_node,
+    stop_node,
+    tail_logs,
+)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -211,6 +222,74 @@ def _serialize_vonage_sms(message):
         "created_at": message.created_at.isoformat(),
         "updated_at": message.updated_at.isoformat(),
     }
+
+
+def _admin_required_response(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+    return None
+
+
+def _serialize_managed_node(node):
+    return {
+        "id": node.id,
+        "name": node.name,
+        "display_name": node.display_name,
+        "container_name": node.container_name,
+        "container_id": node.container_id,
+        "image": node.image,
+        "network_name": node.network_name,
+        "chain_id": node.chain_id,
+        "enable_mining": node.enable_mining,
+        "mining_threads": node.mining_threads,
+        "api_port": node.api_port,
+        "p2p_port": node.p2p_port,
+        "metrics_port": node.metrics_port,
+        "status": node.status,
+        "last_error": node.last_error,
+        "logs_tail": node.last_logs,
+        "dashboard_proxy_url": dashboard_proxy_path(node),
+        "launched_by": node.launched_by.email if node.launched_by else "",
+        "launched_at": node.launched_at.isoformat() if node.launched_at else None,
+        "last_status_at": node.last_status_at.isoformat() if node.last_status_at else None,
+        "stopped_at": node.stopped_at.isoformat() if node.stopped_at else None,
+    }
+
+
+def _next_managed_node_ports():
+    aggregate = ManagedNode.objects.aggregate(
+        max_api_port=Max("api_port"),
+        max_p2p_port=Max("p2p_port"),
+        max_metrics_port=Max("metrics_port"),
+    )
+    return {
+        "api_port": max(settings.NODE_LAUNCHER_BASE_API_PORT, (aggregate["max_api_port"] or settings.NODE_LAUNCHER_BASE_API_PORT - 1) + 1),
+        "p2p_port": max(settings.NODE_LAUNCHER_BASE_P2P_PORT, (aggregate["max_p2p_port"] or settings.NODE_LAUNCHER_BASE_P2P_PORT - 1) + 1),
+        "metrics_port": max(settings.NODE_LAUNCHER_BASE_METRICS_PORT, (aggregate["max_metrics_port"] or settings.NODE_LAUNCHER_BASE_METRICS_PORT - 1) + 1),
+    }
+
+
+def _build_managed_node_name(display_name):
+    base = slugify(display_name)[:40] or "node"
+    candidate = base
+    suffix = 1
+    while ManagedNode.objects.filter(name=candidate).exists():
+        candidate = f"{base[:50]}-{suffix}"
+        suffix += 1
+    return candidate[:63]
+
+
+def _load_managed_nodes():
+    nodes = list(ManagedNode.objects.select_related("launched_by").order_by("-created_at"))
+    hydrated = []
+    for node in nodes:
+        try:
+            hydrated.append(refresh_node(node))
+        except NodeLauncherError:
+            hydrated.append(node)
+    return hydrated
 
 
 def index_view(_request):
@@ -876,11 +955,9 @@ def early_access_signup_view(request):
 
 
 def admin_dashboard_view(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required."}, status=401)
-
-    if not request.user.is_superuser:
-        return JsonResponse({"error": "Superuser access required."}, status=403)
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
 
     User = get_user_model()
     users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
@@ -897,6 +974,7 @@ def admin_dashboard_view(request):
         _serialize_vonage_sms(message)
         for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")[:10]
     ]
+    managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes()]
 
     return JsonResponse(
         {
@@ -905,10 +983,19 @@ def admin_dashboard_view(request):
                 "superusers": sum(1 for user in users if user["is_superuser"]),
                 "signups": len(signups),
                 "inbound_sms": VonageInboundSms.objects.count(),
+                "managed_nodes": len(managed_nodes),
+                "running_nodes": sum(1 for node in managed_nodes if node["status"] == ManagedNode.STATUS_RUNNING),
             },
             "users": users,
             "signups": signups,
             "recent_sms": sms_messages,
+            "managed_nodes": managed_nodes,
+            "launcher": {
+                "enabled": launcher_enabled(),
+                "default_image": settings.NODE_LAUNCHER_IMAGE,
+                "default_network": settings.NODE_LAUNCHER_NETWORK,
+                "default_chain_id": settings.NODE_LAUNCHER_CHAIN_ID,
+            },
         }
     )
 
@@ -930,11 +1017,9 @@ def admin_dashboard_page_view(request):
 
 
 def admin_vonage_sms_view(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Authentication required."}, status=401)
-
-    if not request.user.is_superuser:
-        return JsonResponse({"error": "Superuser access required."}, status=403)
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
 
     messages = [
         _serialize_vonage_sms(message)
@@ -952,6 +1037,141 @@ def admin_vonage_sms_view(request):
             "messages": messages,
         }
     )
+
+
+@csrf_exempt
+def admin_node_launch_view(request):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if not launcher_enabled():
+        return JsonResponse({"error": "Node launcher is disabled."}, status=503)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    display_name = (payload.get("display_name") or payload.get("name") or "").strip()
+    if not display_name:
+        display_name = f"Managed Node {ManagedNode.objects.count() + 1}"
+
+    ports = _next_managed_node_ports()
+    node = ManagedNode.objects.create(
+        name=_build_managed_node_name(display_name),
+        display_name=display_name[:120],
+        image=(payload.get("image") or settings.NODE_LAUNCHER_IMAGE).strip(),
+        network_name=(payload.get("network_name") or settings.NODE_LAUNCHER_NETWORK).strip() or settings.NODE_LAUNCHER_NETWORK,
+        chain_id=_parse_positive_int(payload.get("chain_id")) or settings.NODE_LAUNCHER_CHAIN_ID,
+        enable_mining=bool(payload.get("enable_mining")),
+        mining_threads=_parse_positive_int(payload.get("mining_threads")) or 1,
+        api_port=ports["api_port"],
+        p2p_port=ports["p2p_port"],
+        metrics_port=ports["metrics_port"],
+        launched_by=request.user,
+    )
+
+    try:
+        node = launch_node(node)
+        return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)}, status=201)
+    except NodeLauncherError as exc:
+        node.last_error = str(exc)
+        node.status = ManagedNode.STATUS_FAILED
+        node.save(update_fields=["last_error", "status", "updated_at"])
+        return JsonResponse({"error": str(exc), "node": _serialize_managed_node(node)}, status=502)
+
+
+@csrf_exempt
+def admin_node_stop_view(request, node_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        return JsonResponse({"error": "Managed node not found."}, status=404)
+
+    try:
+        node = stop_node(node)
+        return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
+    except NodeLauncherError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+
+def admin_node_logs_view(request, node_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        return JsonResponse({"error": "Managed node not found."}, status=404)
+
+    try:
+        node = refresh_node(node)
+        logs = tail_logs(node)
+    except NodeLauncherError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+    return JsonResponse({"status": "ok", "node": _serialize_managed_node(node), "logs": logs})
+
+
+def admin_node_proxy_view(request, node_id, subpath=""):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        return JsonResponse({"error": "Managed node not found."}, status=404)
+
+    try:
+        node = refresh_node(node)
+    except NodeLauncherError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+
+    if node.status != ManagedNode.STATUS_RUNNING:
+        return JsonResponse({"error": "Managed node is not running."}, status=409)
+
+    target_path = "/" + (subpath or "dashboard")
+    if request.GET:
+        target_path = f"{target_path}?{request.META.get('QUERY_STRING', '')}"
+
+    upstream_url = f"http://127.0.0.1:{node.api_port}{target_path}"
+
+    try:
+        with urlopen(
+            Request(
+                upstream_url,
+                method="GET",
+                headers={
+                    "Accept": request.headers.get("Accept", "*/*"),
+                    "User-Agent": request.headers.get("User-Agent", "kumquat-admin-proxy"),
+                },
+            ),
+            timeout=10,
+        ) as response:
+            proxied = HttpResponse(response.read(), status=response.status)
+            for header_name, header_value in response.headers.items():
+                if header_name.lower() in {"connection", "transfer-encoding", "content-length"}:
+                    continue
+                proxied[header_name] = header_value
+            proxied["X-Kumquat-Managed-Node"] = node.name
+            return proxied
+    except HTTPError as exc:
+        return HttpResponse(exc.read(), status=exc.code)
+    except URLError as exc:
+        return JsonResponse({"error": f"Managed node upstream is unavailable: {exc.reason}"}, status=502)
 
 
 def admin_vonage_sms_page_view(request):

@@ -27,6 +27,15 @@ env:
     NODE_PROXY_ALLOWED_METHODS: "GET,HEAD,OPTIONS"
     NODE_PROXY_TIMEOUT_SECONDS: "15"
     NODE_PROXY_LOGIN_URL: "https://kumquat.info/api/auth/google/start"
+    NODE_LAUNCHER_ENABLED: "false"
+    NODE_LAUNCHER_DOCKER_HOST: "tcp://127.0.0.1:2375"
+    NODE_LAUNCHER_ROOT: "/var/lib/kumquat-node-launcher"
+    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260409-1"
+    NODE_LAUNCHER_NETWORK: "dev"
+    NODE_LAUNCHER_CHAIN_ID: "1337"
+    NODE_LAUNCHER_BASE_API_PORT: "18545"
+    NODE_LAUNCHER_BASE_P2P_PORT: "30380"
+    NODE_LAUNCHER_BASE_METRICS_PORT: "19100"
 
 service:
   port: 8000
@@ -70,4 +79,16 @@ securityContext:
     drop:
       - ALL
 
-podSecurityContext: {}
+podSecurityContext:
+  fsGroup: 10001
+
+nodeLauncher:
+  dind:
+    enabled: false
+    image: docker:27.5-dind
+    pullPolicy: IfNotPresent
+    args:
+      - --host=tcp://0.0.0.0:2375
+      - --tls=false
+    storage:
+      sizeLimit: 30Gi

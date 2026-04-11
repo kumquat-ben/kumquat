@@ -13,8 +13,12 @@ import {
 import {
   ArrowRight,
   CheckCircle2,
+  ExternalLink,
   LoaderCircle,
   LogOut,
+  Play,
+  Square,
+  Server,
   ShieldCheck,
 } from "lucide-react";
 
@@ -25,6 +29,7 @@ const AUTH_ME_URL = "/api/auth/me";
 const AUTH_LOGOUT_URL = "/api/auth/logout";
 const AUTH_EXCHANGE_URL = "/api/auth/google/exchange";
 const ADMIN_DASHBOARD_URL = "/api/admin/dashboard";
+const ADMIN_NODE_LAUNCH_URL = "/api/admin/nodes/launch";
 const ADMIN_VONAGE_SMS_URL = "/api/admin/vonage/sms";
 
 const BILL_ITEMS = [
@@ -103,6 +108,22 @@ function formatCurrency(value) {
     currency: "USD",
     minimumFractionDigits: 2,
   }).format(value);
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Unavailable";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function AppShell({ children }) {
@@ -892,6 +913,14 @@ function AdminDashboardPage({ auth }) {
   const [dashboard, setDashboard] = useState({ status: "loading", data: null, error: "" });
   const [activeTab, setActiveTab] = useState("signups");
   const [page, setPage] = useState(1);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [launchForm, setLaunchForm] = useState({
+    display_name: "",
+    enable_mining: false,
+    mining_threads: "1",
+  });
+  const [launchState, setLaunchState] = useState({ status: "idle", error: "" });
+  const [nodeActionState, setNodeActionState] = useState({});
 
   useEffect(() => {
     if (auth.status !== "ready") {
@@ -933,18 +962,82 @@ function AdminDashboardPage({ auth }) {
     }
 
     loadDashboard();
+    const timer = window.setInterval(loadDashboard, 15000);
     return () => {
       active = false;
+      window.clearInterval(timer);
     };
-  }, [auth]);
+  }, [auth, reloadTick]);
 
   const stats = dashboard.data?.stats;
   const users = dashboard.data?.users ?? [];
   const signups = dashboard.data?.signups ?? [];
   const recentSms = dashboard.data?.recent_sms ?? [];
+  const managedNodes = dashboard.data?.managed_nodes ?? [];
+  const launcher = dashboard.data?.launcher;
   const pageSize = activeTab === "signups" ? 8 : 6;
   const activeItems = activeTab === "signups" ? signups : users;
   const pagination = paginateItems(activeItems, page, pageSize);
+
+  async function handleLaunchNode(event) {
+    event.preventDefault();
+    setLaunchState({ status: "submitting", error: "" });
+
+    try {
+      const response = await fetch(ADMIN_NODE_LAUNCH_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          display_name: launchForm.display_name,
+          enable_mining: launchForm.enable_mining,
+          mining_threads: Number.parseInt(launchForm.mining_threads, 10) || 1,
+        }),
+      });
+      const data = await readJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to launch managed node.");
+      }
+
+      setLaunchForm({ display_name: "", enable_mining: false, mining_threads: "1" });
+      setLaunchState({ status: "success", error: "" });
+      setReloadTick((value) => value + 1);
+    } catch (errorObject) {
+      setLaunchState({
+        status: "error",
+        error: errorObject.message || "Failed to launch managed node.",
+      });
+    }
+  }
+
+  async function handleStopNode(nodeId) {
+    setNodeActionState((current) => ({
+      ...current,
+      [nodeId]: { status: "stopping", error: "" },
+    }));
+
+    try {
+      const response = await fetch(`/api/admin/nodes/${nodeId}/stop`, { method: "POST" });
+      const data = await readJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to stop managed node.");
+      }
+      setNodeActionState((current) => ({
+        ...current,
+        [nodeId]: { status: "idle", error: "" },
+      }));
+      setReloadTick((value) => value + 1);
+    } catch (errorObject) {
+      setNodeActionState((current) => ({
+        ...current,
+        [nodeId]: {
+          status: "error",
+          error: errorObject.message || "Failed to stop managed node.",
+        },
+      }));
+    }
+  }
 
   useEffect(() => {
     setPage(1);
@@ -976,6 +1069,14 @@ function AdminDashboardPage({ auth }) {
               <p className="section-eyebrow">Inbound SMS</p>
               <h3>{stats?.inbound_sms ?? "..."}</h3>
             </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Managed Nodes</p>
+              <h3>{stats?.managed_nodes ?? "..."}</h3>
+            </article>
+            <article className="stat-card">
+              <p className="section-eyebrow">Running Nodes</p>
+              <h3>{stats?.running_nodes ?? "..."}</h3>
+            </article>
           </div>
         </div>
 
@@ -988,6 +1089,151 @@ function AdminDashboardPage({ auth }) {
               Open SMS inbox
             </a>
           </div>
+
+          <section className="dashboard-card managed-node-card">
+            <div className="dashboard-card-header">
+              <div>
+                <p className="section-eyebrow">Node Launcher</p>
+                <h3>Launch a managed blockchain node</h3>
+              </div>
+              <div className="dashboard-inline-summary">
+                <p className="body-copy">
+                  {launcher?.enabled
+                    ? `Image ${launcher.default_image}`
+                    : "Launcher is disabled in backend configuration."}
+                </p>
+              </div>
+            </div>
+            {launcher?.enabled ? (
+              <form className="managed-node-form" onSubmit={handleLaunchNode}>
+                <label className="managed-node-field">
+                  <span className="section-eyebrow">Display name</span>
+                  <input
+                    onChange={(event) =>
+                      setLaunchForm((current) => ({
+                        ...current,
+                        display_name: event.target.value,
+                      }))
+                    }
+                    placeholder="Operator Node"
+                    type="text"
+                    value={launchForm.display_name}
+                  />
+                </label>
+                <label className="managed-node-field">
+                  <span className="section-eyebrow">Mining threads</span>
+                  <input
+                    min="1"
+                    onChange={(event) =>
+                      setLaunchForm((current) => ({
+                        ...current,
+                        mining_threads: event.target.value,
+                      }))
+                    }
+                    type="number"
+                    value={launchForm.mining_threads}
+                  />
+                </label>
+                <label className="managed-node-checkbox">
+                  <input
+                    checked={launchForm.enable_mining}
+                    onChange={(event) =>
+                      setLaunchForm((current) => ({
+                        ...current,
+                        enable_mining: event.target.checked,
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  <span>Enable mining on launch</span>
+                </label>
+                <button className="button button-primary" disabled={launchState.status === "submitting"} type="submit">
+                  {launchState.status === "submitting" ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}
+                  Launch node
+                </button>
+              </form>
+            ) : (
+              <p className="dashboard-message dashboard-message-error">
+                Enable the node launcher in backend configuration before starting managed nodes.
+              </p>
+            )}
+            {launchState.status === "error" ? (
+              <p className="dashboard-message dashboard-message-error">{launchState.error}</p>
+            ) : null}
+            {launchState.status === "success" ? (
+              <p className="dashboard-message">Managed node launch requested successfully.</p>
+            ) : null}
+          </section>
+
+          <section className="managed-node-grid">
+            {managedNodes.map((node) => {
+              const actionState = nodeActionState[node.id] ?? { status: "idle", error: "" };
+              return (
+                <article className="dashboard-card managed-node-card" key={node.id}>
+                  <div className="dashboard-card-header">
+                    <div>
+                      <p className="section-eyebrow">Managed Node</p>
+                      <h3>{node.display_name}</h3>
+                    </div>
+                    <span className={`managed-node-status managed-node-status-${node.status}`}>{node.status}</span>
+                  </div>
+                  <div className="managed-node-meta">
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">Node Name</span>
+                      <p>{node.name}</p>
+                    </div>
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">API Port</span>
+                      <p>{node.api_port}</p>
+                    </div>
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">P2P Port</span>
+                      <p>{node.p2p_port}</p>
+                    </div>
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">Mining</span>
+                      <p>{node.enable_mining ? `On (${node.mining_threads} threads)` : "Off"}</p>
+                    </div>
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">Launched</span>
+                      <p>{formatDateTime(node.launched_at)}</p>
+                    </div>
+                    <div className="managed-node-meta-item">
+                      <span className="section-eyebrow">Last status</span>
+                      <p>{formatDateTime(node.last_status_at)}</p>
+                    </div>
+                  </div>
+                  <div className="managed-node-actions">
+                    <a className="button button-secondary" href={node.dashboard_proxy_url} rel="noreferrer" target="_blank">
+                      <ExternalLink size={16} />
+                      Open node GUI
+                    </a>
+                    <button
+                      className="button button-secondary"
+                      disabled={node.status !== "running" || actionState.status === "stopping"}
+                      onClick={() => handleStopNode(node.id)}
+                      type="button"
+                    >
+                      {actionState.status === "stopping" ? <LoaderCircle size={16} className="spin" /> : <Square size={16} />}
+                      Stop node
+                    </button>
+                  </div>
+                  {node.last_error ? <p className="dashboard-message dashboard-message-error">{node.last_error}</p> : null}
+                  {actionState.error ? <p className="dashboard-message dashboard-message-error">{actionState.error}</p> : null}
+                  <div className="managed-node-log">
+                    <p className="section-eyebrow">Recent logs</p>
+                    <pre>{node.logs_tail || "No logs captured yet."}</pre>
+                  </div>
+                </article>
+              );
+            })}
+            {!managedNodes.length ? (
+              <section className="dashboard-card managed-node-card managed-node-empty">
+                <Server size={18} />
+                <p className="body-copy">No managed nodes have been launched from the admin dashboard yet.</p>
+              </section>
+            ) : null}
+          </section>
 
           {dashboard.status === "loading" ? (
             <p className="dashboard-message">Loading dashboard data...</p>

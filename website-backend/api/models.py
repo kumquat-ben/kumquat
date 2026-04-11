@@ -2,6 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 
 
 class EarlyAccessSignup(models.Model):
@@ -58,3 +59,53 @@ class VonageInboundSms(models.Model):
         if self.from_number and self.to_number:
             return f"{self.from_number} -> {self.to_number}"
         return f"Vonage inbound SMS {self.pk}"
+
+
+class ManagedNode(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_RUNNING = "running"
+    STATUS_EXITED = "exited"
+    STATUS_STOPPED = "stopped"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_EXITED, "Exited"),
+        (STATUS_STOPPED, "Stopped"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    name = models.SlugField(max_length=63, unique=True)
+    display_name = models.CharField(max_length=120)
+    container_name = models.CharField(max_length=120, blank=True)
+    container_id = models.CharField(max_length=128, blank=True, db_index=True)
+    image = models.CharField(max_length=255)
+    network_name = models.CharField(max_length=32, default="dev")
+    chain_id = models.PositiveBigIntegerField(default=1337)
+    enable_mining = models.BooleanField(default=False)
+    mining_threads = models.PositiveIntegerField(default=1)
+    api_port = models.PositiveIntegerField(unique=True)
+    p2p_port = models.PositiveIntegerField(unique=True)
+    metrics_port = models.PositiveIntegerField(unique=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    last_error = models.TextField(blank=True)
+    last_logs = models.TextField(blank=True)
+    launched_by = models.ForeignKey(
+        get_user_model(),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="managed_nodes",
+    )
+    launched_at = models.DateTimeField(default=timezone.now)
+    last_status_at = models.DateTimeField(null=True, blank=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.display_name or self.name

@@ -1,10 +1,14 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
-from django.urls import path
+from django.urls import path, re_path
 
 from .views import (
     admin_dashboard_view,
     admin_dashboard_page_view,
+    admin_node_launch_view,
+    admin_node_logs_view,
+    admin_node_proxy_view,
+    admin_node_stop_view,
     admin_vonage_sms_view,
     admin_vonage_sms_page_view,
     auth_logout_view,
@@ -23,6 +27,10 @@ urlpatterns = [
     path("", index_view, name="api-index"),
     path("admin/dashboard-page", admin_dashboard_page_view, name="api-admin-dashboard-page"),
     path("admin/dashboard", admin_dashboard_view, name="api-admin-dashboard"),
+    path("admin/nodes/launch", admin_node_launch_view, name="api-admin-node-launch"),
+    path("admin/nodes/<int:node_id>/logs", admin_node_logs_view, name="api-admin-node-logs"),
+    path("admin/nodes/<int:node_id>/stop", admin_node_stop_view, name="api-admin-node-stop"),
+    re_path(r"^admin/nodes/(?P<node_id>\d+)/proxy(?:/(?P<subpath>.*))?$", admin_node_proxy_view, name="api-admin-node-proxy"),
     path("admin/vonage/sms-page", admin_vonage_sms_page_view, name="api-admin-vonage-sms-page"),
     path("admin/vonage/sms", admin_vonage_sms_view, name="api-admin-vonage-sms"),
     path("auth/google/start", google_oauth_start_view, name="api-auth-google-start"),
