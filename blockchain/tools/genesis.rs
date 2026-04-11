@@ -138,6 +138,8 @@ impl GenesisConfig {
             prev_hash: [0; 32],
             timestamp: self.timestamp,
             transactions: vec![],
+            miner: [0; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32], // Will be calculated later
             tx_root: [0; 32],    // Empty transaction root
             nonce: 0,

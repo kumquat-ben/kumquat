@@ -14,6 +14,20 @@ use kumquat::network::{start_network, start_enhanced_network};
 use kumquat::network::NetworkConfig;
 use kumquat::tools::genesis::generate_genesis;
 
+fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
+    if let Some(node_id) = node_id {
+        if let Ok(bytes) = hex::decode(node_id) {
+            if bytes.len() == 32 {
+                let mut address = [0u8; 32];
+                address.copy_from_slice(&bytes);
+                return address;
+            }
+        }
+    }
+
+    kumquat::crypto::hash::sha256(node_name.as_bytes())
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kumquat", about = "Kumquat blockchain node")]
 struct Opt {
@@ -330,6 +344,7 @@ async fn main() {
         difficulty_adjustment_window: config.consensus.difficulty_adjustment_interval,
         max_transactions_per_block: config.consensus.max_transactions_per_block,
         poh_tick_rate: 400_000, // Default value
+        miner_address: resolve_miner_address(config.node.node_id.as_deref(), &config.node.node_name),
     };
 
     let consensus = start_consensus(

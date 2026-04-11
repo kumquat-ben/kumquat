@@ -816,6 +816,8 @@ mod tests {
                 .unwrap_or_default()
                 .as_secs(),
             transactions: vec![[1; 32], [2; 32]],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [3; 32],
             tx_root: [4; 32],
             nonce: 42,
@@ -1080,6 +1082,8 @@ mod tests {
                 .unwrap_or_default()
                 .as_secs(),
             transactions: vec![[1; 32], [2; 32]],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [3; 32],
             tx_root: [4; 32],
             nonce: 42,

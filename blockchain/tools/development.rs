@@ -163,6 +163,8 @@ impl<'a> DevelopmentTools<'a> {
                 .unwrap()
                 .as_secs(),
             transactions: transactions.iter().map(|tx| tx.tx_id).collect(),
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32], // Will be calculated later
             tx_root: [0; 32], // Will be calculated later
             nonce: 0, // Will be set during mining

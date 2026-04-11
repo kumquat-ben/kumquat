@@ -219,7 +219,7 @@ impl<'a> BlockProcessor<'a> {
     }
 
     /// Apply transactions to get state changes
-    fn apply_transactions(&self, _block: &Block, transactions: &[TransactionRecord]) -> Result<Vec<(Hash, AccountState)>, String> {
+    fn apply_transactions(&self, block: &Block, transactions: &[TransactionRecord]) -> Result<Vec<(Hash, AccountState)>, String> {
         let mut state_changes = Vec::new();
 
         // Create a temporary state store for validation
@@ -293,6 +293,36 @@ impl<'a> BlockProcessor<'a> {
                     return Err(format!("Failed to update recipient account: {}", e));
                 }
             }
+        }
+
+        if block.height > 0 {
+            let expected_reward_token_ids = AccountState::mint_block_reward_set(block.miner, block.height)
+                .iter()
+                .map(|token| token.token_id)
+                .collect::<Vec<_>>();
+            if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
+                return Err(format!("reward token ids mismatch for block {}", block.height));
+            }
+
+            let mut miner = match temp_state.get_account_state(&block.miner) {
+                Some(account) => account,
+                None => {
+                    match temp_state.create_account(&block.miner, 0, crate::storage::state::AccountType::User) {
+                        Ok(()) => temp_state.get_account_state(&block.miner)
+                            .ok_or_else(|| format!("Failed to create miner account: {}", hex::encode(&block.miner)))?,
+                        Err(e) => return Err(format!("Failed to create miner account: {}", e)),
+                    }
+                }
+            };
+
+            miner.tokens.extend(AccountState::mint_block_reward_set(block.miner, block.height));
+            miner.sync_balance_from_tokens();
+            miner.last_updated = block.height;
+            miner.assign_token_owner(block.miner);
+
+            state_changes.push((block.miner, miner.clone()));
+            temp_state.update_account(&block.miner, &miner)
+                .map_err(|e| format!("Failed to update miner account: {}", e))?;
         }
 
         Ok(state_changes)
@@ -373,6 +403,8 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 0,
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0u8; 32],
             tx_root: [0u8; 32],
             nonce: 0,
@@ -425,6 +457,8 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 10,
             transactions: vec![[3u8; 32]],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0u8; 32], // This would normally be calculated
             tx_root: [0u8; 32], // This would normally be calculated
             nonce: 42,

@@ -64,6 +64,8 @@ fn test_storage_integration() {
         prev_hash: [0; 32],
         timestamp: 12345,
         transactions: vec![tx.tx_id],
+        miner: [0u8; 32],
+        reward_token_ids: vec![],
         state_root: [6; 32],
     };
     

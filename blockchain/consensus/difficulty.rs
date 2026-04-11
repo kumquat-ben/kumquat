@@ -90,6 +90,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             poh_hash: [0; 32],
             poh_seq: 100,
@@ -110,6 +112,8 @@ mod tests {
             prev_hash: [1; 32],
             timestamp: 12345 + (60 * 10 / 2), // Half the target time
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             poh_hash: [0; 32],
             poh_seq: 200,
@@ -129,6 +133,8 @@ mod tests {
             prev_hash: [1; 32],
             timestamp: 12345 + (60 * 10 * 2), // Twice the target time
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             poh_hash: [0; 32],
             poh_seq: 200,
@@ -148,6 +154,8 @@ mod tests {
             prev_hash: [1; 32],
             timestamp: 12345 + (60 * 10), // Exactly the target time
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             poh_hash: [0; 32],
             poh_seq: 200,

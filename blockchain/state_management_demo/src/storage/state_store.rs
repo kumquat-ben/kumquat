@@ -911,6 +911,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![tx.tx_id],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32], // This would normally be calculated
             nonce: 42,
             poh_seq: 100,
@@ -995,6 +997,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![tx1.tx_id, tx2.tx_id],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             nonce: 42,
             poh_seq: 100,

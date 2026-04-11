@@ -25,6 +25,12 @@ pub struct Block {
     /// Transaction IDs included in this block
     pub transactions: Vec<Hash>,
 
+    /// Reward recipient for this block.
+    pub miner: Hash,
+
+    /// IDs of denomination tokens minted as this block reward.
+    pub reward_token_ids: Vec<Hash>,
+
     /// State root hash (Merkle root of the state trie)
     pub state_root: Hash,
 
@@ -314,6 +320,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![[2; 32], [3; 32]],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [4; 32],
             tx_root: [6; 32],
             nonce: 42,
@@ -365,6 +373,8 @@ mod tests {
                 prev_hash: if i == 0 { [0; 32] } else { [(i-1) as u8; 32] },
                 timestamp: 12345 + i,
                 transactions: vec![[i as u8 + 1; 32]],
+                miner: [0u8; 32],
+                reward_token_ids: vec![],
                 state_root: [i as u8 + 2; 32],
                 tx_root: [i as u8 + 4; 32],
                 nonce: 42 + i,

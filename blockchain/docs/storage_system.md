@@ -474,6 +474,8 @@ let block = Block {
     prev_hash: [0; 32],
     timestamp: 12345,
     transactions: vec![[2; 32], [3; 32]],
+    miner: [0u8; 32],
+    reward_token_ids: vec![],
     state_root: [4; 32],
     tx_root: [5; 32],
     nonce: 42,

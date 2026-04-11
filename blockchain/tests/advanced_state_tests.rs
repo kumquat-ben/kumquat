@@ -94,6 +94,8 @@ fn test_state_pruning() {
             prev_hash: if i == 0 { [0; 32] } else { [(i-1) as u8; 32] },
             timestamp: 12345 + i * 10,
             transactions: vec![[i as u8 + 100; 32]],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [i as u8 + 50; 32],
             tx_root: [i as u8 + 60; 32],
             nonce: 42,

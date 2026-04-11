@@ -110,6 +110,11 @@ impl BlockTemplate {
             prev_hash: self.prev_hash,
             timestamp: self.timestamp,
             transactions: self.transactions.iter().map(|tx| tx.tx_id.clone()).collect(),
+            miner: self.miner,
+            reward_token_ids: crate::storage::AccountState::mint_block_reward_set(self.miner, self.height)
+                .into_iter()
+                .map(|token| token.token_id)
+                .collect(),
             state_root: self.state_root,
             tx_root: self.tx_root,
             nonce,

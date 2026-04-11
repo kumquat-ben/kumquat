@@ -384,6 +384,8 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 0,
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0u8; 32],
         };
 
@@ -398,6 +400,8 @@ mod tests {
             prev_hash: [0u8; 32], // Points to genesis
             timestamp: 10,
             transactions: vec![],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0u8; 32],
         };
 

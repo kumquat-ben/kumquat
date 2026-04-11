@@ -81,10 +81,15 @@ impl<'a> BlockProducer<'a> {
         // Keep the full transaction records
         let selected_transactions = transactions.clone();
 
-        // Calculate the state root
-        let state_root = match self.state_store.calculate_state_root(
-            self.chain_state.height + 1,
-            chrono::Utc::now().timestamp() as u64
+        let next_height = self.chain_state.height + 1;
+        let timestamp = chrono::Utc::now().timestamp() as u64;
+
+        // Calculate the projected state root including pending transactions and block reward.
+        let state_root = match self.state_store.calculate_projected_state_root(
+            next_height,
+            timestamp,
+            &selected_transactions,
+            &self.config.miner_address,
         ) {
             Ok(root) => root.root_hash,
             Err(e) => {
@@ -126,9 +131,9 @@ impl<'a> BlockProducer<'a> {
 
         // Create the block template
         BlockTemplate {
-            height: self.chain_state.height + 1,
+            height: next_height,
             prev_hash: self.chain_state.tip_hash,
-            timestamp: chrono::Utc::now().timestamp() as u64,
+            timestamp,
             transactions: selected_transactions,
             state_root,
             tx_root, // Use the calculated transaction root
@@ -137,7 +142,7 @@ impl<'a> BlockProducer<'a> {
             poh_hash, // Use the current PoH hash
             target: Target::from_difficulty(self.chain_state.total_difficulty),
             total_difficulty: self.chain_state.total_difficulty as u128,
-            miner: [0u8; 32], // Will be set by the miner
+            miner: self.config.miner_address,
         }
     }
 

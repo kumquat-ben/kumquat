@@ -7,6 +7,7 @@ use crate::storage::block_store::{Hash, Block};
 use crate::storage::tx_store::{TxStore, TransactionStatus, TransactionError};
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::state::{AccountState, AccountType, StateRoot, StateResult};
+use crate::storage::tx_store::TransactionRecord;
 
 // Note: AccountState, AccountType, and StateRoot are now imported from the state module
 
@@ -658,6 +659,65 @@ impl<'a> StateStore<'a> {
         }
     }
 
+    pub fn apply_block_reward(
+        &self,
+        miner: &Hash,
+        block_height: u64,
+    ) -> Result<Vec<Hash>, StateStoreError> {
+        let mut miner_state = self.get_account_state(miner)
+            .unwrap_or_else(|| AccountState::new_user(0, block_height));
+
+        let minted_tokens = AccountState::mint_block_reward_set(*miner, block_height);
+        let reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
+
+        miner_state.tokens.extend(minted_tokens);
+        miner_state.sync_balance_from_tokens();
+        miner_state.last_updated = block_height;
+        miner_state.assign_token_owner(*miner);
+
+        self.set_account_state(miner, &miner_state)?;
+        Ok(reward_token_ids)
+    }
+
+    pub fn calculate_projected_state_root(
+        &self,
+        block_height: u64,
+        timestamp: u64,
+        transactions: &[TransactionRecord],
+        miner: &Hash,
+    ) -> Result<StateRoot, StateStoreError> {
+        let temp_state = self.clone_for_validation();
+
+        for tx in transactions {
+            let mut sender = temp_state.get_account_state(&tx.sender)
+                .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
+            let mut recipient = temp_state.get_account_state(&tx.recipient)
+                .unwrap_or_else(|| AccountState::new_user(0, block_height));
+
+            let total_cost = tx.value + (tx.gas_price * tx.gas_used);
+            if sender.balance < total_cost {
+                return Err(StateStoreError::InsufficientBalance(total_cost, sender.balance));
+            }
+
+            sender.balance -= total_cost;
+            sender.nonce += 1;
+            sender.last_updated = block_height;
+            sender.remint_tokens_from_balance(tx.sender, block_height, crate::storage::TokenMintSource::TransferChange)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
+            recipient.balance += tx.value;
+            recipient.last_updated = block_height;
+            recipient.remint_tokens_from_balance(tx.recipient, block_height, crate::storage::TokenMintSource::TransferChange)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
+            temp_state.set_account_state(&tx.sender, &sender)?;
+            temp_state.set_account_state(&tx.recipient, &recipient)?;
+        }
+
+        temp_state.apply_block_reward(miner, block_height)?;
+        temp_state.calculate_state_root(block_height, timestamp)
+    }
+
     /// Apply a block's transactions to the state store
     ///
     /// This method processes all transactions in a block and updates the account states accordingly.
@@ -773,6 +833,26 @@ impl<'a> StateStore<'a> {
 
             // Update transaction status to confirmed
             tx_store.update_transaction_status(&tx.tx_id, TransactionStatus::Confirmed)?;
+        }
+
+        if block.height > 0 {
+            let mut miner = match modified_accounts.get(&block.miner) {
+                Some(state) => state.clone(),
+                None => self.get_account_state(&block.miner).unwrap_or_else(|| AccountState::new_user(0, block.height)),
+            };
+            let minted_tokens = AccountState::mint_block_reward_set(block.miner, block.height);
+            let expected_reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
+            if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
+                return Err(StateStoreError::Other(format!(
+                    "reward token ids mismatch for block {}",
+                    block.height
+                )));
+            }
+            miner.tokens.extend(minted_tokens);
+            miner.sync_balance_from_tokens();
+            miner.last_updated = block.height;
+            miner.assign_token_owner(block.miner);
+            modified_accounts.insert(block.miner, miner);
         }
 
         // Prepare batch operations for all modified accounts
@@ -1041,6 +1121,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![tx.tx_id],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32], // This would normally be calculated
             nonce: 42,
             poh_seq: 100,
@@ -1125,6 +1207,8 @@ mod tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![tx1.tx_id, tx2.tx_id],
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: [0; 32],
             nonce: 42,
             poh_seq: 100,

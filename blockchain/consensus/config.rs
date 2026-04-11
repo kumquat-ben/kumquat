@@ -23,6 +23,9 @@ pub struct ConsensusConfig {
 
     /// Number of mining threads to use
     pub mining_threads: usize,
+
+    /// Reward recipient for newly mined blocks
+    pub miner_address: [u8; 32],
 }
 
 impl Default for ConsensusConfig {
@@ -35,6 +38,7 @@ impl Default for ConsensusConfig {
             poh_tick_rate: 400_000, // 400k hashes per second
             enable_mining: false,
             mining_threads: num_cpus::get().max(1),
+            miner_address: [0u8; 32],
         }
     }
 }
@@ -84,6 +88,12 @@ impl ConsensusConfig {
     /// Set the number of mining threads
     pub fn with_mining_threads(mut self, threads: usize) -> Self {
         self.mining_threads = threads;
+        self
+    }
+
+    /// Set the miner reward recipient address
+    pub fn with_miner_address(mut self, miner_address: [u8; 32]) -> Self {
+        self.miner_address = miner_address;
         self
     }
 

@@ -162,6 +162,8 @@ impl BlockTemplate {
             prev_hash: self.prev_hash,
             timestamp: self.timestamp,
             transactions: self.transactions.clone(),
+            miner: [0u8; 32],
+            reward_token_ids: vec![],
             state_root: self.state_root,
             tx_root,
             nonce,
