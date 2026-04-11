@@ -1,0 +1,10 @@
+.git
+.gitignore
+target
+data
+standalone_test/target
+state_management_demo/target
+state_management_standalone/target
+docs
+benches
+tmp

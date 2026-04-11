@@ -1,6 +1,7 @@
 FROM rust:1.85-slim-bookworm AS builder
 
 WORKDIR /usr/src/kumquat
+ENV CARGO_BUILD_JOBS=1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
