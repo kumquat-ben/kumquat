@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260409-104535-aefdf44
+  tag: backend-20260411-164644-6ecfee5-r2
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -12,7 +12,7 @@ env:
   common:
     PORT: "8000"
     DJANGO_DEBUG: "false"
-    DJANGO_ALLOWED_HOSTS: "kumquat.info,.node.kumquat.info"
+    DJANGO_ALLOWED_HOSTS: "*"
     DJANGO_CSRF_TRUSTED_ORIGINS: "https://kumquat.info,https://*.node.kumquat.info"
     DJANGO_SESSION_COOKIE_DOMAIN: ".kumquat.info"
     DJANGO_CSRF_COOKIE_DOMAIN: ".kumquat.info"
@@ -27,7 +27,7 @@ env:
     NODE_PROXY_ALLOWED_METHODS: "GET,HEAD,OPTIONS"
     NODE_PROXY_TIMEOUT_SECONDS: "15"
     NODE_PROXY_LOGIN_URL: "https://kumquat.info/api/auth/google/start"
-    NODE_LAUNCHER_ENABLED: "false"
+    NODE_LAUNCHER_ENABLED: "true"
     NODE_LAUNCHER_DOCKER_HOST: "tcp://127.0.0.1:2375"
     NODE_LAUNCHER_ROOT: "/var/lib/kumquat-node-launcher"
     NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260409-1"
@@ -84,7 +84,7 @@ podSecurityContext:
 
 nodeLauncher:
   dind:
-    enabled: false
+    enabled: true
     image: docker:27.5-dind
     pullPolicy: IfNotPresent
     args:

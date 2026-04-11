@@ -478,13 +478,16 @@ resource "helm_release" "backend" {
     env = {
       existingSecret = local.backend_secret_name
       common = {
-        PORT                        = "8000"
-        DJANGO_DEBUG                = "false"
-        DJANGO_ALLOWED_HOSTS        = "*"
-        DJANGO_CSRF_TRUSTED_ORIGINS = "https://${var.hostname}"
-        GUNICORN_WORKERS            = "2"
-        GUNICORN_THREADS            = "2"
-        GUNICORN_TIMEOUT            = "60"
+        PORT                         = "8000"
+        DJANGO_DEBUG                 = "false"
+        DJANGO_ALLOWED_HOSTS         = "*"
+        DJANGO_CSRF_TRUSTED_ORIGINS  = "https://${var.hostname},https://*.node.${var.hostname}"
+        DJANGO_SESSION_COOKIE_DOMAIN = ".${var.hostname}"
+        DJANGO_CSRF_COOKIE_DOMAIN    = ".${var.hostname}"
+        GUNICORN_WORKERS             = "2"
+        GUNICORN_THREADS             = "2"
+        GUNICORN_TIMEOUT             = "60"
+        NODE_LAUNCHER_ENABLED        = "true"
       }
     }
     ingress = {
@@ -501,6 +504,22 @@ resource "helm_release" "backend" {
           pathType = "Prefix"
         },
       ]
+      extraHosts = [
+        {
+          host = "*.node.${var.hostname}"
+          paths = [
+            {
+              path     = "/"
+              pathType = "Prefix"
+            },
+          ]
+        },
+      ]
+    }
+    nodeLauncher = {
+      dind = {
+        enabled = true
+      }
     }
     nodeSelector = {
       workload = "application"
