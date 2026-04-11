@@ -47,6 +47,13 @@ def env_bool(name, default=False):
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def env_list(name, default=""):
+    value = os.getenv(name)
+    if value is None:
+        value = default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
@@ -61,6 +68,18 @@ GOOGLE_OAUTH_REDIRECT_URI = env(
     "GOOGLE_OAUTH_REDIRECT_URI",
     "",
 )
+SESSION_COOKIE_DOMAIN = env("DJANGO_SESSION_COOKIE_DOMAIN")
+CSRF_COOKIE_DOMAIN = env("DJANGO_CSRF_COOKIE_DOMAIN")
+NODE_PROXY_BASE_DOMAIN = env("NODE_PROXY_BASE_DOMAIN", "node.kumquat.info").lower().strip(".")
+NODE_PROXY_SERVICE_NAME = env("NODE_PROXY_SERVICE_NAME", "kumquat-blockchain-headless")
+NODE_PROXY_NAMESPACE = env("NODE_PROXY_NAMESPACE", "kumquat")
+NODE_PROXY_PORT = int(env("NODE_PROXY_PORT", "8545"))
+NODE_PROXY_REQUIRE_AUTH = env_bool("NODE_PROXY_REQUIRE_AUTH", True)
+NODE_PROXY_ALLOWED_METHODS = {
+    method.upper() for method in env_list("NODE_PROXY_ALLOWED_METHODS", "GET,HEAD,OPTIONS")
+}
+NODE_PROXY_TIMEOUT_SECONDS = int(env("NODE_PROXY_TIMEOUT_SECONDS", "15"))
+NODE_PROXY_LOGIN_URL = env("NODE_PROXY_LOGIN_URL", "https://kumquat.info/api/auth/google/start")
 VONAGE_ACCOUNT_SECRET = env("VONAGE_ACCOUNT_SECRET", "")
 VONAGE_SMS_SIGNATURE_SECRET = env("VONAGE_SMS_SIGNATURE_SECRET", "")
 VONAGE_SMS_SIGNATURE_ALGORITHM = env("VONAGE_SMS_SIGNATURE_ALGORITHM", "md5hash").lower()
@@ -81,6 +100,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "api.middleware.NodeSubdomainProxyMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
