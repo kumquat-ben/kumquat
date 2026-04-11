@@ -4,7 +4,7 @@
 //! including account states, global state, and state transitions. It provides a clear
 //! abstraction layer for representing and manipulating blockchain state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
@@ -406,6 +406,75 @@ impl AccountState {
         for token in &mut self.tokens {
             token.owner = owner;
         }
+    }
+
+    pub fn owns_token(&self, token_id: &[u8; 32]) -> bool {
+        self.tokens.iter().any(|token| &token.token_id == token_id)
+    }
+
+    pub fn token_value(&self, token_id: &[u8; 32]) -> Option<AmountCents> {
+        self.tokens
+            .iter()
+            .find(|token| &token.token_id == token_id)
+            .map(|token| token.value_cents())
+    }
+
+    pub fn token_ids_for_amount(&self, amount_cents: AmountCents) -> Option<Vec<[u8; 32]>> {
+        let mut selected = Vec::new();
+        let mut running_total = 0;
+
+        let mut tokens = self.tokens.clone();
+        tokens.sort_by_key(|token| std::cmp::Reverse(token.value_cents()));
+
+        for token in tokens {
+            if running_total == amount_cents {
+                break;
+            }
+
+            if running_total + token.value_cents() <= amount_cents {
+                running_total += token.value_cents();
+                selected.push(token.token_id);
+            }
+        }
+
+        (running_total == amount_cents).then_some(selected)
+    }
+
+    pub fn remove_tokens_by_id(
+        &mut self,
+        token_ids: &[[u8; 32]],
+    ) -> StateResult<Vec<DenominationToken>> {
+        let requested_ids: HashSet<[u8; 32]> = token_ids.iter().copied().collect();
+        if requested_ids.len() != token_ids.len() {
+            return Err(StateError::Other("duplicate token ids in request".to_string()));
+        }
+
+        let mut retained = Vec::with_capacity(self.tokens.len());
+        let mut removed = Vec::new();
+
+        for token in self.tokens.drain(..) {
+            if requested_ids.contains(&token.token_id) {
+                removed.push(token);
+            } else {
+                retained.push(token);
+            }
+        }
+
+        if removed.len() != token_ids.len() {
+            return Err(StateError::Other("account does not own all requested token ids".to_string()));
+        }
+
+        self.tokens = retained;
+        self.sync_balance_from_tokens();
+        Ok(removed)
+    }
+
+    pub fn deposit_tokens(&mut self, owner: [u8; 32], mut tokens: Vec<DenominationToken>) {
+        for token in &mut tokens {
+            token.owner = owner;
+        }
+        self.tokens.extend(tokens);
+        self.sync_balance_from_tokens();
     }
 
     pub fn set_tokens(&mut self, owner: [u8; 32], tokens: Vec<DenominationToken>) {

@@ -457,6 +457,8 @@ mod tests {
             tx_id,
             sender,
             recipient: [0; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_price: 10,
             gas_limit: 21000,

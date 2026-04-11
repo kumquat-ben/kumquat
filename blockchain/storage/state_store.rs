@@ -689,33 +689,104 @@ impl<'a> StateStore<'a> {
         let temp_state = self.clone_for_validation();
 
         for tx in transactions {
-            let mut sender = temp_state.get_account_state(&tx.sender)
-                .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
-            let mut recipient = temp_state.get_account_state(&tx.recipient)
-                .unwrap_or_else(|| AccountState::new_user(0, block_height));
-
-            let total_cost = tx.value + (tx.gas_price * tx.gas_used);
-            if sender.balance < total_cost {
-                return Err(StateStoreError::InsufficientBalance(total_cost, sender.balance));
-            }
-
-            sender.balance -= total_cost;
-            sender.nonce += 1;
-            sender.last_updated = block_height;
-            sender.remint_tokens_from_balance(tx.sender, block_height, crate::storage::TokenMintSource::TransferChange)
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-
-            recipient.balance += tx.value;
-            recipient.last_updated = block_height;
-            recipient.remint_tokens_from_balance(tx.recipient, block_height, crate::storage::TokenMintSource::TransferChange)
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-
-            temp_state.set_account_state(&tx.sender, &sender)?;
-            temp_state.set_account_state(&tx.recipient, &recipient)?;
+            temp_state.apply_token_transaction(tx, miner, block_height)?;
         }
 
         temp_state.apply_block_reward(miner, block_height)?;
         temp_state.calculate_state_root(block_height, timestamp)
+    }
+
+    pub fn apply_token_transaction(
+        &self,
+        tx: &TransactionRecord,
+        fee_recipient: &Hash,
+        block_height: u64,
+    ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
+        let fee_token_id = tx.fee_token_id
+            .ok_or_else(|| StateStoreError::Other(format!("transaction {} missing fee token", hex::encode(tx.tx_id))))?;
+
+        if tx.transfer_token_ids.is_empty() {
+            return Err(StateStoreError::Other(format!(
+                "transaction {} has no transfer tokens",
+                hex::encode(tx.tx_id)
+            )));
+        }
+
+        if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+            return Err(StateStoreError::Other(format!(
+                "transaction {} reuses fee token as payment token",
+                hex::encode(tx.tx_id)
+            )));
+        }
+
+        let mut sender = self.get_account_state(&tx.sender)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
+
+        let payment_total = tx.transfer_token_ids.iter().try_fold(0u64, |acc, token_id| {
+            sender
+                .token_value(token_id)
+                .map(|value| acc + value)
+                .ok_or_else(|| StateStoreError::Other(format!(
+                    "sender does not own transfer token {}",
+                    hex::encode(token_id)
+                )))
+        })?;
+
+        let fee_value = sender.token_value(&fee_token_id)
+            .ok_or_else(|| StateStoreError::Other(format!(
+                "sender does not own fee token {}",
+                hex::encode(fee_token_id)
+            )))?;
+
+        let mut recipient = self.get_account_state(&tx.recipient)
+            .unwrap_or_else(|| AccountState::new_user(0, block_height));
+        let mut fee_account = if *fee_recipient == tx.recipient {
+            recipient.clone()
+        } else {
+            self.get_account_state(fee_recipient)
+                .unwrap_or_else(|| AccountState::new_user(0, block_height))
+        };
+
+        let moved_tokens = sender.remove_tokens_by_id(&tx.transfer_token_ids)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+        let fee_tokens = sender.remove_tokens_by_id(&[fee_token_id])
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
+        sender.nonce += 1;
+        sender.last_updated = block_height;
+        sender.assign_token_owner(tx.sender);
+        sender.sync_balance_from_tokens();
+
+        recipient.deposit_tokens(tx.recipient, moved_tokens);
+        recipient.last_updated = block_height;
+
+        fee_account.deposit_tokens(*fee_recipient, fee_tokens);
+        fee_account.last_updated = block_height;
+
+        self.set_account_state(&tx.sender, &sender)?;
+        self.set_account_state(&tx.recipient, &recipient)?;
+        if *fee_recipient != tx.recipient {
+            self.set_account_state(fee_recipient, &fee_account)?;
+        } else {
+            self.set_account_state(fee_recipient, &fee_account)?;
+        }
+
+        let mut changed_accounts = vec![(tx.sender, sender), (tx.recipient, recipient)];
+        if *fee_recipient != tx.recipient {
+            changed_accounts.push((*fee_recipient, fee_account));
+        } else {
+            changed_accounts.pop();
+            changed_accounts.push((*fee_recipient, fee_account));
+        }
+
+        debug!(
+            "Applied token transaction {} transferring {} cents and fee {} cents",
+            hex::encode(tx.tx_id),
+            payment_total,
+            fee_value,
+        );
+
+        Ok(changed_accounts)
     }
 
     /// Apply a block's transactions to the state store
@@ -758,33 +829,16 @@ impl<'a> StateStore<'a> {
                       hex::encode(&tx.tx_id), tx.block_height, block.height);
             }
 
-            // Get or create sender account state
-            let sender_addr_str = hex::encode(&tx.sender);
-            let mut sender = match modified_accounts.get(&tx.sender) {
+            let sender_state = match modified_accounts.get(&tx.sender) {
                 Some(state) => state.clone(),
                 None => self.get_account_state(&tx.sender)
-                    .ok_or_else(|| StateStoreError::AccountNotFound(sender_addr_str.clone()))?,
+                    .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?,
             };
 
-            // Verify sender has sufficient balance
-            let total_cost = tx.value + (tx.gas_used * tx.gas_price);
-            if sender.balance < total_cost {
-                error!("Insufficient balance for tx {}: required {}, available {}",
-                       hex::encode(&tx.tx_id), total_cost, sender.balance);
-
-                // Update transaction status to failed
-                tx_store.update_transaction_status(
-                    &tx.tx_id,
-                    TransactionStatus::Failed(TransactionError::InsufficientBalance)
-                )?;
-
-                continue; // Skip this transaction and move to the next
-            }
-
             // Verify nonce
-            if tx.nonce != sender.nonce {
+            if tx.nonce != sender_state.nonce {
                 error!("Invalid nonce for tx {}: expected {}, got {}",
-                       hex::encode(&tx.tx_id), sender.nonce, tx.nonce);
+                       hex::encode(&tx.tx_id), sender_state.nonce, tx.nonce);
 
                 // Update transaction status to failed
                 tx_store.update_transaction_status(
@@ -795,41 +849,21 @@ impl<'a> StateStore<'a> {
                 continue; // Skip this transaction and move to the next
             }
 
-            // Get or create recipient account state
-            let recipient_addr_str = hex::encode(&tx.recipient);
-            let mut recipient = match modified_accounts.get(&tx.recipient) {
-                Some(state) => state.clone(),
-                None => self.get_account_state(&tx.recipient).unwrap_or_else(|| {
-                    // Create new account if it doesn't exist
-                    AccountState::new_user(0, block.height)
-                }),
-            };
-
-            // Update account states
-            sender.balance -= total_cost;
-            sender.nonce += 1;
-            sender.last_updated = block.height;
-            sender.remint_tokens_from_balance(tx.sender, block.height, crate::storage::TokenMintSource::TransferChange)
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-
-            recipient.balance += tx.value;
-            recipient.last_updated = block.height;
-            recipient.remint_tokens_from_balance(tx.recipient, block.height, crate::storage::TokenMintSource::TransferChange)
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-
-            // Handle contract execution if this is a contract call
-            if let Some(_data) = &tx.data {
-                if recipient.account_type == AccountType::Contract && recipient.code.is_some() {
-                    // In a real implementation, we would execute the contract code here
-                    // For now, we'll just log that a contract call was made
-                    debug!("Contract call in tx {}: {} -> {}",
-                           hex::encode(&tx.tx_id), sender_addr_str, recipient_addr_str);
+            match self.apply_token_transaction(&tx, &block.miner, block.height) {
+                Ok(changes) => {
+                    for (address, state) in changes {
+                        modified_accounts.insert(address, state);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to apply token transaction {}: {}", hex::encode(&tx.tx_id), e);
+                    tx_store.update_transaction_status(
+                        &tx.tx_id,
+                        TransactionStatus::Failed(TransactionError::ExecutionError)
+                    )?;
+                    continue;
                 }
             }
-
-            // Store updated account states in our tracking map
-            modified_accounts.insert(tx.sender, sender);
-            modified_accounts.insert(tx.recipient, recipient);
 
             // Update transaction status to confirmed
             tx_store.update_transaction_status(&tx.tx_id, TransactionStatus::Confirmed)?;

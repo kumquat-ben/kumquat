@@ -117,6 +117,8 @@ mod tests {
             tx_id: [1u8; 32],
             sender: [2u8; 32],
             recipient: [3u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_used: 10,
             block_height: 0, // Not yet included in a block
@@ -126,6 +128,8 @@ mod tests {
             tx_id: [2u8; 32],
             sender: [2u8; 32],
             recipient: [3u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 200,
             gas_used: 10,
             block_height: 0,

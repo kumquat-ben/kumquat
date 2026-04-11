@@ -93,6 +93,27 @@ impl<'a> DevelopmentTools<'a> {
             return None;
         }
 
+        let transfer_token_ids = match sender_account.token_ids_for_amount(amount) {
+            Some(token_ids) => token_ids,
+            None => {
+                error!("Sender cannot assemble exact transfer amount {} from owned tokens", amount);
+                return None;
+            }
+        };
+
+        let fee_token_candidates = sender_account
+            .token_ids_for_amount(fee)
+            .unwrap_or_default();
+
+        let fee_token_id = fee_token_candidates
+            .into_iter()
+            .find(|token_id| !transfer_token_ids.contains(token_id));
+
+        if fee_token_id.is_none() {
+            error!("Sender cannot select a distinct fee token for exact fee {}", fee);
+            return None;
+        }
+
         // Calculate gas price
         let gas_limit = 21000; // Default gas limit
         let gas_price = fee / gas_limit;
@@ -103,6 +124,8 @@ impl<'a> DevelopmentTools<'a> {
             tx_id,
             sender: *sender_address,
             recipient: *receiver_address,
+            transfer_token_ids: transfer_token_ids.clone(),
+            fee_token_id,
             value: amount,
             gas_price,
             gas_limit,
@@ -118,9 +141,11 @@ impl<'a> DevelopmentTools<'a> {
         };
 
         // Create a message to sign
-        let message = format!("{}{}{}{}{}{}",
+        let message = format!("{}{}{}{}{}{}{}{}",
             hex::encode(&tx.sender),
             hex::encode(&tx.recipient),
+            tx.transfer_token_ids.iter().map(hex::encode).collect::<Vec<_>>().join(","),
+            tx.fee_token_id.map(hex::encode).unwrap_or_default(),
             tx.value,
             tx.nonce,
             tx.gas_price,

@@ -106,6 +106,8 @@ impl SystemRouter {
                         tx_id: tx_clone.tx_id,
                         sender: tx_clone.sender,
                         recipient: tx_clone.recipient,
+            transfer_token_ids: vec![],
+            fee_token_id: None,
                         value: tx_clone.value,
                         gas_price: tx_clone.gas_price,
                         gas_limit: tx_clone.gas_limit,

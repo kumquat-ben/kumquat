@@ -23,7 +23,13 @@ pub struct TransactionRecord {
     /// Recipient address
     pub recipient: Address,
 
-    /// Transaction value
+    /// Exact token IDs that move from sender to recipient.
+    pub transfer_token_ids: Vec<Hash>,
+
+    /// Exact token ID selected as the validator/miner fee.
+    pub fee_token_id: Option<Hash>,
+
+    /// Compatibility mirror of the transferred value in cents.
     pub value: u64,
 
     /// Gas price (fee per gas unit)
@@ -69,6 +75,8 @@ impl TransactionRecord {
             tx_id: [0u8; 32],
             sender,
             recipient,
+            transfer_token_ids: Vec::new(),
+            fee_token_id: None,
             value,
             gas_price,
             gas_limit,
@@ -92,6 +100,12 @@ impl TransactionRecord {
         // Add all transaction fields except signature
         data.extend_from_slice(&self.sender);
         data.extend_from_slice(&self.recipient);
+        for token_id in &self.transfer_token_ids {
+            data.extend_from_slice(token_id);
+        }
+        if let Some(fee_token_id) = self.fee_token_id {
+            data.extend_from_slice(&fee_token_id);
+        }
         data.extend_from_slice(&self.value.to_be_bytes());
         data.extend_from_slice(&self.gas_price.to_be_bytes());
         data.extend_from_slice(&self.gas_limit.to_be_bytes());

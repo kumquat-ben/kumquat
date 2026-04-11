@@ -80,6 +80,12 @@ impl<'a> TransactionValidator<'a> {
         // Add all transaction fields except signature
         data.extend_from_slice(&tx.sender);
         data.extend_from_slice(&tx.recipient);
+        for token_id in &tx.transfer_token_ids {
+            data.extend_from_slice(token_id);
+        }
+        if let Some(fee_token_id) = tx.fee_token_id {
+            data.extend_from_slice(&fee_token_id);
+        }
         data.extend_from_slice(&tx.value.to_be_bytes());
         data.extend_from_slice(&tx.gas_price.to_be_bytes());
         data.extend_from_slice(&tx.gas_limit.to_be_bytes());
@@ -128,9 +134,27 @@ impl<'a> TransactionValidator<'a> {
             }
         };
 
-        // Check if the sender has enough balance
-        // The sender needs to cover both the value and the gas cost
-        sender_state.balance >= tx.value + tx.gas_used
+        if tx.fee_token_id.is_none() {
+            return false;
+        }
+
+        if tx.transfer_token_ids.is_empty() {
+            return false;
+        }
+
+        if let Some(fee_token_id) = tx.fee_token_id {
+            if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+                return false;
+            }
+
+            if !sender_state.owns_token(&fee_token_id) {
+                return false;
+            }
+        }
+
+        tx.transfer_token_ids
+            .iter()
+            .all(|token_id| sender_state.owns_token(token_id))
     }
 
     /// Check if the transaction nonce is valid
@@ -187,6 +211,8 @@ mod tests {
             tx_id: [1u8; 32],
             sender: address,
             recipient: [2u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_used: 10,
             block_height: 0, // Not yet included in a block

@@ -190,8 +190,25 @@ impl Mempool {
             return Err(MempoolError::InvalidNonce);
         }
 
-        // Check the balance
-        if account.balance < tx.total_cost() {
+        if tx.fee_token_id.is_none() {
+            return Err(MempoolError::InsufficientBalance);
+        }
+
+        if tx.transfer_token_ids.is_empty() {
+            return Err(MempoolError::InsufficientBalance);
+        }
+
+        let fee_token_id = tx.fee_token_id.unwrap();
+
+        if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+            return Err(MempoolError::InsufficientBalance);
+        }
+
+        if !account.owns_token(&fee_token_id) {
+            return Err(MempoolError::InsufficientBalance);
+        }
+
+        if !tx.transfer_token_ids.iter().all(|token_id| account.owns_token(token_id)) {
             return Err(MempoolError::InsufficientBalance);
         }
 

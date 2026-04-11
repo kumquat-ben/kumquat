@@ -107,6 +107,8 @@ let tx = TransactionRecord {
     tx_id: [1; 32],
     sender: [2; 32],
     recipient: [3; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
     value: 100,
     gas_price: 1,
     gas_limit: 21000,

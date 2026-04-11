@@ -33,6 +33,8 @@ fn test_storage_integration() {
         tx_id: [3; 32],
         sender: sender_addr,
         recipient: recipient_addr,
+            transfer_token_ids: vec![],
+            fee_token_id: None,
         value: 100,
         gas_used: 10,
         block_height: 1,

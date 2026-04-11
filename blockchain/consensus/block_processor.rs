@@ -227,71 +227,9 @@ impl<'a> BlockProcessor<'a> {
 
         // Apply all transactions to the temporary state
         for tx in transactions {
-            // Get sender account
-            let sender = match temp_state.get_account_state(&tx.sender) {
-                Some(account) => account,
-                None => {
-                    return Err(format!("Sender account not found: {}", hex::encode(&tx.sender)));
-                }
-            };
-
-            // Get recipient account (or create if it doesn't exist)
-            let recipient = match temp_state.get_account_state(&tx.recipient) {
-                Some(account) => account,
-                None => {
-                    // Create a new account for the recipient
-                    match temp_state.create_account(&tx.recipient, 0, crate::storage::state::AccountType::User) {
-                        Ok(()) => {
-                            match temp_state.get_account_state(&tx.recipient) {
-                                Some(account) => account,
-                                None => {
-                                    return Err(format!("Failed to create recipient account: {}", hex::encode(&tx.recipient)));
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            return Err(format!("Failed to create recipient account: {}", e));
-                        }
-                    }
-                }
-            };
-
-            // Check sender balance
-            if sender.balance < tx.value + tx.gas_price * tx.gas_used {
-                return Err(format!("Insufficient balance for sender: {}", hex::encode(&tx.sender)));
-            }
-
-            // Update sender account
-            let new_sender_balance = sender.balance - (tx.value + tx.gas_price * tx.gas_used);
-            let new_sender_nonce = sender.nonce + 1;
-
-            let mut new_sender = sender.clone();
-            new_sender.balance = new_sender_balance;
-            new_sender.nonce = new_sender_nonce;
-
-            // Update recipient account
-            let new_recipient_balance = recipient.balance + tx.value;
-
-            let mut new_recipient = recipient.clone();
-            new_recipient.balance = new_recipient_balance;
-
-            // Add state changes
-            state_changes.push((tx.sender, new_sender.clone()));
-            state_changes.push((tx.recipient, new_recipient.clone()));
-
-            // Update the temporary state
-            match temp_state.update_account(&tx.sender, &new_sender) {
-                Ok(()) => {},
-                Err(e) => {
-                    return Err(format!("Failed to update sender account: {}", e));
-                }
-            }
-
-            match temp_state.update_account(&tx.recipient, &new_recipient) {
-                Ok(()) => {},
-                Err(e) => {
-                    return Err(format!("Failed to update recipient account: {}", e));
-                }
+            match temp_state.apply_token_transaction(tx, &block.miner, block.height) {
+                Ok(changes) => state_changes.extend(changes),
+                Err(e) => return Err(format!("Failed to apply token transaction: {}", e)),
             }
         }
 
@@ -436,6 +374,8 @@ mod tests {
             tx_id: [3u8; 32],
             sender: [1u8; 32],
             recipient: [2u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_price: 1,
             gas_limit: 21000,

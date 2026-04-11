@@ -17,7 +17,13 @@ pub struct TransactionRecord {
     /// Recipient address
     pub recipient: Hash,
 
-    /// Transaction value
+    /// Exact token IDs that move from the sender to the recipient.
+    pub transfer_token_ids: Vec<Hash>,
+
+    /// Exact token ID selected by the sender as the transaction fee.
+    pub fee_token_id: Option<Hash>,
+
+    /// Compatibility mirror of the transferred value in cents.
     pub value: u64,
 
     /// Gas price (fee per gas unit)
@@ -402,6 +408,8 @@ mod tests {
             tx_id: [1; 32],
             sender: [2; 32],
             recipient: [3; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_price: 5,
             gas_limit: 21000,
@@ -464,6 +472,8 @@ mod tests {
                 tx_id: [i as u8 + 1; 32],
                 sender: [2; 32],
                 recipient: [3; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
                 value: 100 * i,
                 gas_price: 5,
                 gas_limit: 21000,
@@ -498,6 +508,8 @@ mod tests {
             tx_id: [1; 32],
             sender: [2; 32],
             recipient: [3; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
             value: 100,
             gas_price: 5,
             gas_limit: 21000,
