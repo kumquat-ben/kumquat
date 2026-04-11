@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use log::{info, warn};
 
 use crate::storage::block_store::{Block, Hash};
-use crate::storage::state::{AccountState, AccountType};
+use crate::storage::state::{AccountState, AccountType, Denomination, DenominationToken, TokenMintSource};
 use crate::crypto::hash::sha256;
 
 /// Genesis configuration
@@ -27,8 +27,11 @@ pub struct GenesisConfig {
 /// Genesis account
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenesisAccount {
-    /// Initial balance
-    pub balance: u64,
+    /// Legacy compatibility field in cents.
+    pub balance: Option<u64>,
+
+    /// Exact owned denominations to mint at genesis.
+    pub denominations: Option<Vec<String>>,
 
     /// Account type
     pub account_type: String,
@@ -42,7 +45,13 @@ impl Default for GenesisConfig {
         initial_accounts.insert(
             "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
             GenesisAccount {
-                balance: 1_000_000_000,
+                balance: None,
+                denominations: Some(
+                    Denomination::reward_set()
+                        .into_iter()
+                        .map(|denomination| denomination.to_string())
+                        .collect(),
+                ),
                 account_type: "User".to_string(),
             },
         );
@@ -50,7 +59,13 @@ impl Default for GenesisConfig {
         initial_accounts.insert(
             "0000000000000000000000000000000000000000000000000000000000000002".to_string(),
             GenesisAccount {
-                balance: 1_000_000_000,
+                balance: None,
+                denominations: Some(
+                    Denomination::reward_set()
+                        .into_iter()
+                        .map(|denomination| denomination.to_string())
+                        .collect(),
+                ),
                 account_type: "User".to_string(),
             },
         );
@@ -171,18 +186,65 @@ impl GenesisConfig {
                 }
             };
 
+            let tokens = self.generate_account_tokens(address, account);
+
             // Create the account state
-            let state = match account_type {
-                AccountType::User => AccountState::new_user(account.balance, 0),
-                AccountType::Contract => AccountState::new_contract(account.balance, Vec::new(), 0),
-                AccountType::System => AccountState::new_system(account.balance, 0),
-                AccountType::Validator => AccountState::new_validator(account.balance, account.balance, 0),
+            let state = if !tokens.is_empty() {
+                AccountState::from_tokens(address, account_type, tokens, 0)
+            } else {
+                let bootstrap_balance = account.balance.unwrap_or(0);
+                match account_type {
+                    AccountType::User => AccountState::new_user(bootstrap_balance, 0),
+                    AccountType::Contract => AccountState::new_contract(bootstrap_balance, Vec::new(), 0),
+                    AccountType::System => AccountState::new_system(bootstrap_balance, 0),
+                    AccountType::Validator => AccountState::new_validator(bootstrap_balance, bootstrap_balance, 0),
+                }
             };
 
             account_states.push((address, state));
         }
 
         account_states
+    }
+
+    fn generate_account_tokens(&self, address: Hash, account: &GenesisAccount) -> Vec<DenominationToken> {
+        if let Some(denominations) = &account.denominations {
+            return denominations
+                .iter()
+                .enumerate()
+                .filter_map(|(index, value)| {
+                    let denomination = Denomination::parse(value);
+                    if denomination.is_none() {
+                        warn!("Unknown denomination '{}' in genesis account", value);
+                    }
+                    denomination.map(|denomination| {
+                        DenominationToken::new(
+                            address,
+                            denomination,
+                            0,
+                            TokenMintSource::Genesis,
+                            index as u64,
+                        )
+                    })
+                })
+                .collect();
+        }
+
+        let mut remaining = account.balance.unwrap_or(0);
+        let mut tokens = Vec::new();
+        for denomination in Denomination::all_descending() {
+            while remaining >= denomination.value_cents() {
+                tokens.push(DenominationToken::new(
+                    address,
+                    *denomination,
+                    0,
+                    TokenMintSource::LegacyBalanceBootstrap,
+                    tokens.len() as u64,
+                ));
+                remaining -= denomination.value_cents();
+            }
+        }
+        tokens
     }
 }
 

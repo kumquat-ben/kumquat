@@ -52,7 +52,7 @@ pub use rocksdb_schema::{Schema, KeyType, RocksDBManager, DatabaseStats};
 pub use state_manager::StateManager;
 pub use mempool::{MempoolStore, MempoolTransactionMetadata, MempoolStorageError};
 pub use snapshot::{SnapshotManager, SnapshotConfig, SnapshotMetadata, SnapshotType, CompressionType, SnapshotError};
-pub use state::{AccountState, AccountType, StateRoot, StateError, StateResult, GlobalState, ChainParameters, StateTransition, AccountChange, AccountChangeType};
+pub use state::{AccountState, AccountType, StateRoot, StateError, StateResult, GlobalState, ChainParameters, StateTransition, AccountChange, AccountChangeType, AmountCents, Denomination, DenominationToken, TokenMintSource};
 pub use state_validation::{StateValidator, ValidationError, ValidationResult};
 pub use state_pruning::{StatePruner, PruningMode, PrunerConfig, PruningError, PruningResult, PruningStats};
 pub use state_sharding::{StateShardingManager, StateShard, ShardingStrategy, ShardConfig, ShardingError, ShardingResult};

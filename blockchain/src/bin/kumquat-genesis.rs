@@ -136,7 +136,12 @@ fn main() {
                 println!("  Initial Accounts: {}", account_states.len());
 
                 for (address, state) in &account_states {
-                    println!("    {}: {} VIBE", hex::encode(address), state.balance);
+                    println!(
+                        "    {}: {} cents across {} tokens",
+                        hex::encode(address),
+                        state.balance,
+                        state.tokens.len()
+                    );
                 }
             },
             Err(e) => {

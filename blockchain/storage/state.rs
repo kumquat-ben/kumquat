@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use serde::{Serialize, Deserialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Error type for state operations
@@ -52,6 +53,9 @@ pub enum StateError {
 /// Result type for state operations
 pub type StateResult<T> = Result<T, StateError>;
 
+/// Monetary amount in USD cents.
+pub type AmountCents = u64;
+
 /// Account type
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccountType {
@@ -79,10 +83,155 @@ impl fmt::Display for AccountType {
     }
 }
 
+/// Fixed USD denominations supported by the ledger.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Denomination {
+    Dollars100,
+    Dollars50,
+    Dollars20,
+    Dollars10,
+    Dollars5,
+    Dollars1,
+    Cents50,
+    Cents15,
+    Cents10,
+    Cents5,
+    Cents1,
+}
+
+impl Denomination {
+    pub fn value_cents(&self) -> AmountCents {
+        match self {
+            Denomination::Dollars100 => 10_000,
+            Denomination::Dollars50 => 5_000,
+            Denomination::Dollars20 => 2_000,
+            Denomination::Dollars10 => 1_000,
+            Denomination::Dollars5 => 500,
+            Denomination::Dollars1 => 100,
+            Denomination::Cents50 => 50,
+            Denomination::Cents15 => 15,
+            Denomination::Cents10 => 10,
+            Denomination::Cents5 => 5,
+            Denomination::Cents1 => 1,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Denomination::Dollars100 => "100",
+            Denomination::Dollars50 => "50",
+            Denomination::Dollars20 => "20",
+            Denomination::Dollars10 => "10",
+            Denomination::Dollars5 => "5",
+            Denomination::Dollars1 => "1",
+            Denomination::Cents50 => "0.5",
+            Denomination::Cents15 => "0.15",
+            Denomination::Cents10 => "0.1",
+            Denomination::Cents5 => "0.05",
+            Denomination::Cents1 => "0.01",
+        }
+    }
+
+    pub fn all_descending() -> &'static [Denomination] {
+        &[
+            Denomination::Dollars100,
+            Denomination::Dollars50,
+            Denomination::Dollars20,
+            Denomination::Dollars10,
+            Denomination::Dollars5,
+            Denomination::Dollars1,
+            Denomination::Cents50,
+            Denomination::Cents15,
+            Denomination::Cents10,
+            Denomination::Cents5,
+            Denomination::Cents1,
+        ]
+    }
+
+    pub fn reward_set() -> Vec<Denomination> {
+        Self::all_descending().to_vec()
+    }
+
+    pub fn parse(input: &str) -> Option<Self> {
+        match input.trim() {
+            "100" | "100.0" | "100.00" => Some(Denomination::Dollars100),
+            "50" | "50.0" | "50.00" => Some(Denomination::Dollars50),
+            "20" | "20.0" | "20.00" => Some(Denomination::Dollars20),
+            "10" | "10.0" | "10.00" => Some(Denomination::Dollars10),
+            "5" | "5.0" | "5.00" => Some(Denomination::Dollars5),
+            "1" | "1.0" | "1.00" => Some(Denomination::Dollars1),
+            "0.5" | "0.50" => Some(Denomination::Cents50),
+            "0.15" | ".15" => Some(Denomination::Cents15),
+            "0.1" | "0.10" | ".1" => Some(Denomination::Cents10),
+            "0.05" | ".05" => Some(Denomination::Cents5),
+            "0.01" | ".01" => Some(Denomination::Cents1),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Denomination {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
+/// Why a token was minted.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenMintSource {
+    Genesis,
+    BlockReward,
+    LegacyBalanceBootstrap,
+    TransferChange,
+}
+
+/// A unique owned denomination token.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct DenominationToken {
+    pub token_id: [u8; 32],
+    pub owner: [u8; 32],
+    pub denomination: Denomination,
+    pub minted_at_block: u64,
+    pub mint_source: TokenMintSource,
+    pub metadata: HashMap<String, String>,
+}
+
+impl DenominationToken {
+    pub fn new(
+        owner: [u8; 32],
+        denomination: Denomination,
+        minted_at_block: u64,
+        mint_source: TokenMintSource,
+        sequence: u64,
+    ) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(owner);
+        hasher.update(denomination.label().as_bytes());
+        hasher.update(minted_at_block.to_be_bytes());
+        hasher.update(sequence.to_be_bytes());
+        hasher.update([mint_source as u8]);
+        let token_id: [u8; 32] = hasher.finalize().into();
+
+        Self {
+            token_id,
+            owner,
+            denomination,
+            minted_at_block,
+            mint_source,
+            metadata: HashMap::new(),
+        }
+    }
+
+    pub fn value_cents(&self) -> AmountCents {
+        self.denomination.value_cents()
+    }
+}
+
 /// Account state structure
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AccountState {
-    /// Account balance
+    /// Compatibility mirror of the account value in cents.
+    /// The source of truth during the migration is `tokens`.
     pub balance: u64,
 
     /// Account nonce (for transaction ordering)
@@ -108,12 +257,15 @@ pub struct AccountState {
 
     /// Account metadata (arbitrary key-value pairs)
     pub metadata: HashMap<String, String>,
+
+    /// Individually owned denomination tokens.
+    pub tokens: Vec<DenominationToken>,
 }
 
 impl AccountState {
     /// Create a new user account
     pub fn new_user(balance: u64, block_height: u64) -> Self {
-        Self {
+        let mut account = Self {
             balance,
             nonce: 0,
             code: None,
@@ -123,12 +275,15 @@ impl AccountState {
             staked_amount: None,
             delegations: None,
             metadata: HashMap::new(),
-        }
+            tokens: Vec::new(),
+        };
+        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
     }
 
     /// Create a new contract account
     pub fn new_contract(balance: u64, code: Vec<u8>, block_height: u64) -> Self {
-        Self {
+        let mut account = Self {
             balance,
             nonce: 0,
             code: Some(code),
@@ -138,12 +293,15 @@ impl AccountState {
             staked_amount: None,
             delegations: None,
             metadata: HashMap::new(),
-        }
+            tokens: Vec::new(),
+        };
+        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
     }
 
     /// Create a new system account
     pub fn new_system(balance: u64, block_height: u64) -> Self {
-        Self {
+        let mut account = Self {
             balance,
             nonce: 0,
             code: None,
@@ -153,12 +311,15 @@ impl AccountState {
             staked_amount: None,
             delegations: None,
             metadata: HashMap::new(),
-        }
+            tokens: Vec::new(),
+        };
+        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
     }
 
     /// Create a new validator account
     pub fn new_validator(balance: u64, staked_amount: u64, block_height: u64) -> Self {
-        Self {
+        let mut account = Self {
             balance,
             nonce: 0,
             code: None,
@@ -168,12 +329,42 @@ impl AccountState {
             staked_amount: Some(staked_amount),
             delegations: Some(HashMap::new()),
             metadata: HashMap::new(),
+            tokens: Vec::new(),
+        };
+        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
+    }
+
+    pub fn from_tokens(
+        owner: [u8; 32],
+        account_type: AccountType,
+        tokens: Vec<DenominationToken>,
+        block_height: u64,
+    ) -> Self {
+        let balance = tokens.iter().map(|token| token.value_cents()).sum();
+        Self {
+            balance,
+            nonce: 0,
+            code: None,
+            storage: HashMap::new(),
+            last_updated: block_height,
+            account_type,
+            staked_amount: (account_type == AccountType::Validator).then_some(0),
+            delegations: (account_type == AccountType::Validator).then_some(HashMap::new()),
+            metadata: HashMap::new(),
+            tokens: tokens
+                .into_iter()
+                .map(|mut token| {
+                    token.owner = owner;
+                    token
+                })
+                .collect(),
         }
     }
 
     /// Check if the account has sufficient balance
     pub fn has_sufficient_balance(&self, amount: u64) -> bool {
-        self.balance >= amount
+        self.total_token_value() >= amount
     }
 
     /// Increment the account nonce
@@ -183,18 +374,76 @@ impl AccountState {
 
     /// Add balance to the account
     pub fn add_balance(&mut self, amount: u64) -> StateResult<()> {
-        self.balance = self.balance.checked_add(amount)
+        let new_total = self.total_token_value().checked_add(amount)
             .ok_or_else(|| StateError::Other("Balance overflow".to_string()))?;
-        Ok(())
+        self.balance = new_total;
+        self.remint_tokens_from_balance(self.current_owner(), self.last_updated, TokenMintSource::TransferChange)
     }
 
     /// Subtract balance from the account
     pub fn subtract_balance(&mut self, amount: u64) -> StateResult<()> {
         if !self.has_sufficient_balance(amount) {
-            return Err(StateError::InsufficientBalance(amount, self.balance));
+            return Err(StateError::InsufficientBalance(amount, self.total_token_value()));
         }
+        let new_total = self.total_token_value() - amount;
+        self.balance = new_total;
+        self.remint_tokens_from_balance(self.current_owner(), self.last_updated, TokenMintSource::TransferChange)
+    }
 
-        self.balance -= amount;
+    pub fn total_token_value(&self) -> AmountCents {
+        self.tokens.iter().map(|token| token.value_cents()).sum()
+    }
+
+    pub fn sync_balance_from_tokens(&mut self) {
+        self.balance = self.total_token_value();
+    }
+
+    pub fn current_owner(&self) -> [u8; 32] {
+        self.tokens.first().map(|token| token.owner).unwrap_or([0; 32])
+    }
+
+    pub fn assign_token_owner(&mut self, owner: [u8; 32]) {
+        for token in &mut self.tokens {
+            token.owner = owner;
+        }
+    }
+
+    pub fn set_tokens(&mut self, owner: [u8; 32], tokens: Vec<DenominationToken>) {
+        self.tokens = tokens
+            .into_iter()
+            .map(|mut token| {
+                token.owner = owner;
+                token
+            })
+            .collect();
+        self.sync_balance_from_tokens();
+    }
+
+    pub fn mint_block_reward_set(owner: [u8; 32], block_height: u64) -> Vec<DenominationToken> {
+        Denomination::reward_set()
+            .into_iter()
+            .enumerate()
+            .map(|(index, denomination)| {
+                DenominationToken::new(
+                    owner,
+                    denomination,
+                    block_height,
+                    TokenMintSource::BlockReward,
+                    index as u64,
+                )
+            })
+            .collect()
+    }
+
+    pub fn remint_tokens_from_balance(
+        &mut self,
+        owner: [u8; 32],
+        block_height: u64,
+        mint_source: TokenMintSource,
+    ) -> StateResult<()> {
+        let tokens = mint_exact_amount(owner, self.balance, block_height, mint_source)?;
+        self.tokens = tokens;
+        self.sync_balance_from_tokens();
         Ok(())
     }
 
@@ -284,6 +533,38 @@ impl AccountState {
     pub fn delete_metadata(&mut self, key: &str) -> Option<String> {
         self.metadata.remove(key)
     }
+}
+
+fn mint_exact_amount(
+    owner: [u8; 32],
+    amount_cents: AmountCents,
+    block_height: u64,
+    mint_source: TokenMintSource,
+) -> StateResult<Vec<DenominationToken>> {
+    let mut remaining = amount_cents;
+    let mut tokens = Vec::new();
+
+    for denomination in Denomination::all_descending() {
+        while remaining >= denomination.value_cents() {
+            tokens.push(DenominationToken::new(
+                owner,
+                *denomination,
+                block_height,
+                mint_source,
+                tokens.len() as u64,
+            ));
+            remaining -= denomination.value_cents();
+        }
+    }
+
+    if remaining != 0 {
+        return Err(StateError::Other(format!(
+            "could not represent remaining amount in cents: {}",
+            remaining
+        )));
+    }
+
+    Ok(tokens)
 }
 
 /// State root hash

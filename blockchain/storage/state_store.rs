@@ -259,6 +259,8 @@ impl<'a> StateStore<'a> {
         if let Some(mut state) = self.get_account_state(address) {
             state.balance = new_balance;
             state.last_updated = self.get_current_block_height().unwrap_or(0);
+            state.remint_tokens_from_balance(*address, state.last_updated, crate::storage::TokenMintSource::TransferChange)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
             self.set_account_state(address, &state)?;
             debug!("Updated balance for account {}: {}", addr_str, new_balance);
             Ok(())
@@ -299,6 +301,10 @@ impl<'a> StateStore<'a> {
         recipient.balance += amount;
         sender.last_updated = block_height;
         recipient.last_updated = block_height;
+        sender.remint_tokens_from_balance(*from, block_height, crate::storage::TokenMintSource::TransferChange)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+        recipient.remint_tokens_from_balance(*to, block_height, crate::storage::TokenMintSource::TransferChange)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
         // Create a batch operation
         let mut batch = WriteBatchOperation::new();
@@ -362,12 +368,13 @@ impl<'a> StateStore<'a> {
         }
 
         let block_height = self.get_current_block_height().unwrap_or(0);
-        let state = match account_type {
+        let mut state = match account_type {
             AccountType::User => AccountState::new_user(initial_balance, block_height),
             AccountType::Contract => AccountState::new_contract(initial_balance, Vec::new(), block_height),
             AccountType::System => AccountState::new_system(initial_balance, block_height),
             AccountType::Validator => AccountState::new_validator(initial_balance, 0, block_height),
         };
+        state.assign_token_owner(*address);
 
         self.set_account_state(address, &state)?;
         info!("Created new account {} with balance {}", addr_str, initial_balance);
@@ -742,9 +749,13 @@ impl<'a> StateStore<'a> {
             sender.balance -= total_cost;
             sender.nonce += 1;
             sender.last_updated = block.height;
+            sender.remint_tokens_from_balance(tx.sender, block.height, crate::storage::TokenMintSource::TransferChange)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
             recipient.balance += tx.value;
             recipient.last_updated = block.height;
+            recipient.remint_tokens_from_balance(tx.recipient, block.height, crate::storage::TokenMintSource::TransferChange)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
             // Handle contract execution if this is a contract call
             if let Some(_data) = &tx.data {

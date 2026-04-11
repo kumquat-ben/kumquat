@@ -257,9 +257,17 @@ async fn main() {
 
         // Create initial accounts
         for (address, state) in &genesis_accounts {
-            match state_store.create_account(address, state.balance, state.account_type) {
+            let mut state = state.clone();
+            state.assign_token_owner(*address);
+            state.sync_balance_from_tokens();
+            match state_store.set_account_state(address, &state) {
                 Ok(_) => {
-                    info!("Created genesis account: {} with balance {}", hex::encode(address), state.balance);
+                    info!(
+                        "Created genesis account: {} with {} cents across {} tokens",
+                        hex::encode(address),
+                        state.balance,
+                        state.tokens.len()
+                    );
                 },
                 Err(e) => {
                     error!("Failed to create genesis account: {}", e);
