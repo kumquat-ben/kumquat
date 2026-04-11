@@ -241,9 +241,9 @@ function HeroSection({ auth }) {
           damping: 18,
         }}
       >
-        Digital units that behave like
+        It's Not an Apple. It's Not Bitcoin.
         {" "}
-        <em>objects you can hold.</em>
+        <em>It's Better.</em>
       </motion.h1>
       <motion.p
         animate={{ opacity: 1, y: 0 }}
@@ -251,9 +251,8 @@ function HeroSection({ auth }) {
         initial={{ opacity: 0, y: 18 }}
         transition={{ duration: 0.55, delay: prefersReducedMotion ? 0 : 0.2 }}
       >
-        Kumquat Chain is interface technology for representing denominations as
-        visible software units with weight, hierarchy, and transfer logic people can
-        follow.
+        Kumquat Chain is a ledger that processes in parallel. Every unit is
+        traceable. It doesn't slow down as it scales.
       </motion.p>
       <motion.div
         animate={{ opacity: 1, y: 0 }}
