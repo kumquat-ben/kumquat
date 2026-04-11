@@ -190,6 +190,7 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
           <p>Data dir: <code>{data_dir}</code></p>
           <p>DB path: <code>{db_path}</code></p>
           <p>Sync status: <code>{sync_status}</code></p>
+          <p>Sync progress: <code>{sync_progress}</code></p>
         </div>
       </article>
       <article class="panel">
@@ -198,6 +199,7 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
           <p>Height: <code>{latest_height}</code></p>
           <p>Hash: <code>{latest_hash}</code></p>
           <p>Timestamp: <code>{latest_timestamp}</code></p>
+          <p>Last mined height: <code>{last_mined_height}</code></p>
         </div>
       </article>
     </section>
@@ -226,10 +228,20 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
         network_bind_addr = snapshot.network_bind_addr,
         data_dir = snapshot.data_dir,
         db_path = snapshot.db_path,
-        sync_status = snapshot.sync_status,
+        sync_status = snapshot.sync.status,
+        sync_progress = snapshot
+            .sync
+            .progress_percent
+            .map(|value| format!("{value:.1}% ({}/{})", snapshot.sync.current_height, snapshot.sync.target_height))
+            .unwrap_or_else(|| format!("{}/{}", snapshot.sync.current_height, snapshot.sync.target_height)),
         latest_hash = latest_hash,
         latest_timestamp = snapshot
             .latest_block_timestamp
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        last_mined_height = snapshot
+            .mining
+            .last_mined_block_height
             .map(|value| value.to_string())
             .unwrap_or_else(|| "unknown".to_string()),
         peer_addresses = peer_addresses,

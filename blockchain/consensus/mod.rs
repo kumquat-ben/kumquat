@@ -12,6 +12,7 @@ pub mod config;
 pub mod engine;
 pub mod block_processor;
 pub mod engine_runner;
+pub mod telemetry;
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -25,6 +26,7 @@ use crate::network::types::message::NetMessage;
 use crate::consensus::config::ConsensusConfig;
 use crate::consensus::engine::ConsensusEngine;
 use crate::consensus::engine_runner::ConsensusEngineRunner;
+use crate::consensus::telemetry::{new_consensus_telemetry, ConsensusTelemetry};
 
 /// Start the consensus engine
 pub async fn start_consensus<S: KVStore + 'static>(
@@ -35,6 +37,8 @@ pub async fn start_consensus<S: KVStore + 'static>(
     state_store: Arc<StateStore<'static>>,
     network_tx: mpsc::Sender<NetMessage>,
 ) -> Arc<ConsensusEngine> {
+    let telemetry: ConsensusTelemetry = new_consensus_telemetry(config.enable_mining);
+
     // Create the consensus engine
     let engine = ConsensusEngine::new(
         config.clone(),
@@ -43,6 +47,7 @@ pub async fn start_consensus<S: KVStore + 'static>(
         tx_store.clone(),
         state_store.clone(),
         network_tx.clone(),
+        telemetry.clone(),
     );
 
     // Create a reference to the engine for returning
@@ -56,6 +61,7 @@ pub async fn start_consensus<S: KVStore + 'static>(
         tx_store,
         state_store,
         network_tx,
+        telemetry,
     );
 
     // Create the engine runner

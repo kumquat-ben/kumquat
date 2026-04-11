@@ -10,6 +10,7 @@ use crate::storage::state_store::StateStore;
 use crate::storage::{BatchOperationManager, KVStore};
 use crate::network::types::message::NetMessage;
 use crate::consensus::config::ConsensusConfig;
+use crate::consensus::telemetry::{unix_timestamp_now, ConsensusTelemetry};
 
 /// Create a genesis block
 fn create_genesis_block(config: &ConsensusConfig) -> Block {
@@ -85,6 +86,9 @@ pub struct ConsensusEngine {
 
     /// Channel for new transactions
     tx_rx: mpsc::Receiver<TransactionRecord>,
+
+    /// Runtime telemetry for consensus and mining.
+    telemetry: ConsensusTelemetry,
 }
 
 impl ConsensusEngine {
@@ -96,6 +100,7 @@ impl ConsensusEngine {
         tx_store: Arc<TxStore<'static>>,
         state_store: Arc<StateStore<'static>>,
         network_tx: mpsc::Sender<NetMessage>,
+        telemetry: ConsensusTelemetry,
     ) -> Self {
         // Create channels
         let (_block_tx, block_rx) = mpsc::channel(100);
@@ -202,11 +207,20 @@ impl ConsensusEngine {
             network_tx,
             block_rx,
             tx_rx,
+            telemetry,
         }
+    }
+
+    pub fn telemetry(&self) -> ConsensusTelemetry {
+        self.telemetry.clone()
     }
 
     /// Run the consensus engine
     pub async fn run(&mut self) {
+        {
+            let mut telemetry = self.telemetry.write().await;
+            telemetry.consensus_started = true;
+        }
         // Start the PoH generator
         {
             let mut poh_gen = self.poh_generator.lock().await;
@@ -403,6 +417,12 @@ impl ConsensusEngine {
     /// Mine a new block
     async fn mine_block(&self) {
         info!("Attempting to mine a new block");
+        {
+            let mut telemetry = self.telemetry.write().await;
+            telemetry.mining_attempts += 1;
+            telemetry.last_mining_attempt_at = Some(unix_timestamp_now());
+            telemetry.last_error = None;
+        }
 
         // Get the current chain state height
         let (current_height, current_hash) = {
@@ -425,11 +445,21 @@ impl ConsensusEngine {
         // Mine a block
         if let Some(block) = block_producer.mine_block().await {
             info!("Mined new block at height {}", block.height);
+            {
+                let mut telemetry = self.telemetry.write().await;
+                telemetry.mined_blocks += 1;
+                telemetry.last_mining_success_at = Some(unix_timestamp_now());
+                telemetry.last_mined_block_height = Some(block.height);
+                telemetry.last_mined_block_hash = Some(hex::encode(block.hash));
+            }
 
             // Handle the new block
             self.handle_new_block(block).await;
         } else {
             warn!("Failed to mine a new block");
+            let mut telemetry = self.telemetry.write().await;
+            telemetry.failed_mining_attempts += 1;
+            telemetry.last_error = Some("Mining attempt did not produce a block".to_string());
         }
     }
 

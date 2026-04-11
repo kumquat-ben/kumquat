@@ -347,7 +347,7 @@ async fn main() {
         miner_address: resolve_miner_address(config.node.node_id.as_deref(), &config.node.node_name),
     };
 
-    let _consensus = start_consensus(
+    let consensus = start_consensus(
         consensus_config,
         static_kv_store,
         block_store.clone(),
@@ -376,7 +376,9 @@ async fn main() {
             true,
             block_store.clone(),
             mempool.clone(),
-            network.clone(),
+            network.service.clone(),
+            consensus.telemetry(),
+            network.sync_service.clone(),
         ));
 
         tokio::spawn(async move {

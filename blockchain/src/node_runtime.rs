@@ -6,8 +6,10 @@ use std::time::Instant;
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::consensus::telemetry::{ConsensusTelemetry, ConsensusTelemetrySnapshot};
 use crate::mempool::Mempool;
 use crate::network::service::NetworkService;
+use crate::network::sync::sync_service::SyncService;
 use crate::storage::block_store::BlockStore;
 
 #[derive(Debug, Clone, Serialize)]
@@ -17,6 +19,29 @@ pub struct MiningStatus {
     pub status: String,
     pub mining_threads: usize,
     pub hash_rate: Option<f64>,
+    pub mining_attempts: u64,
+    pub mined_blocks: u64,
+    pub failed_mining_attempts: u64,
+    pub last_mining_attempt_at: Option<u64>,
+    pub last_mining_success_at: Option<u64>,
+    pub last_mined_block_height: Option<u64>,
+    pub last_mined_block_hash: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncStatus {
+    pub status: String,
+    pub in_progress: bool,
+    pub current_height: u64,
+    pub target_height: u64,
+    pub remaining_blocks: u64,
+    pub progress_percent: Option<f64>,
+    pub sync_peer: Option<String>,
+    pub blocks_synced: u64,
+    pub failed_requests: u64,
+    pub started_at_unix: Option<u64>,
+    pub elapsed_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,7 +61,7 @@ pub struct NodeStatusSnapshot {
     pub peer_addresses: Vec<String>,
     pub mempool_size: usize,
     pub mining: MiningStatus,
-    pub sync_status: String,
+    pub sync: SyncStatus,
     pub data_gaps: Vec<String>,
 }
 
@@ -55,6 +80,8 @@ pub struct NodeRuntime {
     block_store: Arc<BlockStore<'static>>,
     mempool: Arc<Mempool>,
     network: Arc<NetworkService>,
+    consensus_telemetry: ConsensusTelemetry,
+    sync_service: Option<Arc<SyncService>>,
 }
 
 impl NodeRuntime {
@@ -72,6 +99,8 @@ impl NodeRuntime {
         block_store: Arc<BlockStore<'static>>,
         mempool: Arc<Mempool>,
         network: Arc<NetworkService>,
+        consensus_telemetry: ConsensusTelemetry,
+        sync_service: Option<Arc<SyncService>>,
     ) -> Self {
         Self {
             start_time: Instant::now(),
@@ -87,6 +116,8 @@ impl NodeRuntime {
             block_store,
             mempool,
             network,
+            consensus_telemetry,
+            sync_service,
         }
     }
 
@@ -101,11 +132,18 @@ impl NodeRuntime {
             .map(|addr| addr.to_string())
             .collect::<Vec<_>>();
         let db_size_bytes = directory_size(&self.db_path);
+        let telemetry = self.consensus_telemetry.read().await.clone();
+        let sync_snapshot = match &self.sync_service {
+            Some(sync_service) => Some(sync_service.get_sync_state().await),
+            None => None,
+        };
 
         let mut data_gaps = Vec::new();
-        data_gaps.push("Sync progress is not instrumented yet, so sync status is approximate.".to_string());
-        if self.mining_enabled {
+        if self.mining_enabled && telemetry.last_mining_success_at.is_none() {
             data_gaps.push("Hash rate is not exposed by the mining engine yet.".to_string());
+        }
+        if sync_snapshot.is_none() {
+            data_gaps.push("Sync service telemetry is unavailable for this node instance.".to_string());
         }
         data_gaps.push("Recent warnings/errors are not yet collected into the dashboard event feed.".to_string());
 
@@ -124,14 +162,16 @@ impl NodeRuntime {
             peer_count: peer_addresses.len(),
             peer_addresses,
             mempool_size: self.mempool.len(),
-            mining: MiningStatus {
-                enabled_in_config: self.mining_enabled,
-                consensus_running: self.consensus_running,
-                status: mining_status_label(self.mining_enabled, self.consensus_running),
-                mining_threads: self.mining_threads,
-                hash_rate: None,
-            },
-            sync_status: approximate_sync_status(latest_block.is_some(), self.mining_enabled),
+            mining: mining_status_from_telemetry(
+                self.mining_enabled,
+                self.consensus_running,
+                self.mining_threads,
+                telemetry,
+            ),
+            sync: sync_status_from_state(
+                sync_snapshot,
+                latest_block.as_ref().map(|block| block.height).unwrap_or(0),
+            ),
             data_gaps,
         }
     }
@@ -141,22 +181,105 @@ impl NodeRuntime {
     }
 }
 
-fn approximate_sync_status(has_chain_data: bool, mining_enabled: bool) -> String {
-    if has_chain_data && mining_enabled {
-        "running".to_string()
-    } else if has_chain_data {
-        "online".to_string()
-    } else {
-        "starting".to_string()
-    }
-}
-
 fn mining_status_label(mining_enabled: bool, consensus_running: bool) -> String {
     match (mining_enabled, consensus_running) {
         (true, true) => "configured-on".to_string(),
         (true, false) => "requested-but-not-running".to_string(),
         (false, true) => "consensus-running-mining-disabled".to_string(),
         (false, false) => "disabled".to_string(),
+    }
+}
+
+fn mining_status_from_telemetry(
+    mining_enabled: bool,
+    consensus_running: bool,
+    mining_threads: usize,
+    telemetry: ConsensusTelemetrySnapshot,
+) -> MiningStatus {
+    let status = if telemetry.mined_blocks > 0 {
+        "mining-successful".to_string()
+    } else if telemetry.mining_attempts > 0 && mining_enabled {
+        "mining-active".to_string()
+    } else {
+        mining_status_label(mining_enabled, consensus_running)
+    };
+
+    MiningStatus {
+        enabled_in_config: mining_enabled,
+        consensus_running,
+        status,
+        mining_threads,
+        hash_rate: None,
+        mining_attempts: telemetry.mining_attempts,
+        mined_blocks: telemetry.mined_blocks,
+        failed_mining_attempts: telemetry.failed_mining_attempts,
+        last_mining_attempt_at: telemetry.last_mining_attempt_at,
+        last_mining_success_at: telemetry.last_mining_success_at,
+        last_mined_block_height: telemetry.last_mined_block_height,
+        last_mined_block_hash: telemetry.last_mined_block_hash,
+        last_error: telemetry.last_error,
+    }
+}
+
+fn sync_status_from_state(
+    sync_state: Option<crate::network::sync::sync_service::SyncState>,
+    latest_height: u64,
+) -> SyncStatus {
+    if let Some(sync_state) = sync_state {
+        let remaining_blocks = sync_state.target_height.saturating_sub(latest_height);
+        let progress_percent = if sync_state.target_height > sync_state.current_height {
+            let completed = latest_height.saturating_sub(sync_state.current_height) as f64;
+            let total = sync_state.target_height.saturating_sub(sync_state.current_height) as f64;
+            Some((completed / total * 100.0).clamp(0.0, 100.0))
+        } else {
+            None
+        };
+        let elapsed_seconds = sync_state.start_time.map(|started| started.elapsed().as_secs());
+        let started_at_unix = elapsed_seconds.map(|elapsed| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            now.saturating_sub(elapsed)
+        });
+
+        SyncStatus {
+            status: if sync_state.in_progress {
+                "syncing".to_string()
+            } else if latest_height >= sync_state.target_height && sync_state.target_height > 0 {
+                "caught-up".to_string()
+            } else {
+                "idle".to_string()
+            },
+            in_progress: sync_state.in_progress,
+            current_height: latest_height,
+            target_height: sync_state.target_height,
+            remaining_blocks,
+            progress_percent,
+            sync_peer: sync_state.sync_peer,
+            blocks_synced: sync_state.blocks_synced,
+            failed_requests: sync_state.failed_requests,
+            started_at_unix,
+            elapsed_seconds,
+        }
+    } else {
+        SyncStatus {
+            status: if latest_height > 0 {
+                "online-no-sync-service".to_string()
+            } else {
+                "starting".to_string()
+            },
+            in_progress: false,
+            current_height: latest_height,
+            target_height: latest_height,
+            remaining_blocks: 0,
+            progress_percent: None,
+            sync_peer: None,
+            blocks_synced: 0,
+            failed_requests: 0,
+            started_at_unix: None,
+            elapsed_seconds: None,
+        }
     }
 }
 

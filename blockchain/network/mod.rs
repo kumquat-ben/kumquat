@@ -24,6 +24,13 @@ use log::error;
 use crate::network::service::NetworkService;
 use crate::network::types::message::NetMessage;
 use crate::network::service::advanced_router::AdvancedMessageRouter;
+use crate::network::sync::sync_service::SyncService;
+
+#[derive(Clone)]
+pub struct EnhancedNetworkHandle {
+    pub service: Arc<NetworkService>,
+    pub sync_service: Option<Arc<SyncService>>,
+}
 
 /// Configuration for the network module
 #[derive(Clone, Debug)]
@@ -83,7 +90,7 @@ pub async fn start_enhanced_network(
     tx_store: Option<Arc<crate::storage::tx_store::TxStore<'static>>>,
     mempool: Option<Arc<crate::mempool::Mempool>>,
     consensus: Option<Arc<crate::consensus::engine::ConsensusEngine>>,
-) -> Arc<NetworkService> {
+) -> EnhancedNetworkHandle {
     // Create the basic network service
     let (_message_tx, message_rx) = mpsc::channel(100);
     let service = NetworkService::new(config, message_rx);
@@ -172,6 +179,8 @@ pub async fn start_enhanced_network(
     });
 
     // Create integrations if subsystems are provided
+    let mut sync_service_handle = None;
+
     if let (Some(mempool), Some(block_store_clone)) = (mempool.clone(), block_store.clone()) {
         // Clone block_store for each use to avoid ownership issues
         // Create mempool integration
@@ -196,17 +205,24 @@ pub async fn start_enhanced_network(
         ).with_advanced_registry(advanced_registry.clone())
          .with_event_bus(event_bus.clone())
          .with_reputation(reputation.clone()));
+        sync_service_handle = Some(sync_service.clone());
 
         // Create sync manager if block_store is available
         if let Some(block_store_clone) = block_store.clone() {
-            let _sync_manager = sync::sync_manager::SyncManager::new(
+            let sync_manager = Arc::new(sync::sync_manager::SyncManager::new(
                 sync_service,
                 block_store_clone,
                 peer_registry.clone(),
                 broadcaster.clone(),
             ).with_advanced_registry(advanced_registry.clone())
          .with_event_bus(event_bus.clone())
-         .with_reputation(reputation.clone());
+         .with_reputation(reputation.clone()));
+
+            tokio::spawn(async move {
+                if let Err(e) = sync_manager.start().await {
+                    error!("Failed to start sync manager: {}", e);
+                }
+            });
         }
 
         // We've already started the sync manager in the if block above
@@ -220,7 +236,10 @@ pub async fn start_enhanced_network(
         service.run().await;
     });
 
-    service_arc
+    EnhancedNetworkHandle {
+        service: service_arc,
+        sync_service: sync_service_handle,
+    }
 }
 
 /// Create a network message sender

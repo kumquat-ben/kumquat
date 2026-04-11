@@ -310,6 +310,10 @@ impl SyncService {
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
+                                    state.current_height = block.height;
+                                    if block.height > state.target_height {
+                                        state.target_height = block.height;
+                                    }
                                     state.blocks_synced += 1;
 
                                     // Check if we've reached the target height
@@ -381,6 +385,12 @@ impl SyncService {
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
+                                    if let Some(last_block) = blocks.last() {
+                                        state.current_height = last_block.height;
+                                        if last_block.height > state.target_height {
+                                            state.target_height = last_block.height;
+                                        }
+                                    }
                                     state.blocks_synced += blocks.len() as u64;
 
                                     // Check if we've reached the target height
@@ -475,6 +485,7 @@ impl SyncService {
                 {
                     let mut state = sync_state.write().await;
                     state.in_progress = true;
+                    state.target_height = current_height;
                     state.current_height = current_height;
                     state.sync_peer = Some(sync_peer.clone());
                     state.start_time = Some(Instant::now());
