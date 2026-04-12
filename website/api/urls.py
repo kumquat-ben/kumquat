@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
 from django.urls import path, re_path
+from django.views.generic import RedirectView
 
 from .views import (
     admin_dashboard_view,
@@ -42,4 +43,10 @@ urlpatterns = [
     path("healthz", healthz_view, name="healthz"),
     path("messages", messages_view, name="messages"),
     path("webhooks/vonage/sms", vonage_sms_callback_view, name="vonage-sms-callback"),
+    path("admin/dashboard", RedirectView.as_view(url="/dashboard", permanent=False)),
+    path("admin/vonage/sms", RedirectView.as_view(url="/sms", permanent=False)),
+    path("api/auth/logout", RedirectView.as_view(url="/auth/logout", permanent=False)),
+    path("api/admin/dashboard", RedirectView.as_view(url="/dashboard/data", permanent=False)),
+    path("api/admin/vonage/sms", RedirectView.as_view(url="/sms/data", permanent=False)),
+    path("api/admin/nodes/launch", RedirectView.as_view(url="/nodes/launch", permanent=False)),
 ]

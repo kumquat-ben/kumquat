@@ -885,9 +885,9 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
       <p class="copy">{copy}</p>
       <div class="toolbar">
         <a class="button" href="{back_href}">{back_label}</a>
-        <a class="button" href="/admin/dashboard">Dashboard</a>
-        <a class="button" href="/admin/vonage/sms">SMS Inbox</a>
-        <a class="button button-primary" href="/api/auth/logout">Sign out</a>
+        <a class="button" href="/dashboard">Dashboard</a>
+        <a class="button" href="/sms">SMS Inbox</a>
+        <a class="button button-primary" href="/auth/logout">Sign out</a>
       </div>
       <div id="app" class="panel">
         <p class="status">Loading…</p>
@@ -899,7 +899,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
     <script>
       const mount = document.getElementById("app");
       const endpoint = window.__KUMQUAT_BOOTSTRAP_URL__;
-      const ADMIN_NODE_LAUNCH_URL = "/api/admin/nodes/launch";
+      const ADMIN_NODE_LAUNCH_URL = "/nodes/launch";
 
       function escapeHtml(value) {{
         return String(value ?? "")
@@ -1026,7 +1026,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
           throw new Error(payload.error || "Failed to load admin data.");
         }}
 
-        if (endpoint.includes("/api/admin/vonage/sms")) {{
+        if (endpoint.includes("/sms/data")) {{
           const rows = (payload.messages || []).map((message) => `
             <tr>
               <td>${{escapeHtml(message.from_number || "Unknown")}}</td>
@@ -1477,7 +1477,7 @@ def admin_dashboard_page_view(request):
         eyebrow="Admin",
         heading="Product release dashboard.",
         copy="Review signed-in users, early access signups, and inbound SMS from the backend-owned admin surface.",
-        bootstrap_url="/api/admin/dashboard",
+        bootstrap_url="/dashboard/data",
     )
 
 
@@ -1681,8 +1681,8 @@ def admin_vonage_sms_page_view(request):
         eyebrow="Vonage",
         heading="Inbound SMS inbox.",
         copy="Review webhook deliveries handled by the Django backend, including payload details and signature validation state.",
-        bootstrap_url="/api/admin/vonage/sms",
-        back_href="/admin/dashboard",
+        bootstrap_url="/sms/data",
+        back_href="/dashboard",
         back_label="Back to dashboard",
     )
 
