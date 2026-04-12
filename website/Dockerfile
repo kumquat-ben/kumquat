@@ -1,15 +1,23 @@
-FROM node:20-alpine AS build
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
+RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY . .
-RUN npm run build
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+COPY . ./
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+RUN python manage.py collectstatic --noinput
 
-EXPOSE 8080
+RUN chown -R app:app /app
+
+USER app
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "gunicorn kumquat_backend.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-60}"]

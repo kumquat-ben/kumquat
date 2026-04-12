@@ -38,8 +38,7 @@ html {
 }
 
 html,
-body,
-#root {
+body {
   min-height: 100%;
 }
 
@@ -403,6 +402,7 @@ input:focus {
 
 .bills-track {
   width: max-content;
+  animation: marquee 28s linear infinite;
 }
 
 .bills-loop {
@@ -453,6 +453,21 @@ input:focus {
 }
 
 .bill-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  transform: translateX(-50%);
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: "DM Mono", monospace;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.bill-card:hover::after {
+  content: attr(data-bill-id);
   position: absolute;
   left: 50%;
   bottom: calc(100% + 0.5rem);
@@ -642,6 +657,10 @@ input:focus {
   justify-content: center;
   border-radius: 50%;
   margin-bottom: 1rem;
+  font-family: "DM Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .signup-success-icon,
@@ -1009,6 +1028,16 @@ input:focus {
   color: #9c2f1a;
 }
 
+.dashboard-message-success {
+  color: var(--money-green-dark);
+}
+
+.message-stack {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
 .dashboard-inline-summary {
   margin-bottom: 1rem;
   padding: 1rem 1.1rem;
@@ -1178,7 +1207,7 @@ input:focus {
 }
 
 .data-table tbody tr {
-  cursor: pointer;
+  cursor: default;
 }
 
 .data-table tbody tr:hover {
@@ -1188,6 +1217,34 @@ input:focus {
 .spinner,
 .spin {
   animation: spin 900ms linear infinite;
+}
+
+.inline-form,
+.stack-form {
+  margin: 0;
+}
+
+.inline-form {
+  display: inline-flex;
+}
+
+.stack-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+code {
+  font-family: "DM Mono", monospace;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-50% - 0.5rem));
+  }
 }
 
 @keyframes spin {

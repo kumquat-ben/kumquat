@@ -496,11 +496,7 @@ resource "helm_release" "backend" {
       host      = var.hostname
       paths = [
         {
-          path     = "/api"
-          pathType = "Prefix"
-        },
-        {
-          path     = "/admin"
+          path     = "/"
           pathType = "Prefix"
         },
       ]

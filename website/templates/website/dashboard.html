@@ -1,0 +1,184 @@
+{% extends "website/base.html" %}
+
+{% block title %}Dashboard | Kumquat{% endblock %}
+
+{% block content %}
+  <section class="dashboard-layout">
+    <div class="dashboard-hero">
+      <p class="section-eyebrow">Admin</p>
+      <h1 class="utility-title">Product release dashboard.</h1>
+      <p class="body-copy">Review signed-in users and the early access list in one place.</p>
+      <div class="stats-grid">
+        <article class="stat-card"><p class="section-eyebrow">Users</p><h3>{{ dashboard.stats.users }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Superusers</p><h3>{{ dashboard.stats.superusers }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Signups</p><h3>{{ dashboard.stats.signups }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Inbound SMS</p><h3>{{ dashboard.stats.inbound_sms }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Managed Nodes</p><h3>{{ dashboard.stats.managed_nodes }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Running Nodes</p><h3>{{ dashboard.stats.running_nodes }}</h3></article>
+      </div>
+    </div>
+
+    <div class="dashboard-panel">
+      <div class="dashboard-toolbar">
+        <a class="button button-secondary" href="/">Back home</a>
+        <a class="button button-secondary" href="/sms">Open SMS inbox</a>
+      </div>
+
+      {% if messages %}
+        <div class="message-stack">
+          {% for message in messages %}
+            <p class="dashboard-message {% if message.tags %}dashboard-message-{{ message.tags }}{% endif %}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <section class="dashboard-card managed-node-card">
+        <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Node Launcher</p>
+            <h3>Launch a managed blockchain node</h3>
+          </div>
+          <div class="dashboard-inline-summary">
+            <p class="body-copy">
+              {% if dashboard.launcher.enabled %}
+                Image {{ dashboard.launcher.default_image }}
+              {% else %}
+                Launcher is disabled in backend configuration.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+        {% if dashboard.launcher.enabled %}
+          <form action="/nodes/launch" class="managed-node-form" method="post">
+            {% csrf_token %}
+            <label class="managed-node-field">
+              <span class="section-eyebrow">Display name</span>
+              <input name="display_name" placeholder="Operator Node" type="text" />
+            </label>
+            <label class="managed-node-field">
+              <span class="section-eyebrow">Mining threads</span>
+              <input min="1" name="mining_threads" type="number" value="1" />
+            </label>
+            <label class="managed-node-checkbox">
+              <input name="enable_mining" type="checkbox" value="true" />
+              <span>Enable mining on launch</span>
+            </label>
+            <button class="button button-primary" type="submit">Launch node</button>
+          </form>
+        {% else %}
+          <p class="dashboard-message dashboard-message-error">Enable the node launcher in backend configuration before starting managed nodes.</p>
+        {% endif %}
+      </section>
+
+      <section class="managed-node-grid">
+        {% for node in dashboard.managed_nodes %}
+          <article class="dashboard-card managed-node-card">
+            <div class="dashboard-card-header">
+              <div>
+                <p class="section-eyebrow">Managed Node</p>
+                <h3>{{ node.display_name }}</h3>
+              </div>
+              <span class="managed-node-status managed-node-status-{{ node.status }}">{{ node.status }}</span>
+            </div>
+            <div class="managed-node-meta">
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Node Name</span><p>{{ node.name }}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">API Port</span><p>{{ node.api_port }}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">P2P Port</span><p>{{ node.p2p_port }}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Mining</span><p>{% if node.enable_mining %}On ({{ node.mining_threads }} threads){% else %}Off{% endif %}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Launched</span><p>{{ node.launched_at|default:"Unavailable" }}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Last status</span><p>{{ node.last_status_at|default:"Unavailable" }}</p></div>
+            </div>
+            <div class="managed-node-actions">
+              <a class="button button-secondary" href="{{ node.dashboard_proxy_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
+              <form action="/nodes/{{ node.id }}/stop" class="inline-form" method="post">
+                {% csrf_token %}
+                <button class="button button-secondary" {% if node.status != "running" %}disabled{% endif %} type="submit">Stop node</button>
+              </form>
+            </div>
+            {% if node.last_error %}
+              <p class="dashboard-message dashboard-message-error">{{ node.last_error }}</p>
+            {% endif %}
+            <div class="managed-node-log">
+              <p class="section-eyebrow">Recent logs</p>
+              <pre>{{ node.logs_tail|default:"No logs captured yet." }}</pre>
+            </div>
+          </article>
+        {% empty %}
+          <section class="dashboard-card managed-node-card managed-node-empty">
+            <p class="body-copy">No managed nodes have been launched from the admin dashboard yet.</p>
+          </section>
+        {% endfor %}
+      </section>
+
+      <section class="dashboard-card">
+        <div class="dashboard-card-header">
+          <div class="dashboard-tabs" role="tablist" aria-label="Dashboard data views">
+            <a class="dashboard-tab {% if active_tab == 'signups' %}dashboard-tab-active{% endif %}" href="?tab=signups">Early signups</a>
+            <a class="dashboard-tab {% if active_tab == 'users' %}dashboard-tab-active{% endif %}" href="?tab=users">Users</a>
+          </div>
+          <p class="body-copy">{{ page_obj.paginator.count }} total</p>
+        </div>
+        {% if dashboard.recent_sms %}
+          <div class="dashboard-inline-summary">
+            <p class="section-eyebrow">Latest inbound SMS</p>
+            <p class="body-copy">
+              {{ dashboard.recent_sms.0.from_number|default:"Unknown sender" }} to {{ dashboard.recent_sms.0.to_number|default:"Unknown recipient" }}
+              at {{ dashboard.recent_sms.0.received_at|default:"Unavailable" }}
+            </p>
+          </div>
+        {% endif %}
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                {% if active_tab == "signups" %}
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Created</th>
+                {% else %}
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Joined</th>
+                  <th>Last Login</th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% if active_tab == "signups" %}
+                {% for signup in page_obj.object_list %}
+                  <tr>
+                    <td>{{ signup.name|default:"Unknown" }}</td>
+                    <td>{{ signup.email }}</td>
+                    <td>{{ signup.created_at }}</td>
+                  </tr>
+                {% endfor %}
+              {% else %}
+                {% for user in page_obj.object_list %}
+                  <tr>
+                    <td>{{ user.full_name }}</td>
+                    <td>{{ user.email|default:user.username }}</td>
+                    <td>{% if user.is_superuser %}Superuser{% elif user.is_staff %}Staff{% else %}User{% endif %}</td>
+                    <td>{{ user.date_joined|default:"Never" }}</td>
+                    <td>{{ user.last_login|default:"Never" }}</td>
+                  </tr>
+                {% endfor %}
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        <div class="dashboard-pagination">
+          <p class="body-copy">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</p>
+          <div class="dashboard-pagination-actions">
+            {% if page_obj.has_previous %}
+              <a class="button button-secondary" href="?tab={{ active_tab }}&page={{ page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <a class="button button-secondary" href="?tab={{ active_tab }}&page={{ page_obj.next_page_number }}">Next</a>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+{% endblock %}

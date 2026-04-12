@@ -1,14 +1,13 @@
-<!-- Copyright (c) 2026 Benjamin Levin. All Rights Reserved. -->
-<!-- Unauthorized use or distribution is strictly prohibited. -->
+{% load static %}
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kumquat</title>
+    <title>{% block title %}Kumquat{% endblock %}</title>
     <meta
       name="description"
-      content="A minimal landing page for Kumquat."
+      content="Kumquat is a digital money product built around a physical cash mental model."
     />
     <script
       async
@@ -22,9 +21,14 @@
       gtag("js", new Date());
       gtag("config", "G-9CSN4VQC4H");
     </script>
+    <link rel="stylesheet" href="{% static 'website/css/site.css' %}" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <main class="app-shell">
+      <div class="page-noise"></div>
+      <div class="page-orbit orbit-one"></div>
+      <div class="page-orbit orbit-two"></div>
+      {% block content %}{% endblock %}
+    </main>
   </body>
 </html>

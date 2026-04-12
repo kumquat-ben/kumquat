@@ -1,0 +1,247 @@
+{% extends "website/base.html" %}
+
+{% block title %}Kumquat{% endblock %}
+
+{% block content %}
+  <header class="site-nav" id="top">
+    <a class="site-mark" href="#top">
+      <span class="site-mark-dot"></span>
+      Kumquat
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#story">Story</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#denominations">Denominations</a>
+    </nav>
+    <a
+      class="button button-nav button-nav-pulse"
+      href="https://github.com/kumquat-ben/kumquat"
+      rel="noreferrer"
+      target="_blank"
+    >
+      View on GitHub
+    </a>
+  </header>
+
+  <div class="home-page">
+    <section class="hero-section">
+      <div class="hero-decor">
+        <div class="coin-outline coin-large"></div>
+        <div class="coin-outline coin-medium"></div>
+        <div class="coin-outline coin-small"></div>
+      </div>
+      <p class="hero-eyebrow">Object-based transfer interface for the internet</p>
+      <h1 class="hero-title">It's Not an Apple. It's Not Bitcoin. <em>It's Better.</em></h1>
+      <p class="hero-copy">
+        Kumquat Chain is a ledger that processes in parallel. Every unit is
+        traceable. It doesn't slow down as it scales.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="{% if auth_user %}#how-it-works{% else %}/auth/sign-in{% endif %}">
+          {% if auth_user %}See the wallet model{% else %}Sign in with Google{% endif %}
+        </a>
+        <a class="button button-secondary" href="#story">Read the story</a>
+      </div>
+    </section>
+
+    <section class="bills-strip" aria-label="Denomination strip">
+      <div class="bills-viewport">
+        <div class="bills-track">
+          {% for _ in "12" %}
+            <div class="bills-loop">
+              {% for bill in bill_items %}
+                <article class="bill-card" data-bill-id="{{ bill.id }}">
+                  <span class="bill-value">{{ bill.label }}</span>
+                  <span class="bill-kind">{{ bill.kind }}</span>
+                </article>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="story-section" id="story">
+      <div class="story-copy-panel">
+        <p class="section-eyebrow">Why Kumquat</p>
+        <h2 class="section-title">Software that keeps the <em>logic of objects.</em></h2>
+        <p class="body-copy">
+          Kumquat is building software for object-based digital units. Bills, coins,
+          and wallet rows are interface primitives that help people inspect what is
+          in a wallet and what moves in a transfer.
+        </p>
+        <div class="story-links" aria-label="Project links">
+          <a class="story-link" href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">
+            Track the project
+          </a>
+          <a class="story-link" href="https://x.com/kumquatben" rel="noreferrer" target="_blank">
+            Founder: Benjamin Levin
+          </a>
+        </div>
+        <div class="story-principles">
+          <article>
+            <p class="principle-index">01</p>
+            <h3>Clear denomination hierarchy</h3>
+            <p class="body-copy">
+              Larger units lead, smaller units follow, and the wallet view keeps the
+              composition readable from totals down to the smallest remainder.
+            </p>
+          </article>
+          <article>
+            <p class="principle-index">02</p>
+            <h3>Transfers you can follow</h3>
+            <p class="body-copy">
+              The interface is built so incoming units, denomination mix, and wallet
+              totals can be understood at a glance instead of decoded after the fact.
+            </p>
+          </article>
+        </div>
+        <p class="legal-note">
+          Kumquat is software under development. This site describes interface and
+          protocol concepts only and is not an offer to sell or distribute money,
+          commodities, securities, or financial products.
+        </p>
+      </div>
+
+      <div class="story-side-panel">
+        <section class="identity-card">
+          {% if auth_user %}
+            <p class="section-eyebrow">Signed In</p>
+            <h3>{{ auth_user.full_name }}</h3>
+            <p class="body-copy">{{ auth_user.email }}</p>
+            <div class="pill-row">
+              <span class="meta-pill">Google verified</span>
+              {% if auth_user.is_superuser %}
+                <span class="meta-pill">Superuser</span>
+              {% endif %}
+            </div>
+            {% if auth_user.is_superuser %}
+              <a class="button button-secondary button-block" href="/dashboard">Admin dashboard</a>
+              <a class="button button-secondary button-block" href="/sms">SMS inbox</a>
+            {% endif %}
+            <form action="/auth/logout" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-secondary button-block" type="submit">Sign out</button>
+            </form>
+          {% else %}
+            <p class="section-eyebrow">Founding Member</p>
+            <h3>Join before launch</h3>
+            <p class="body-copy">
+              Sign in to start earning kumquats in early access and secure your place
+              before the chain goes live.
+            </p>
+            <a class="button button-secondary" href="/auth/sign-in">Sign in</a>
+          {% endif %}
+        </section>
+
+        <section class="signup-card {% if signup_success %}signup-card-success{% endif %}">
+          <form action="/early-access" class="signup-form" method="post">
+            {% csrf_token %}
+            <div class="signup-head">
+              <p class="section-eyebrow">Early Access</p>
+              <p class="body-copy">
+                Join the list and keep the product rollout grounded in real users.
+              </p>
+            </div>
+
+            <label class="field">
+              <span>Name</span>
+              <input
+                autocomplete="name"
+                name="name"
+                placeholder="Kumquat user"
+                type="text"
+                value="{{ signup_data.name }}"
+              />
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input
+                autocomplete="email"
+                name="email"
+                placeholder="you@example.com"
+                required
+                type="email"
+                value="{{ signup_data.email }}"
+              />
+            </label>
+
+            <div class="signup-actions">
+              <button class="button button-primary button-block" type="submit">Join early access</button>
+              {% if signup_error %}
+                <p class="signup-message signup-message-error">{{ signup_error }}</p>
+              {% endif %}
+            </div>
+          </form>
+
+          <div aria-live="polite" class="signup-success" role="status">
+            <div class="signup-success-icon">OK</div>
+            <p class="section-eyebrow">Saved</p>
+            <h3>You’re on the list.</h3>
+            <p class="body-copy">
+              We stored your early-access signup and will reach out when the next
+              release is ready.
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="how-section" id="how-it-works">
+      <div class="how-copy">
+        <p class="section-eyebrow">How It Works</p>
+        <h2 class="section-title">Show the transfer model <em>one beat at a time.</em></h2>
+        <ol class="steps-list">
+          {% for step in how_it_works_steps %}
+            <li class="step-item">
+              <span class="step-number">{{ step.number }}</span>
+              <span class="step-line"></span>
+              <div class="step-content">
+                <h3>{{ step.title }}</h3>
+                <p class="body-copy">{{ step.body }}</p>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="wallet-card">
+        <div class="wallet-card-head">
+          <p class="section-eyebrow">Wallet Preview</p>
+          <p class="wallet-total">${{ wallet_total|floatformat:2 }}</p>
+        </div>
+        <div class="wallet-rows">
+          {% for row in wallet_rows %}
+            <div class="wallet-row">
+              <div>
+                <p class="wallet-row-value">{{ row.label }}</p>
+                <p class="wallet-row-detail">{{ row.detail }}</p>
+              </div>
+              <span class="wallet-badge wallet-badge-{{ row.kind }}">{{ row.kind }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="denomination-section" id="denominations">
+      <p class="section-eyebrow">Denominations</p>
+      <h2 class="section-title">Bills and coins should feel like a <em>tray of units.</em></h2>
+      <div class="denomination-grid">
+        {% for item in denomination_grid %}
+          <article class="denomination-card denomination-card-{{ item.type }}">
+            <p class="denomination-kind">{{ item.type }}</p>
+            <p class="denomination-value">{{ item.label }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="footer-links" aria-label="Footer links">
+        <a href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">GitHub project</a>
+        <a href="https://x.com/kumquatben" rel="noreferrer" target="_blank">Benjamin Levin on X</a>
+      </div>
+      <p>Copyright © Benjamin Levin. All rights reserved.</p>
+    </footer>
+  </div>
+{% endblock %}

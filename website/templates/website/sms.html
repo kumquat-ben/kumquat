@@ -1,0 +1,136 @@
+{% extends "website/base.html" %}
+
+{% block title %}SMS Inbox | Kumquat{% endblock %}
+
+{% block content %}
+  <section class="dashboard-layout">
+    <div class="dashboard-hero">
+      <p class="section-eyebrow">Vonage</p>
+      <h1 class="utility-title">Inbound SMS inbox.</h1>
+      <p class="body-copy">
+        Review every webhook delivered to <code>/webhooks/vonage/sms</code>, including signature state and raw payload data.
+      </p>
+      <div class="stats-grid">
+        <article class="stat-card"><p class="section-eyebrow">Messages</p><h3>{{ stats.messages }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Signed</p><h3>{{ stats.signed_messages }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Unsigned</p><h3>{{ stats.unsigned_messages }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Failed Sig</p><h3>{{ stats.failed_signatures }}</h3></article>
+      </div>
+    </div>
+
+    <div class="dashboard-panel">
+      <div class="dashboard-toolbar">
+        <a class="button button-secondary" href="/dashboard">Back to dashboard</a>
+        <a class="button button-secondary" href="/">Back home</a>
+      </div>
+
+      <div class="sms-inbox-grid">
+        <section class="dashboard-card">
+          <div class="dashboard-card-header">
+            <div>
+              <p class="section-eyebrow">Messages</p>
+              <p class="body-copy">{{ messages|length }} total</p>
+            </div>
+          </div>
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Text</th>
+                  <th>Received</th>
+                  <th>Signature</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for message in page_obj.object_list %}
+                  <tr class="{% if selected_message and selected_message.id == message.id %}data-row-selected{% endif %}">
+                    <td><a href="?page={{ page_obj.number }}&selected={{ message.id }}">{{ message.from_number|default:"Unknown" }}</a></td>
+                    <td>{{ message.to_number|default:"Unknown" }}</td>
+                    <td>{{ message.text|default:"No body" }}</td>
+                    <td>{{ message.received_at }}</td>
+                    <td>
+                      {% if message.signature_valid == True %}
+                        Valid
+                      {% elif message.signature_valid == False %}
+                        Invalid
+                      {% elif message.signature %}
+                        Unchecked
+                      {% else %}
+                        None
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="dashboard-pagination">
+            <p class="body-copy">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</p>
+            <div class="dashboard-pagination-actions">
+              {% if page_obj.has_previous %}
+                <a class="button button-secondary" href="?page={{ page_obj.previous_page_number }}{% if selected_message %}&selected={{ selected_message.id }}{% endif %}">Previous</a>
+              {% endif %}
+              {% if page_obj.has_next %}
+                <a class="button button-secondary" href="?page={{ page_obj.next_page_number }}{% if selected_message %}&selected={{ selected_message.id }}{% endif %}">Next</a>
+              {% endif %}
+            </div>
+          </div>
+        </section>
+
+        <section class="dashboard-card sms-detail-card">
+          <div class="dashboard-card-header">
+            <div>
+              <p class="section-eyebrow">Selected message</p>
+              <p class="body-copy">
+                {% if selected_message %}
+                  Message ID: {{ selected_message.message_id|default:"Not provided" }}
+                {% else %}
+                  No messages yet.
+                {% endif %}
+              </p>
+            </div>
+          </div>
+          {% if selected_message %}
+            <div class="sms-detail-stack">
+              <div class="sms-detail-block">
+                <p class="section-eyebrow">Envelope</p>
+                <p class="body-copy">From: {{ selected_message.from_number|default:"Unknown" }}</p>
+                <p class="body-copy">To: {{ selected_message.to_number|default:"Unknown" }}</p>
+                <p class="body-copy">Received: {{ selected_message.received_at }}</p>
+              </div>
+              <div class="sms-detail-block">
+                <p class="section-eyebrow">Body</p>
+                <p class="body-copy sms-message-body">{{ selected_message.text|default:"No text body." }}</p>
+              </div>
+              <div class="sms-detail-block">
+                <p class="section-eyebrow">Signature</p>
+                <p class="body-copy">
+                  {% if selected_message.signature_valid == True %}
+                    Valid
+                  {% elif selected_message.signature_valid == False %}
+                    Invalid
+                  {% elif selected_message.signature %}
+                    Present but unchecked
+                  {% else %}
+                    Not provided
+                  {% endif %}
+                </p>
+                {% if selected_message.signature_error %}
+                  <p class="body-copy sms-detail-warning">{{ selected_message.signature_error }}</p>
+                {% endif %}
+              </div>
+              <div class="sms-detail-block">
+                <p class="section-eyebrow">Raw payload</p>
+                <pre class="code-block">{{ selected_message.payload_pretty }}</pre>
+              </div>
+            </div>
+          {% else %}
+            <p class="dashboard-message">No inbound SMS records yet.</p>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+  </section>
+{% endblock %}

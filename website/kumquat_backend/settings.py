@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_STATIC_DIR = BASE_DIR / "static"
 
 
 def load_env_file(*paths):
@@ -79,7 +80,7 @@ NODE_PROXY_ALLOWED_METHODS = {
     method.upper() for method in env_list("NODE_PROXY_ALLOWED_METHODS", "GET,HEAD,OPTIONS")
 }
 NODE_PROXY_TIMEOUT_SECONDS = int(env("NODE_PROXY_TIMEOUT_SECONDS", "15"))
-NODE_PROXY_LOGIN_URL = env("NODE_PROXY_LOGIN_URL", "https://kumquat.info/api/auth/google/start")
+NODE_PROXY_LOGIN_URL = env("NODE_PROXY_LOGIN_URL", "https://kumquat.info/auth/google/start")
 NODE_LAUNCHER_ENABLED = env_bool("NODE_LAUNCHER_ENABLED", False)
 NODE_LAUNCHER_DOCKER_HOST = env("NODE_LAUNCHER_DOCKER_HOST", "")
 NODE_LAUNCHER_ROOT = env("NODE_LAUNCHER_ROOT", "/var/lib/kumquat-node-launcher")
@@ -108,6 +109,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -122,7 +124,7 @@ ROOT_URLCONF = "kumquat_backend.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -166,8 +168,10 @@ TIME_ZONE = env("DJANGO_TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [PROJECT_STATIC_DIR] if PROJECT_STATIC_DIR.exists() else []
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

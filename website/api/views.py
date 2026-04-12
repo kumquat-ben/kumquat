@@ -11,14 +11,17 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.db import connection
 from django.db.models import Max
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
+from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import EarlyAccessSignup, ManagedNode, VonageInboundSms
@@ -38,6 +41,67 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 GOOGLE_OAUTH_STATE_SESSION_KEY = "google_oauth_state"
 GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY = "google_oauth_redirect_uri"
 KUMQUAT_ADDRESS_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+EARLY_ACCESS_SIGNUP_SESSION_KEY = "early_access_signup"
+EARLY_ACCESS_SIGNUP_SUCCESS_SESSION_KEY = "early_access_signup_success"
+EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY = "early_access_signup_error"
+
+BILL_ITEMS = [
+    {"label": "$100", "kind": "bill", "id": "KMQ-00100000"},
+    {"label": "$50", "kind": "bill", "id": "KMQ-00050000"},
+    {"label": "$20", "kind": "bill", "id": "KMQ-00020000"},
+    {"label": "$10", "kind": "bill", "id": "KMQ-00010000"},
+    {"label": "$5", "kind": "bill", "id": "KMQ-00005000"},
+    {"label": "$1", "kind": "bill", "id": "KMQ-00001000"},
+    {"label": "$0.50", "kind": "coin", "id": "KMQ-00000500"},
+    {"label": "$0.25", "kind": "coin", "id": "KMQ-00000250"},
+    {"label": "$0.10", "kind": "coin", "id": "KMQ-00000100"},
+    {"label": "$0.05", "kind": "coin", "id": "KMQ-00000050"},
+    {"label": "$0.01", "kind": "coin", "id": "KMQ-00000010"},
+]
+
+HOW_IT_WORKS_STEPS = [
+    {
+        "number": "01",
+        "title": "Model units as objects",
+        "body": "Kumquat represents each denomination as a discrete software unit with a visible identity, so the interface stays legible instead of collapsing into one balance row.",
+    },
+    {
+        "number": "02",
+        "title": "Track transfers clearly",
+        "body": "Transfers read like moving distinct units between wallets. Motion reinforces the handoff instead of decorating it.",
+    },
+    {
+        "number": "03",
+        "title": "Read the wallet at a glance",
+        "body": "The interface surfaces denomination mix, object count, and totals in the same view so the object model stays visible and legible.",
+    },
+]
+
+DENOMINATION_GRID = [
+    {"label": "$100", "type": "bill"},
+    {"label": "$50", "type": "bill"},
+    {"label": "$20", "type": "bill"},
+    {"label": "$10", "type": "bill"},
+    {"label": "$5", "type": "bill"},
+    {"label": "$1", "type": "bill"},
+    {"label": "$0.50", "type": "coin"},
+    {"label": "$0.25", "type": "coin"},
+    {"label": "$0.10", "type": "coin"},
+    {"label": "$0.05", "type": "coin"},
+    {"label": "$0.01", "type": "coin"},
+]
+
+WALLET_ROWS = [
+    {"label": "$100.00", "kind": "bill", "detail": "Large-format unit", "amount": 100.0},
+    {"label": "$50.00", "kind": "bill", "detail": "Transfer example", "amount": 50.0},
+    {"label": "$20.00", "kind": "bill", "detail": "Wallet row sample", "amount": 20.0},
+    {"label": "$10.00", "kind": "bill", "detail": "Interface unit", "amount": 10.0},
+    {"label": "$5.00", "kind": "bill", "detail": "Smaller-format unit", "amount": 5.0},
+    {"label": "$1.00", "kind": "bill", "detail": "Lowest bill example", "amount": 1.0},
+    {"label": "$0.25", "kind": "coin", "detail": "Coin example", "amount": 0.25},
+    {"label": "$0.10", "kind": "coin", "detail": "Coin example", "amount": 0.1},
+    {"label": "$0.01", "kind": "coin", "detail": "Coin example", "amount": 0.01},
+]
 
 
 def _database_state():
@@ -48,6 +112,183 @@ def _database_state():
         return "ok"
     except Exception as exc:  # pragma: no cover - defensive runtime guard
         return f"error: {exc}"
+
+
+def _is_json_request(request):
+    content_type = (request.content_type or "").lower()
+    accept = (request.headers.get("Accept") or "").lower()
+    return "application/json" in content_type or "application/json" in accept
+
+
+def _redirect_back(request, fallback):
+    return HttpResponseRedirect(request.POST.get("next") or request.GET.get("next") or fallback)
+
+
+def _current_user_context(request):
+    if not request.user.is_authenticated:
+        return None
+    return _serialize_user(request.user)
+
+
+def _pagination_window(page_obj):
+    return range(1, page_obj.paginator.num_pages + 1)
+
+
+def _home_signup_context(request):
+    signup_data = request.session.get(EARLY_ACCESS_SIGNUP_SESSION_KEY, {})
+    signup_success = request.session.pop(EARLY_ACCESS_SIGNUP_SUCCESS_SESSION_KEY, False)
+    signup_error = request.session.pop(EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY, "")
+
+    if request.user.is_authenticated:
+        signup_data = {
+            "name": signup_data.get("name") or request.user.get_full_name() or request.user.username,
+            "email": signup_data.get("email") or request.user.email,
+        }
+
+    return {
+        "signup_data": {
+            "name": signup_data.get("name", ""),
+            "email": signup_data.get("email", ""),
+        },
+        "signup_success": signup_success,
+        "signup_error": signup_error,
+    }
+
+
+def _build_dashboard_context():
+    User = get_user_model()
+    users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
+    signups = [
+        {
+            "email": signup.email,
+            "name": signup.name,
+            "created_at": signup.created_at,
+            "updated_at": signup.updated_at,
+        }
+        for signup in EarlyAccessSignup.objects.order_by("-created_at")
+    ]
+    recent_sms = [
+        _serialize_vonage_sms(message)
+        for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")[:10]
+    ]
+    managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes()]
+    return {
+        "stats": {
+            "users": len(users),
+            "superusers": sum(1 for user in users if user["is_superuser"]),
+            "signups": len(signups),
+            "inbound_sms": VonageInboundSms.objects.count(),
+            "managed_nodes": len(managed_nodes),
+            "running_nodes": sum(1 for node in managed_nodes if node["status"] == ManagedNode.STATUS_RUNNING),
+        },
+        "users": users,
+        "signups": signups,
+        "recent_sms": recent_sms,
+        "managed_nodes": managed_nodes,
+        "launcher": {
+            "enabled": launcher_enabled(),
+            "default_image": settings.NODE_LAUNCHER_IMAGE,
+            "default_network": settings.NODE_LAUNCHER_NETWORK,
+            "default_chain_id": settings.NODE_LAUNCHER_CHAIN_ID,
+        },
+    }
+
+
+def home_page_view(request):
+    context = {
+        "auth_user": _current_user_context(request),
+        "bill_items": BILL_ITEMS,
+        "how_it_works_steps": HOW_IT_WORKS_STEPS,
+        "denomination_grid": DENOMINATION_GRID,
+        "wallet_rows": WALLET_ROWS,
+        "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
+        **_home_signup_context(request),
+    }
+    return render(request, "website/home.html", context)
+
+
+def sign_in_page_view(request):
+    return render(
+        request,
+        "website/sign_in.html",
+        {
+            "auth_user": _current_user_context(request),
+            "oauth_configured": _oauth_is_configured(),
+        },
+    )
+
+
+def admin_dashboard_page_view(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    dashboard = _build_dashboard_context()
+    active_tab = request.GET.get("tab", "signups")
+    if active_tab not in {"signups", "users"}:
+        active_tab = "signups"
+    items = dashboard["signups"] if active_tab == "signups" else dashboard["users"]
+    page_obj = Paginator(items, 8 if active_tab == "signups" else 6).get_page(request.GET.get("page") or 1)
+
+    return render(
+        request,
+        "website/dashboard.html",
+        {
+            "auth_user": _current_user_context(request),
+            "dashboard": dashboard,
+            "active_tab": active_tab,
+            "page_obj": page_obj,
+            "page_numbers": _pagination_window(page_obj),
+        },
+    )
+
+
+def admin_vonage_sms_page_view(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    messages_data = [
+        {
+            **_serialize_vonage_sms(message),
+            "payload_pretty": json.dumps(message.payload, indent=2, sort_keys=True),
+        }
+        for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")
+    ]
+    page_obj = Paginator(messages_data, 8).get_page(request.GET.get("page") or 1)
+    selected_id = request.GET.get("selected")
+    selected_message = None
+    if selected_id:
+        try:
+            selected_id = int(selected_id)
+        except ValueError:
+            selected_id = None
+    if selected_id is not None:
+        selected_message = next((message for message in messages_data if message["id"] == selected_id), None)
+    if selected_message is None:
+        selected_message = page_obj.object_list[0] if page_obj.object_list else None
+
+    return render(
+        request,
+        "website/sms.html",
+        {
+            "auth_user": _current_user_context(request),
+            "messages": messages_data,
+            "stats": {
+                "messages": len(messages_data),
+                "signed_messages": sum(1 for message in messages_data if message["signature_valid"] is True),
+                "unsigned_messages": sum(1 for message in messages_data if not message["signature"]),
+                "failed_signatures": sum(1 for message in messages_data if message["signature_valid"] is False),
+            },
+            "page_obj": page_obj,
+            "page_numbers": _pagination_window(page_obj),
+            "selected_message": selected_message,
+        },
+    )
 
 
 def _serialize_user(user):
@@ -917,7 +1158,7 @@ def _google_redirect_uri_for_request(request):
     if configured_redirect_uri:
         return configured_redirect_uri
 
-    absolute_callback_url = request.build_absolute_uri("/api/auth/google/callback")
+    absolute_callback_url = request.build_absolute_uri("/auth/google/callback")
     parsed_callback_url = urlparse(absolute_callback_url)
     if parsed_callback_url.scheme in {"http", "https"} and parsed_callback_url.netloc:
         return absolute_callback_url
@@ -931,9 +1172,9 @@ def _google_redirect_uri_for_request(request):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue
 
-        return f"{parsed.scheme}://{parsed.netloc}/api/auth/google/callback"
+        return f"{parsed.scheme}://{parsed.netloc}/auth/google/callback"
 
-    return "http://localhost:8000/api/auth/google/callback"
+    return "http://localhost:8000/auth/google/callback"
 
 
 def _build_username(email, google_sub):
@@ -993,9 +1234,48 @@ def _upsert_google_user(profile):
     return user, full_name
 
 
+def _complete_google_oauth(request, *, code, returned_state):
+    if not _oauth_is_configured():
+        raise ValueError("Google OAuth is not configured.")
+
+    saved_state = request.session.pop(GOOGLE_OAUTH_STATE_SESSION_KEY, "")
+    redirect_uri = request.session.pop(
+        GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY,
+        settings.GOOGLE_OAUTH_REDIRECT_URI,
+    )
+    if not saved_state or returned_state != saved_state:
+        raise ValueError("OAuth state mismatch.")
+
+    token_payload = _google_json_request(
+        GOOGLE_TOKEN_URL,
+        method="POST",
+        data={
+            "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+            "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+        },
+    )
+    access_token = token_payload.get("access_token")
+    if not access_token:
+        raise ValueError("Google token response did not include an access token.")
+
+    profile = _google_json_request(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    user, full_name = _upsert_google_user(profile)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    return user, full_name
+
+
 def google_oauth_start_view(request):
     if not _oauth_is_configured():
-        return JsonResponse({"error": "Google OAuth is not configured."}, status=503)
+        if _is_json_request(request):
+            return JsonResponse({"error": "Google OAuth is not configured."}, status=503)
+        messages.error(request, "Google OAuth is not configured.")
+        return HttpResponseRedirect("/auth/sign-in")
 
     state = secrets.token_urlsafe(32)
     redirect_uri = _google_redirect_uri_for_request(request)
@@ -1016,11 +1296,40 @@ def google_oauth_start_view(request):
 
 
 def google_oauth_callback_view(request):
-    callback_url = "/auth/google/callback"
-    query = request.META.get("QUERY_STRING", "")
-    if query:
-        callback_url = f"{callback_url}?{query}"
-    return HttpResponseRedirect(callback_url)
+    error = (request.GET.get("error") or "").strip()
+    code = (request.GET.get("code") or "").strip()
+    state = (request.GET.get("state") or "").strip()
+    status = "loading"
+    message = "Finishing your Kumquat session..."
+    resolved_user = None
+
+    if error:
+        status = "error"
+        message = "Google sign-in was canceled or denied."
+    elif not code or not state:
+        status = "error"
+        message = "Missing OAuth parameters from Google."
+    else:
+        try:
+            user, full_name = _complete_google_oauth(request, code=code, returned_state=state)
+            resolved_user = _serialize_user(user)
+            resolved_user["full_name"] = full_name or user.username
+            status = "success"
+            message = f"Signed in as {resolved_user['full_name']}."
+        except Exception:
+            status = "error"
+            message = "Google sign-in failed."
+
+    return render(
+        request,
+        "website/callback.html",
+        {
+            "auth_user": _current_user_context(request),
+            "status": status,
+            "message": message,
+            "resolved_user": resolved_user,
+        },
+    )
 
 
 @csrf_exempt
@@ -1036,46 +1345,19 @@ def google_oauth_exchange_view(request):
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON body."}, status=400)
 
-    returned_state = (payload.get("state") or "").strip()
-    saved_state = request.session.pop(GOOGLE_OAUTH_STATE_SESSION_KEY, "")
-    redirect_uri = request.session.pop(
-        GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY,
-        settings.GOOGLE_OAUTH_REDIRECT_URI,
-    )
-    if not saved_state or returned_state != saved_state:
-        return JsonResponse({"error": "OAuth state mismatch."}, status=400)
-
     if payload.get("error"):
         return JsonResponse({"error": payload.get("error")}, status=400)
 
     code = (payload.get("code") or "").strip()
+    returned_state = (payload.get("state") or "").strip()
     if not code:
         return JsonResponse({"error": "Missing Google authorization code."}, status=400)
 
     try:
-        token_payload = _google_json_request(
-            GOOGLE_TOKEN_URL,
-            method="POST",
-            data={
-                "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
-                "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": redirect_uri,
-            },
-        )
-        access_token = token_payload.get("access_token")
-        if not access_token:
-            raise ValueError("Google token response did not include an access token.")
-        profile = _google_json_request(
-            GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        user, full_name = _upsert_google_user(profile)
+        user, full_name = _complete_google_oauth(request, code=code, returned_state=returned_state)
     except Exception:
         return JsonResponse({"error": "Google OAuth exchange failed."}, status=502)
 
-    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return JsonResponse(
         {
             "status": "ok",
@@ -1105,7 +1387,9 @@ def auth_logout_view(request):
         return HttpResponseNotAllowed(["GET", "POST"])
 
     logout(request)
-    return JsonResponse({"status": "ok"})
+    if _is_json_request(request):
+        return JsonResponse({"status": "ok"})
+    return _redirect_back(request, "/")
 
 
 def healthz_view(_request):
@@ -1125,38 +1409,52 @@ def early_access_signup_view(request):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    if _is_json_request(request):
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    else:
+        payload = request.POST
 
     email = (payload.get("email") or "").strip().lower()
     name = (payload.get("name") or "").strip()
 
     if not email:
-        return JsonResponse({"error": "Email is required."}, status=400)
+        if _is_json_request(request):
+            return JsonResponse({"error": "Email is required."}, status=400)
+        request.session[EARLY_ACCESS_SIGNUP_SESSION_KEY] = {"name": name, "email": email}
+        request.session[EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY] = "Email is required."
+        return HttpResponseRedirect("/#story")
 
     try:
         validate_email(email)
     except ValidationError:
-        return JsonResponse({"error": "Enter a valid email address."}, status=400)
+        if _is_json_request(request):
+            return JsonResponse({"error": "Enter a valid email address."}, status=400)
+        request.session[EARLY_ACCESS_SIGNUP_SESSION_KEY] = {"name": name, "email": email}
+        request.session[EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY] = "Enter a valid email address."
+        return HttpResponseRedirect("/#story")
 
     signup, created = EarlyAccessSignup.objects.update_or_create(
         email=email,
         defaults={"name": name},
     )
 
-    return JsonResponse(
-        {
-            "status": "created" if created else "updated",
-            "signup": {
-                "email": signup.email,
-                "name": signup.name,
-                "created_at": signup.created_at.isoformat(),
-            },
+    response_payload = {
+        "status": "created" if created else "updated",
+        "signup": {
+            "email": signup.email,
+            "name": signup.name,
+            "created_at": signup.created_at.isoformat(),
         },
-        status=201 if created else 200,
-    )
+    }
+    if _is_json_request(request):
+        return JsonResponse(response_payload, status=201 if created else 200)
+
+    request.session[EARLY_ACCESS_SIGNUP_SESSION_KEY] = {"name": signup.name, "email": signup.email}
+    request.session[EARLY_ACCESS_SIGNUP_SUCCESS_SESSION_KEY] = True
+    return HttpResponseRedirect("/#story")
 
 
 def admin_dashboard_view(request):
@@ -1164,45 +1462,7 @@ def admin_dashboard_view(request):
     if admin_error:
         return admin_error
 
-    User = get_user_model()
-    users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
-    signups = [
-        {
-            "email": signup.email,
-            "name": signup.name,
-            "created_at": signup.created_at.isoformat(),
-            "updated_at": signup.updated_at.isoformat(),
-        }
-        for signup in EarlyAccessSignup.objects.order_by("-created_at")
-    ]
-    sms_messages = [
-        _serialize_vonage_sms(message)
-        for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")[:10]
-    ]
-    managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes()]
-
-    return JsonResponse(
-        {
-            "stats": {
-                "users": len(users),
-                "superusers": sum(1 for user in users if user["is_superuser"]),
-                "signups": len(signups),
-                "inbound_sms": VonageInboundSms.objects.count(),
-                "managed_nodes": len(managed_nodes),
-                "running_nodes": sum(1 for node in managed_nodes if node["status"] == ManagedNode.STATUS_RUNNING),
-            },
-            "users": users,
-            "signups": signups,
-            "recent_sms": sms_messages,
-            "managed_nodes": managed_nodes,
-            "launcher": {
-                "enabled": launcher_enabled(),
-                "default_image": settings.NODE_LAUNCHER_IMAGE,
-                "default_network": settings.NODE_LAUNCHER_NETWORK,
-                "default_chain_id": settings.NODE_LAUNCHER_CHAIN_ID,
-            },
-        }
-    )
+    return JsonResponse(_build_dashboard_context())
 
 
 def admin_dashboard_page_view(request):
@@ -1254,17 +1514,26 @@ def admin_node_launch_view(request):
         return HttpResponseNotAllowed(["POST"])
 
     if not launcher_enabled():
-        return JsonResponse({"error": "Node launcher is disabled."}, status=503)
+        if _is_json_request(request):
+            return JsonResponse({"error": "Node launcher is disabled."}, status=503)
+        messages.error(request, "Node launcher is disabled.")
+        return HttpResponseRedirect("/dashboard")
 
-    try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    if _is_json_request(request):
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    else:
+        payload = request.POST
 
     try:
         reward_address = _normalize_reward_address(payload.get("reward_address"))
     except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc)}, status=400)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/dashboard")
 
     display_name = (payload.get("display_name") or payload.get("name") or "").strip()
     if not display_name:
@@ -1288,12 +1557,18 @@ def admin_node_launch_view(request):
 
     try:
         node = launch_node(node)
-        return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)}, status=201)
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)}, status=201)
+        messages.success(request, f"Managed node '{node.display_name}' launch requested successfully.")
+        return HttpResponseRedirect("/dashboard")
     except NodeLauncherError as exc:
         node.last_error = str(exc)
         node.status = ManagedNode.STATUS_FAILED
         node.save(update_fields=["last_error", "status", "updated_at"])
-        return JsonResponse({"error": str(exc), "node": _serialize_managed_node(node)}, status=502)
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc), "node": _serialize_managed_node(node)}, status=502)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/dashboard")
 
 
 @csrf_exempt
@@ -1308,13 +1583,22 @@ def admin_node_stop_view(request, node_id):
     try:
         node = ManagedNode.objects.get(pk=node_id)
     except ManagedNode.DoesNotExist:
-        return JsonResponse({"error": "Managed node not found."}, status=404)
+        if _is_json_request(request):
+            return JsonResponse({"error": "Managed node not found."}, status=404)
+        messages.error(request, "Managed node not found.")
+        return HttpResponseRedirect("/dashboard")
 
     try:
         node = stop_node(node)
-        return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
+        messages.success(request, f"Managed node '{node.display_name}' stop requested successfully.")
+        return HttpResponseRedirect("/dashboard")
     except NodeLauncherError as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc)}, status=502)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/dashboard")
 
 
 def admin_node_logs_view(request, node_id):

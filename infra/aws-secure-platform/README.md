@@ -194,37 +194,12 @@ terraform apply -var="kubeconfig_path=$KUBECONFIG"
 
 ### 7. Push container images to ECR
 
-From the production stack:
-
-```bash
-cd ../../environments/production
-AWS_REGION="$(terraform output -raw aws_region)"
-ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.sample_app')"
-
-aws ecr get-login-password --region "$AWS_REGION" \
-  | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-
-docker build -t sample-app:1.0.0 .
-docker tag sample-app:1.0.0 "$REPO_URL:1.0.0"
-docker push "$REPO_URL:1.0.0"
-```
-
 For the production website image:
-
-```bash
-REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.sample_app')"
-
-cd ../../../website
-docker buildx build --platform linux/amd64 -t "$REPO_URL:website-YYYYMMDD-HHMMSS" --push .
-```
-
-For the Django backend image:
 
 ```bash
 REPO_URL="$(terraform output -json ecr_repository_urls | jq -r '.website_backend')"
 
-cd ../../../website-backend
+cd ../../../website
 docker buildx build --platform linux/amd64 -t "$REPO_URL:backend-YYYYMMDD-HHMMSS" --push .
 ```
 
@@ -246,24 +221,11 @@ cd ../../../blockchain
 IMAGE_REPOSITORY="$REPO_URL" ./scripts/build-and-push-image.sh
 ```
 
-### 8. Deploy the website manifests to k3s
+### 8. Deploy the Kumquat website platform add-on
 
-Update the image in `kubernetes/example-app/deployment.yaml`, then apply:
+This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, a private/versioned/KMS-encrypted S3 bucket for MySQL dumps, a Kubernetes CronJob that uploads compressed backups to that bucket, and the Django website routed at `/`. It also injects the Google OAuth client ID, secret, and redirect URI into the website environment secret.
 
-```bash
-cd ../../kubernetes/example-app
-kubectl apply -k .
-kubectl rollout status deployment/sample-app -n sample-app
-kubectl get ingress -n sample-app
-```
-
-The website ingress can be exposed publicly when `public_app_load_balancer = true`. In that case, point your DNS record for `kumquat.info` or `www.kumquat.info` at the `app_alb_dns_name` Terraform output.
-
-### 9. Deploy the Kumquat backend platform add-on
-
-This add-on installs the AWS EBS CSI driver, a gp3-backed storage class, the MySQL operator, a MySQL InnoDB cluster, a private/versioned/KMS-encrypted S3 bucket for MySQL dumps, a Kubernetes CronJob that uploads compressed backups to that bucket, and the Django backend routed at `/api/`. It also injects the Google OAuth client ID, secret, and redirect URI into the backend environment secret.
-
-### 10. Deploy the blockchain add-on
+### 9. Deploy the blockchain add-on
 
 ```bash
 cd ../../addons/kumquat-blockchain
@@ -297,7 +259,7 @@ terraform plan \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
-  -var="google_oauth_redirect_uri=https://kumquat.info/api/auth/google/callback" \
+  -var="google_oauth_redirect_uri=https://kumquat.info/auth/google/callback" \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 terraform apply \
@@ -310,7 +272,7 @@ terraform apply \
   -var="backend_secret_key=replace-me" \
   -var="google_oauth_client_id=replace-me" \
   -var="google_oauth_client_secret=replace-me" \
-  -var="google_oauth_redirect_uri=https://kumquat.info/api/auth/google/callback" \
+  -var="google_oauth_redirect_uri=https://kumquat.info/auth/google/callback" \
   -var="mysql_root_password=replace-me" \
   -var="mysql_app_password=replace-me"
 ```
@@ -325,11 +287,10 @@ Tune these backup-specific variables as needed:
 ### 10. Verify the live rollout
 
 ```bash
-kubectl get pods -n sample-app
 kubectl get pods -n kumquat
 kubectl get ingress -A
 curl -I https://kumquat.info/
-curl -I https://kumquat.info/api/healthz
+curl -I https://kumquat.info/healthz
 ```
 
 ## Security Checklist

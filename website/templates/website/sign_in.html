@@ -1,0 +1,42 @@
+{% extends "website/base.html" %}
+
+{% block title %}Sign In | Kumquat{% endblock %}
+
+{% block content %}
+  <section class="utility-layout utility-layout-single utility-layout-signin">
+    <div class="signin-card">
+      <p class="section-eyebrow">Founding Member</p>
+      <h1 class="signin-title">
+        {% if auth_user %}
+          You’re already <em>inside.</em>
+        {% else %}
+          Join before the<br />chain goes live.
+        {% endif %}
+      </h1>
+      <p class="body-copy signin-copy">
+        {% if auth_user %}
+          Your Kumquat account is active as {{ auth_user.first_name|default:auth_user.full_name }}.
+        {% else %}
+          Early members get access to the product, updates, and testing milestones as the software develops.
+        {% endif %}
+      </p>
+
+      <div class="signin-perks">
+        <div class="signin-perk"><span class="signin-perk-dot"></span><span>Founding member badge in the product</span></div>
+        <div class="signin-perk"><span class="signin-perk-dot"></span><span>Early access to product walkthroughs and releases</span></div>
+        <div class="signin-perk"><span class="signin-perk-dot signin-perk-dot-gold"></span><span>Priority updates as the protocol and interface mature</span></div>
+      </div>
+
+      {% if auth_user %}
+        <a class="button button-secondary signin-button" href="/">Back to home</a>
+      {% elif oauth_configured %}
+        <a class="button button-secondary signin-button" href="/auth/google/start">Sign in</a>
+      {% else %}
+        <p class="dashboard-message dashboard-message-error">Google OAuth is not configured.</p>
+      {% endif %}
+
+      <div class="signin-divider"></div>
+      <p class="signin-footnote">Google handles consent. Kumquat provides software access only.</p>
+    </div>
+  </section>
+{% endblock %}

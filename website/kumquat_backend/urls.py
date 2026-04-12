@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: sample-app
+from django.urls import include, path
+
+urlpatterns = [
+    path("", include("api.urls")),
+]

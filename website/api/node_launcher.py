@@ -150,7 +150,7 @@ def container_name(node: ManagedNode) -> str:
 
 
 def dashboard_proxy_path(node: ManagedNode) -> str:
-    return f"/api/admin/nodes/{node.id}/proxy/dashboard"
+    return f"/nodes/{node.id}/proxy/dashboard"
 
 
 def fetch_container(node: ManagedNode):

@@ -1,17 +1,16 @@
 # kumquat
 
-![React](https://img.shields.io/badge/React-Vite-61DAFB?style=flat-square&logo=react)
-![Django](https://img.shields.io/badge/Backend-Django-092E20?style=flat-square&logo=django)
+![Django](https://img.shields.io/badge/Website-Django-092E20?style=flat-square&logo=django)
 ![Terraform](https://img.shields.io/badge/Infra-Terraform-7B42BC?style=flat-square&logo=terraform)
 ![k3s](https://img.shields.io/badge/Cluster-k3s-FFC61C?style=flat-square&logo=k3s)
 
 ![Kumquat Team](team.kumquat.png)
 
-Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. This repository contains the public React website at `/`, the Django backend at `/api/`, the Rust blockchain in `/blockchain`, and the AWS-hosted k3s infrastructure that supports the product.
+Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. This repository contains the public Django website, the Rust blockchain in `/blockchain`, and the AWS-hosted k3s infrastructure that supports the product.
 
 Live at **[kumquat.info](https://kumquat.info)**.
 
-The frontend lives in [website](website) and is packaged as a containerized Vite app served through the cluster ingress. The backend lives in [website-backend](website-backend) and is set up as a Django service with health and API endpoints intended to sit behind the same `kumquat.info` hostname at `/api/`.
+The website lives in [website](website) and is implemented as a Django application that serves the public site, auth flow, admin surfaces, and backend endpoints from the same service and hostname.
 
 The chain implementation lives in [blockchain](blockchain). That folder contains the Rust node, storage layer, consensus engine, networking stack, genesis tooling, and deployment assets for the protocol layer that backs Kumquat's denomination-first money model.
 
@@ -45,8 +44,7 @@ That framing matters for deployment: when you stand up one full instance of the 
 
 | Layer | Stack | Notes |
 |---|---|---|
-| **Frontend** | React + Vite | Containerized and served via k3s ingress at `/` |
-| **Backend** | Django | Health and API endpoints served at `/api/` on the same hostname |
+| **Website** | Django | Public pages, auth, admin surfaces, and backend endpoints served from one app |
 | **Blockchain** | Rust + RocksDB + PoW/PoH | Protocol, state, storage, networking, and node runtime for denomination-based money units |
 | **Infrastructure** | AWS + k3s + Terraform + Helm | VPC, VPN, ECR, MySQL InnoDB cluster, and EBS-backed storage |
 
@@ -55,8 +53,7 @@ That framing matters for deployment: when you stand up one full instance of the 
 ```text
 kumquat/
 ├── blockchain/               Rust blockchain node and protocol code
-├── website/                  React + Vite frontend
-├── website-backend/          Django backend service
+├── website/                  Django website and backend service
 └── infra/
     └── aws-secure-platform/
         ├── terraform/        VPC, VPN, ECR, and k3s cluster infrastructure
@@ -66,7 +63,7 @@ kumquat/
 
 ## Website UI Guidelines
 
-The website frontend in [website](website) follows a specific product direction for Kumquat Chain. The React implementation should preserve these rules when the homepage or future marketing pages evolve.
+The website in [website](website) follows a specific product direction for Kumquat Chain. The Django implementation should preserve these rules when the homepage or future marketing pages evolve.
 
 ### Visual Direction
 
@@ -106,8 +103,7 @@ The website frontend in [website](website) follows a specific product direction 
 Production runs on k3s behind `kumquat.info`.
 
 - [blockchain](blockchain) builds to the `kumquat-blockchain` ECR repository and is deployed through the Terraform add-on in [infra/aws-secure-platform/addons/kumquat-blockchain](infra/aws-secure-platform/addons/kumquat-blockchain).
-- [website](website) builds to the `sample-app` ECR repository and is deployed with the manifests in [infra/aws-secure-platform/kubernetes/example-app](infra/aws-secure-platform/kubernetes/example-app).
-- [website-backend](website-backend) builds to the `website-backend` ECR repository and is deployed through the Terraform add-on in [infra/aws-secure-platform/addons/kumquat-platform](infra/aws-secure-platform/addons/kumquat-platform).
+- [website](website) builds to the `website-backend` ECR repository and is deployed through the Terraform add-on in [infra/aws-secure-platform/addons/kumquat-platform](infra/aws-secure-platform/addons/kumquat-platform).
 - The current production kubeconfig in this workspace is `.local/aws-secure-platform/kubeconfig-production`.
 
 For blockchain-specific chain/runtime details, use [blockchain/README.md](blockchain/README.md).
@@ -134,13 +130,8 @@ Top-level team documentation now lives in [documents](documents):
 git clone https://github.com/kumquat-ben/kumquat
 cd kumquat
 
-# Frontend dev server
+# Website
 cd website
-npm install
-npm run dev
-
-# Backend
-cd ../website-backend
 pip install -r requirements.txt
 python manage.py runserver
 

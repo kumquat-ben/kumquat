@@ -1,0 +1,32 @@
+{% extends "website/base.html" %}
+
+{% block title %}Authentication | Kumquat{% endblock %}
+
+{% block content %}
+  <section class="utility-layout utility-layout-single">
+    <div class="utility-card utility-card-centered">
+      <p class="section-eyebrow">Authentication</p>
+      <div class="callback-icon callback-icon-{{ status }}">
+        {% if status == "success" %}OK{% elif status == "error" %}!{% else %}...{% endif %}
+      </div>
+      <h1 class="utility-title">
+        {% if status == "loading" %}
+          Authenticating...
+        {% elif status == "success" %}
+          You're in.
+        {% else %}
+          Sign-in didn't finish.
+        {% endif %}
+      </h1>
+      <p class="body-copy">{{ message }}</p>
+      <div class="callback-actions">
+        <a class="button button-primary button-block" href="/">
+          {% if resolved_user %}Continue home{% else %}Back to home{% endif %}
+        </a>
+        {% if status == "error" %}
+          <a class="button button-secondary button-block" href="/auth/sign-in">Try again</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+{% endblock %}
