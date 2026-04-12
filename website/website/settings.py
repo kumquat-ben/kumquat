@@ -119,7 +119,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "kumquat_backend.urls"
+ROOT_URLCONF = "website.urls"
 
 TEMPLATES = [
     {
@@ -136,8 +136,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "kumquat_backend.wsgi.application"
-ASGI_APPLICATION = "kumquat_backend.asgi.application"
+WSGI_APPLICATION = "website.wsgi.application"
+ASGI_APPLICATION = "website.asgi.application"
 
 if env("MYSQL_HOST"):
     DATABASES = {

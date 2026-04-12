@@ -20,4 +20,4 @@ USER app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "gunicorn kumquat_backend.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-60}"]
+CMD ["sh", "-c", "gunicorn website.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-2} --timeout ${GUNICORN_TIMEOUT:-60}"]
