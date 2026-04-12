@@ -83,6 +83,7 @@ class ManagedNode(models.Model):
     image = models.CharField(max_length=255)
     network_name = models.CharField(max_length=32, default="dev")
     chain_id = models.PositiveBigIntegerField(default=1337)
+    reward_address = models.CharField(max_length=64, blank=True)
     enable_mining = models.BooleanField(default=False)
     mining_threads = models.PositiveIntegerField(default=1)
     api_port = models.PositiveIntegerField(unique=True)

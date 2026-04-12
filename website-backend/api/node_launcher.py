@@ -64,9 +64,10 @@ def data_path(node: ManagedNode) -> Path:
 
 def render_config(node: ManagedNode) -> str:
     data_dir = "/data/kumquat/data"
+    node_id_line = f'node_id = "{node.reward_address}"\n' if node.reward_address else ""
     return f"""[node]
 node_name = "{node.name}"
-data_dir = "{data_dir}"
+{node_id_line}data_dir = "{data_dir}"
 log_level = "info"
 enable_metrics = true
 metrics_port = {node.metrics_port}

@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import re
 import secrets
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
@@ -36,6 +37,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 GOOGLE_OAUTH_STATE_SESSION_KEY = "google_oauth_state"
 GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY = "google_oauth_redirect_uri"
+KUMQUAT_ADDRESS_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def _database_state():
@@ -188,6 +190,17 @@ def _parse_positive_int(value):
     return parsed if parsed >= 0 else None
 
 
+def _normalize_reward_address(value):
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return ""
+
+    normalized = raw_value.lower()
+    if not KUMQUAT_ADDRESS_RE.fullmatch(normalized):
+        raise ValueError("Reward address must be a 64-character hex wallet address.")
+    return normalized
+
+
 def _serialize_vonage_sms(message):
     return {
         "id": message.id,
@@ -242,6 +255,7 @@ def _serialize_managed_node(node):
         "image": node.image,
         "network_name": node.network_name,
         "chain_id": node.chain_id,
+        "reward_address": node.reward_address,
         "enable_mining": node.enable_mining,
         "mining_threads": node.mining_threads,
         "api_port": node.api_port,
@@ -537,6 +551,84 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
         display: grid;
         gap: 16px;
       }}
+      .section {{
+        margin-top: 28px;
+      }}
+      .section:first-child {{
+        margin-top: 0;
+      }}
+      .section-heading {{
+        margin: 0 0 14px;
+        font-size: 22px;
+        font-weight: 700;
+      }}
+      .form-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+      }}
+      .field {{
+        display: grid;
+        gap: 8px;
+      }}
+      .field label {{
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }}
+      .field input {{
+        min-height: 46px;
+        padding: 0.8rem 0.95rem;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink);
+        font: inherit;
+      }}
+      .checkbox-row {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+        color: var(--muted);
+      }}
+      .checkbox-row input {{
+        width: 18px;
+        height: 18px;
+      }}
+      .actions {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 18px;
+      }}
+      .button-plain {{
+        font: inherit;
+        cursor: pointer;
+      }}
+      .meta {{
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }}
+      .node-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+      }}
+      .node-card {{
+        padding: 20px;
+      }}
+      .node-card h3 {{
+        margin: 0 0 8px;
+        font-size: 24px;
+      }}
+      .node-card pre {{
+        margin-top: 12px;
+      }}
       @media (max-width: 840px) {{
         main {{
           padding-left: 16px;
@@ -566,6 +658,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
     <script>
       const mount = document.getElementById("app");
       const endpoint = window.__KUMQUAT_BOOTSTRAP_URL__;
+      const ADMIN_NODE_LAUNCH_URL = "/api/admin/nodes/launch";
 
       function escapeHtml(value) {{
         return String(value ?? "")
@@ -582,90 +675,202 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
         return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
       }}
 
-      fetch(endpoint, {{ credentials: "same-origin" }})
-        .then(async (response) => {{
-          const payload = await response.json().catch(() => ({{}}));
-          if (!response.ok) {{
-            throw new Error(payload.error || "Failed to load admin data.");
-          }}
-          return payload;
-        }})
-        .then((payload) => {{
-          if (endpoint.includes("/api/admin/vonage/sms")) {{
-            const rows = (payload.messages || []).map((message) => `
-              <tr>
-                <td>${{escapeHtml(message.from_number || "Unknown")}}</td>
-                <td>${{escapeHtml(message.to_number || "Unknown")}}</td>
-                <td>${{escapeHtml(message.text || "No body")}}</td>
-                <td>${{escapeHtml(message.signature_valid === true ? "Valid" : message.signature_valid === false ? "Invalid" : message.signature ? "Present" : "None")}}</td>
-                <td>${{escapeHtml(formatDate(message.received_at))}}</td>
-              </tr>
-              <tr>
-                <td colspan="5">
-                  <div class="stack">
-                    <div><strong>Message ID:</strong> ${{escapeHtml(message.message_id || "Not provided")}}</div>
-                    <div><strong>Signature error:</strong> ${{escapeHtml(message.signature_error || "None")}}</div>
-                    <pre>${{escapeHtml(JSON.stringify(message.payload || {{}}, null, 2))}}</pre>
-                  </div>
-                </td>
-              </tr>
-            `).join("");
-            mount.innerHTML = `
-              <div class="grid">
-                <div class="card"><p class="label">Messages</p><p class="value">${{escapeHtml(payload.stats?.messages ?? 0)}}</p></div>
-                <div class="card"><p class="label">Signed</p><p class="value">${{escapeHtml(payload.stats?.signed_messages ?? 0)}}</p></div>
-                <div class="card"><p class="label">Unsigned</p><p class="value">${{escapeHtml(payload.stats?.unsigned_messages ?? 0)}}</p></div>
-                <div class="card"><p class="label">Failed Sig</p><p class="value">${{escapeHtml(payload.stats?.failed_signatures ?? 0)}}</p></div>
-              </div>
-              <div class="panel">
-                <table>
-                  <thead>
-                    <tr><th>From</th><th>To</th><th>Text</th><th>Signature</th><th>Received</th></tr>
-                  </thead>
-                  <tbody>${{rows || '<tr><td colspan="5">No inbound SMS records yet.</td></tr>'}}</tbody>
-                </table>
-              </div>
-            `;
-            return;
-          }}
+      function renderManagedNodes(payload) {{
+        const nodes = payload.managed_nodes || [];
+        const launcher = payload.launcher || {{}};
+        const nodeCards = nodes.map((node) => `
+          <div class="card node-card">
+            <p class="label">Managed Node</p>
+            <h3>${{escapeHtml(node.display_name || node.name)}}</h3>
+            <p class="meta">Status: <strong>${{escapeHtml(node.status || "unknown")}}</strong></p>
+            <p class="meta">Launched: ${{escapeHtml(formatDate(node.launched_at))}}</p>
+            <p class="meta">API port: <code>${{escapeHtml(node.api_port)}}</code> | P2P port: <code>${{escapeHtml(node.p2p_port)}}</code></p>
+            <p class="meta">Image: <code>${{escapeHtml(node.image || "Unavailable")}}</code></p>
+            <p class="meta">Mining: ${{escapeHtml(node.enable_mining ? "enabled" : "disabled")}}</p>
+            <p class="meta">Reward address: <code>${{escapeHtml(node.reward_address || "node-derived default")}}</code></p>
+            ${{node.last_error ? `<p class="error">${{escapeHtml(node.last_error)}}</p>` : ""}}
+            <div class="actions">
+              <a class="button" href="${{escapeHtml(node.dashboard_proxy_url || "#")}}">Open GUI</a>
+            </div>
+            <pre>${{escapeHtml(node.logs_tail || "No logs available yet.")}}</pre>
+          </div>
+        `).join("");
 
-          const users = (payload.users || []).map((user) => `
+        return `
+          <div class="section panel">
+            <p class="label">Node Launcher</p>
+            <h2 class="section-heading">Launch managed node</h2>
+            <p class="meta">Default image: <code>${{escapeHtml(launcher.default_image || "Unavailable")}}</code></p>
+            <form id="managed-node-launch-form">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="node-display-name">Display name</label>
+                  <input id="node-display-name" name="display_name" placeholder="Managed Node ${{
+                    escapeHtml((payload.stats?.managed_nodes || 0) + 1)
+                  }}" />
+                </div>
+                <div class="field">
+                  <label for="node-chain-id">Chain ID</label>
+                  <input id="node-chain-id" name="chain_id" type="number" min="0" value="${{escapeHtml(launcher.default_chain_id || 1337)}}" />
+                </div>
+                <div class="field">
+                  <label for="node-reward-address">Reward address</label>
+                  <input id="node-reward-address" name="reward_address" placeholder="64-character hex wallet address" />
+                </div>
+              </div>
+              <label class="checkbox-row">
+                <input name="enable_mining" type="checkbox" />
+                <span>Enable mining on launch</span>
+              </label>
+              <div class="actions">
+                <button class="button button-primary button-plain" type="submit" ${{launcher.enabled ? "" : "disabled"}}>Launch Node</button>
+                <span id="managed-node-launch-status" class="status">${{launcher.enabled ? "Launcher ready." : "Launcher is disabled in backend configuration."}}</span>
+              </div>
+            </form>
+          </div>
+          <div class="section">
+            <h2 class="section-heading">Managed nodes</h2>
+            <div class="node-grid">
+              ${{
+                nodeCards || '<div class="card node-card"><p class="meta">No managed nodes have been launched yet.</p></div>'
+              }}
+            </div>
+          </div>
+        `;
+      }}
+
+      function attachDashboardHandlers() {{
+        const launchForm = document.getElementById("managed-node-launch-form");
+        const launchStatus = document.getElementById("managed-node-launch-status");
+        if (!launchForm || !launchStatus) {{
+          return;
+        }}
+
+        launchForm.addEventListener("submit", async (event) => {{
+          event.preventDefault();
+          const formData = new FormData(launchForm);
+          const payload = {{
+            display_name: (formData.get("display_name") || "").toString().trim(),
+            chain_id: Number(formData.get("chain_id") || 0),
+            reward_address: (formData.get("reward_address") || "").toString().trim(),
+            enable_mining: formData.get("enable_mining") === "on",
+          }};
+
+          launchStatus.textContent = "Launching node...";
+          try {{
+            const response = await fetch(ADMIN_NODE_LAUNCH_URL, {{
+              method: "POST",
+              credentials: "same-origin",
+              headers: {{
+                "Content-Type": "application/json",
+              }},
+              body: JSON.stringify(payload),
+            }});
+            const data = await response.json().catch(() => ({{}}));
+            if (!response.ok) {{
+              throw new Error(data.error || "Failed to launch managed node.");
+            }}
+            launchStatus.textContent = "Node launched. Refreshing dashboard...";
+            await loadDashboard();
+          }} catch (error) {{
+            launchStatus.textContent = error.message;
+          }}
+        }});
+      }}
+
+      async function loadDashboard() {{
+        const response = await fetch(endpoint, {{ credentials: "same-origin" }});
+        const payload = await response.json().catch(() => ({{}}));
+        if (!response.ok) {{
+          throw new Error(payload.error || "Failed to load admin data.");
+        }}
+
+        if (endpoint.includes("/api/admin/vonage/sms")) {{
+          const rows = (payload.messages || []).map((message) => `
             <tr>
-              <td>${{escapeHtml(user.full_name)}}</td>
-              <td>${{escapeHtml(user.email || user.username)}}</td>
-              <td>${{escapeHtml(user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User")}}</td>
-              <td>${{escapeHtml(formatDate(user.date_joined))}}</td>
+              <td>${{escapeHtml(message.from_number || "Unknown")}}</td>
+              <td>${{escapeHtml(message.to_number || "Unknown")}}</td>
+              <td>${{escapeHtml(message.text || "No body")}}</td>
+              <td>${{escapeHtml(message.signature_valid === true ? "Valid" : message.signature_valid === false ? "Invalid" : message.signature ? "Present" : "None")}}</td>
+              <td>${{escapeHtml(formatDate(message.received_at))}}</td>
             </tr>
-          `).join("");
-          const signups = (payload.signups || []).map((signup) => `
             <tr>
-              <td>${{escapeHtml(signup.name || "Unknown")}}</td>
-              <td>${{escapeHtml(signup.email)}}</td>
-              <td>${{escapeHtml(formatDate(signup.created_at))}}</td>
+              <td colspan="5">
+                <div class="stack">
+                  <div><strong>Message ID:</strong> ${{escapeHtml(message.message_id || "Not provided")}}</div>
+                  <div><strong>Signature error:</strong> ${{escapeHtml(message.signature_error || "None")}}</div>
+                  <pre>${{escapeHtml(JSON.stringify(message.payload || {{}}, null, 2))}}</pre>
+                </div>
+              </td>
             </tr>
           `).join("");
           mount.innerHTML = `
             <div class="grid">
-              <div class="card"><p class="label">Users</p><p class="value">${{escapeHtml(payload.stats?.users ?? 0)}}</p></div>
-              <div class="card"><p class="label">Superusers</p><p class="value">${{escapeHtml(payload.stats?.superusers ?? 0)}}</p></div>
-              <div class="card"><p class="label">Signups</p><p class="value">${{escapeHtml(payload.stats?.signups ?? 0)}}</p></div>
-              <div class="card"><p class="label">Inbound SMS</p><p class="value">${{escapeHtml(payload.stats?.inbound_sms ?? 0)}}</p></div>
+              <div class="card"><p class="label">Messages</p><p class="value">${{escapeHtml(payload.stats?.messages ?? 0)}}</p></div>
+              <div class="card"><p class="label">Signed</p><p class="value">${{escapeHtml(payload.stats?.signed_messages ?? 0)}}</p></div>
+              <div class="card"><p class="label">Unsigned</p><p class="value">${{escapeHtml(payload.stats?.unsigned_messages ?? 0)}}</p></div>
+              <div class="card"><p class="label">Failed Sig</p><p class="value">${{escapeHtml(payload.stats?.failed_signatures ?? 0)}}</p></div>
             </div>
             <div class="panel">
-              <p class="label">Users</p>
               <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
-                <tbody>${{users || '<tr><td colspan="4">No users found.</td></tr>'}}</tbody>
-              </table>
-            </div>
-            <div class="panel">
-              <p class="label">Early Signups</p>
-              <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Created</th></tr></thead>
-                <tbody>${{signups || '<tr><td colspan="3">No signups found.</td></tr>'}}</tbody>
+                <thead>
+                  <tr><th>From</th><th>To</th><th>Text</th><th>Signature</th><th>Received</th></tr>
+                </thead>
+                <tbody>${{rows || '<tr><td colspan="5">No inbound SMS records yet.</td></tr>'}}</tbody>
               </table>
             </div>
           `;
+          return;
+        }}
+
+        const users = (payload.users || []).map((user) => `
+          <tr>
+            <td>${{escapeHtml(user.full_name)}}</td>
+            <td>${{escapeHtml(user.email || user.username)}}</td>
+            <td>${{escapeHtml(user.is_superuser ? "Superuser" : user.is_staff ? "Staff" : "User")}}</td>
+            <td>${{escapeHtml(formatDate(user.date_joined))}}</td>
+          </tr>
+        `).join("");
+        const signups = (payload.signups || []).map((signup) => `
+          <tr>
+            <td>${{escapeHtml(signup.name || "Unknown")}}</td>
+            <td>${{escapeHtml(signup.email)}}</td>
+            <td>${{escapeHtml(formatDate(signup.created_at))}}</td>
+          </tr>
+        `).join("");
+        mount.innerHTML = `
+          <div class="grid">
+            <div class="card"><p class="label">Users</p><p class="value">${{escapeHtml(payload.stats?.users ?? 0)}}</p></div>
+            <div class="card"><p class="label">Superusers</p><p class="value">${{escapeHtml(payload.stats?.superusers ?? 0)}}</p></div>
+            <div class="card"><p class="label">Signups</p><p class="value">${{escapeHtml(payload.stats?.signups ?? 0)}}</p></div>
+            <div class="card"><p class="label">Inbound SMS</p><p class="value">${{escapeHtml(payload.stats?.inbound_sms ?? 0)}}</p></div>
+            <div class="card"><p class="label">Managed Nodes</p><p class="value">${{escapeHtml(payload.stats?.managed_nodes ?? 0)}}</p></div>
+            <div class="card"><p class="label">Running Nodes</p><p class="value">${{escapeHtml(payload.stats?.running_nodes ?? 0)}}</p></div>
+          </div>
+          ${{
+            renderManagedNodes(payload)
+          }}
+          <div class="panel">
+            <p class="label">Users</p>
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead>
+              <tbody>${{users || '<tr><td colspan="4">No users found.</td></tr>'}}</tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <p class="label">Early Signups</p>
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Created</th></tr></thead>
+              <tbody>${{signups || '<tr><td colspan="3">No signups found.</td></tr>'}}</tbody>
+            </table>
+          </div>
+        `;
+        attachDashboardHandlers();
+      }}
+
+      loadDashboard()
+        .then(() => {{
+          return;
         }})
         .catch((error) => {{
           mount.innerHTML = `<p class="error">${{escapeHtml(error.message)}}</p>`;
@@ -1056,6 +1261,11 @@ def admin_node_launch_view(request):
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON body."}, status=400)
 
+    try:
+        reward_address = _normalize_reward_address(payload.get("reward_address"))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
     display_name = (payload.get("display_name") or payload.get("name") or "").strip()
     if not display_name:
         display_name = f"Managed Node {ManagedNode.objects.count() + 1}"
@@ -1067,6 +1277,7 @@ def admin_node_launch_view(request):
         image=(payload.get("image") or settings.NODE_LAUNCHER_IMAGE).strip(),
         network_name=(payload.get("network_name") or settings.NODE_LAUNCHER_NETWORK).strip() or settings.NODE_LAUNCHER_NETWORK,
         chain_id=_parse_positive_int(payload.get("chain_id")) or settings.NODE_LAUNCHER_CHAIN_ID,
+        reward_address=reward_address,
         enable_mining=bool(payload.get("enable_mining")),
         mining_threads=_parse_positive_int(payload.get("mining_threads")) or 1,
         api_port=ports["api_port"],
