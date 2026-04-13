@@ -3,16 +3,16 @@
 //! This module provides development tools for the blockchain,
 //! including testing utilities, simulation tools, and benchmarking.
 
+use log::{error, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use log::{error, info};
 
-use crate::storage::{
-    KVStore, BlockStore, StateStore, TxStore,
-    Block, AccountState, TransactionRecord,
-};
+use crate::crypto::encode_address;
 use crate::crypto::keys::VibeKeypair;
 use crate::crypto::signer::sign_message;
+use crate::storage::{
+    AccountState, Block, BlockStore, KVStore, StateStore, TransactionRecord, TxStore,
+};
 
 /// Development tools for blockchain testing and simulation
 pub struct DevelopmentTools<'a> {
@@ -59,7 +59,10 @@ impl<'a> DevelopmentTools<'a> {
         // Store the account
         match self.state_store.set_account_state(&address, &account) {
             Ok(_) => {
-                info!("Created test account with address: {:?}", hex::encode(&address));
+                info!(
+                    "Created test account with address: {}",
+                    encode_address(&address)
+                );
             }
             Err(e) => {
                 error!("Failed to create test account: {}", e);
@@ -89,28 +92,36 @@ impl<'a> DevelopmentTools<'a> {
 
         // Check if the sender has sufficient balance
         if sender_account.balance < amount + fee {
-            error!("Insufficient balance: {} < {}", sender_account.balance, amount + fee);
+            error!(
+                "Insufficient balance: {} < {}",
+                sender_account.balance,
+                amount + fee
+            );
             return None;
         }
 
         let transfer_token_ids = match sender_account.token_ids_for_amount(amount) {
             Some(token_ids) => token_ids,
             None => {
-                error!("Sender cannot assemble exact transfer amount {} from owned tokens", amount);
+                error!(
+                    "Sender cannot assemble exact transfer amount {} from owned tokens",
+                    amount
+                );
                 return None;
             }
         };
 
-        let fee_token_candidates = sender_account
-            .token_ids_for_amount(fee)
-            .unwrap_or_default();
+        let fee_token_candidates = sender_account.token_ids_for_amount(fee).unwrap_or_default();
 
         let fee_token_id = fee_token_candidates
             .into_iter()
             .find(|token_id| !transfer_token_ids.contains(token_id));
 
         if fee_token_id.is_none() {
-            error!("Sender cannot select a distinct fee token for exact fee {}", fee);
+            error!(
+                "Sender cannot select a distinct fee token for exact fee {}",
+                fee
+            );
             return None;
         }
 
@@ -136,15 +147,20 @@ impl<'a> DevelopmentTools<'a> {
                 .unwrap()
                 .as_secs(),
             block_height: 0, // Will be set when included in a block
-            data: None, // No data for simple transfers
+            data: None,      // No data for simple transfers
             status: crate::storage::tx_store::TransactionStatus::Pending,
         };
 
         // Create a message to sign
-        let message = format!("{}{}{}{}{}{}{}{}",
+        let message = format!(
+            "{}{}{}{}{}{}{}{}",
             hex::encode(&tx.sender),
             hex::encode(&tx.recipient),
-            tx.transfer_token_ids.iter().map(hex::encode).collect::<Vec<_>>().join(","),
+            tx.transfer_token_ids
+                .iter()
+                .map(hex::encode)
+                .collect::<Vec<_>>()
+                .join(","),
             tx.fee_token_id.map(hex::encode).unwrap_or_default(),
             tx.value,
             tx.nonce,
@@ -164,7 +180,11 @@ impl<'a> DevelopmentTools<'a> {
     }
 
     /// Generate a test block
-    pub fn generate_test_block(&self, transactions: Vec<TransactionRecord>, _miner: &[u8; 32]) -> Option<Block> {
+    pub fn generate_test_block(
+        &self,
+        transactions: Vec<TransactionRecord>,
+        _miner: &[u8; 32],
+    ) -> Option<Block> {
         // Get the latest block
         let latest_block = match self.block_store.get_latest_block() {
             Ok(Some(block)) => block,
@@ -193,10 +213,10 @@ impl<'a> DevelopmentTools<'a> {
             reward_token_ids: vec![],
             result_commitment: [0; 32],
             state_root: [0; 32], // Will be calculated later
-            tx_root: [0; 32], // Will be calculated later
-            nonce: 0, // Will be set during mining
+            tx_root: [0; 32],    // Will be calculated later
+            nonce: 0,            // Will be set during mining
             poh_seq: latest_block.poh_seq + 1,
-            poh_hash: [0; 32], // Will be calculated later
+            poh_hash: [0; 32],                   // Will be calculated later
             difficulty: latest_block.difficulty, // Use the same difficulty for testing
             total_difficulty: latest_block.total_difficulty + latest_block.difficulty as u128,
         };
@@ -211,13 +231,20 @@ impl<'a> DevelopmentTools<'a> {
             &block.reward_token_ids,
         );
 
-        info!("Generated test block: height={}, hash={:?}", block.height, hex::encode(&block.hash));
+        info!(
+            "Generated test block: height={}, hash={:?}",
+            block.height,
+            hex::encode(&block.hash)
+        );
         Some(block)
     }
 
     /// Run a benchmark
     pub fn run_benchmark(&self, operation: &str, iterations: u32) -> Duration {
-        info!("Running benchmark for {} ({} iterations)", operation, iterations);
+        info!(
+            "Running benchmark for {} ({} iterations)",
+            operation, iterations
+        );
 
         let start = Instant::now();
 
@@ -237,7 +264,8 @@ impl<'a> DevelopmentTools<'a> {
             }
             "transaction_creation" => {
                 // Generate a sender account
-                let (sender_keypair, sender_address) = self.generate_test_account(1000 * iterations as u64);
+                let (sender_keypair, sender_address) =
+                    self.generate_test_account(1000 * iterations as u64);
 
                 // Generate a receiver account
                 let (_, receiver_address) = self.generate_test_account(0);

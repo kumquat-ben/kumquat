@@ -3,6 +3,7 @@ import hashlib
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
+from .address_codec import decode_address, encode_address, normalize_address
 from .models import UserWallet
 from .views import _decrypt_wallet_private_key
 
@@ -31,10 +32,18 @@ class WalletGenerationTests(TestCase):
         wallet = UserWallet.objects.get(user=self.user)
         private_key = payload["wallet"]["private_key"]
 
-        self.assertEqual(payload["wallet"]["address"], hashlib.sha256(bytes.fromhex(wallet.public_key)).hexdigest())
+        expected_address = encode_address(hashlib.sha256(bytes.fromhex(wallet.public_key)).digest())
+        self.assertEqual(payload["wallet"]["address"], expected_address)
         self.assertEqual(wallet.address, payload["wallet"]["address"])
         self.assertEqual(_decrypt_wallet_private_key(wallet.encrypted_private_key), private_key)
         self.assertNotEqual(wallet.encrypted_private_key, private_key)
+
+    def test_address_codec_accepts_legacy_hex_and_normalizes_to_kmq(self):
+        raw_address = hashlib.sha256(b"kumquat-test").digest()
+        legacy_hex = raw_address.hex()
+
+        self.assertEqual(decode_address(legacy_hex), raw_address)
+        self.assertEqual(normalize_address(legacy_hex), encode_address(raw_address))
 
     def test_user_cannot_generate_second_wallet(self):
         self.client.force_login(self.user)

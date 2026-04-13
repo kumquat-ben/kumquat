@@ -1,4 +1,7 @@
 use kumquat::crypto::{
+    encode_address,
+    decode_address,
+    normalize_address,
     VibeKeypair,
     address_from_pubkey,
     sha256,
@@ -101,4 +104,17 @@ fn test_address_uniqueness() {
     assert_ne!(address1, address2);
     assert_ne!(address1, address3);
     assert_ne!(address2, address3);
+}
+
+#[test]
+fn test_address_codec_accepts_bech32_and_legacy_hex() {
+    let keypair = VibeKeypair::generate();
+    let address = keypair.address();
+    let bech32 = encode_address(&address);
+    let hex = hex::encode(address);
+
+    assert!(bech32.starts_with("kmq1"));
+    assert_eq!(decode_address(&bech32).unwrap(), address);
+    assert_eq!(decode_address(&hex).unwrap(), address);
+    assert_eq!(normalize_address(&hex).unwrap(), bech32);
 }

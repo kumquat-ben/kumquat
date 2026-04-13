@@ -29,6 +29,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import EarlyAccessSignup, ManagedNode, UserWallet, VonageInboundSms
+from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
     NodeLauncherError,
     dashboard_proxy_path,
@@ -44,7 +45,6 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 GOOGLE_OAUTH_STATE_SESSION_KEY = "google_oauth_state"
 GOOGLE_OAUTH_REDIRECT_URI_SESSION_KEY = "google_oauth_redirect_uri"
-KUMQUAT_ADDRESS_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 EARLY_ACCESS_SIGNUP_SESSION_KEY = "early_access_signup"
 EARLY_ACCESS_SIGNUP_SUCCESS_SESSION_KEY = "early_access_signup_success"
 EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY = "early_access_signup_error"
@@ -193,7 +193,7 @@ def _generate_wallet_material():
     return {
         "private_key": private_key_bytes.hex(),
         "public_key": public_key_bytes.hex(),
-        "address": address_bytes.hex(),
+        "address": encode_address(address_bytes),
     }
 
 
@@ -506,10 +506,12 @@ def _normalize_reward_address(value):
     if not raw_value:
         return ""
 
-    normalized = raw_value.lower()
-    if not KUMQUAT_ADDRESS_RE.fullmatch(normalized):
-        raise ValueError("Reward address must be a 64-character hex wallet address.")
-    return normalized
+    try:
+        return normalize_address(raw_value)
+    except AddressCodecError as exc:
+        raise ValueError(
+            f"Reward address must be a valid Kumquat wallet address (kmq1...). {exc}"
+        ) from exc
 
 
 def _serialize_vonage_sms(message):
@@ -1026,7 +1028,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
                 </div>
                 <div class="field">
                   <label for="node-reward-address">Reward address</label>
-                  <input id="node-reward-address" name="reward_address" placeholder="64-character hex wallet address" />
+                  <input id="node-reward-address" name="reward_address" placeholder="kmq1... wallet address" />
                 </div>
               </div>
               <label class="checkbox-row">

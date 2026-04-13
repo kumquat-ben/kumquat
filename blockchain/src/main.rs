@@ -1,29 +1,25 @@
-use std::sync::Arc;
+use log::{error, info, warn};
 use std::path::{Path, PathBuf};
-use tokio::sync::mpsc;
-use log::{info, error, warn};
+use std::sync::Arc;
 use structopt::StructOpt;
+use tokio::sync::mpsc;
 
-use kumquat::init_logger;
 use kumquat::api;
 use kumquat::config::Config;
-use kumquat::storage::{RocksDBStore, BlockStore, TxStore, StateStore, BatchOperationManager};
-use kumquat::mempool::Mempool;
-use kumquat::consensus::start_consensus;
 use kumquat::consensus::config::ConsensusConfig;
+use kumquat::consensus::start_consensus;
+use kumquat::init_logger;
+use kumquat::mempool::Mempool;
 use kumquat::network::start_enhanced_network;
 use kumquat::network::NetworkConfig;
 use kumquat::node_runtime::NodeRuntime;
+use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateStore, TxStore};
 use kumquat::tools::genesis::generate_genesis;
 
 fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
     if let Some(node_id) = node_id {
-        if let Ok(bytes) = hex::decode(node_id) {
-            if bytes.len() == 32 {
-                let mut address = [0u8; 32];
-                address.copy_from_slice(&bytes);
-                return address;
-            }
+        if let Ok(address) = kumquat::crypto::decode_address(node_id) {
+            return address;
         }
     }
 
@@ -94,7 +90,7 @@ async fn main() {
             Ok(config) => {
                 info!("Loaded configuration from {:?}", config_path);
                 config
-            },
+            }
             Err(e) => {
                 error!("Failed to load configuration: {}", e);
                 std::process::exit(1);
@@ -114,7 +110,7 @@ async fn main() {
                 config.consensus.initial_difficulty = 100;
                 config.consensus.enable_mining = true;
                 config.network.bootstrap_nodes = vec![];
-            },
+            }
             "testnet" => {
                 config.consensus.chain_id = 2;
                 config.consensus.target_block_time = 10;
@@ -123,7 +119,7 @@ async fn main() {
                     "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
                     "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                 ];
-            },
+            }
             "mainnet" => {
                 config.consensus.chain_id = 1;
                 config.consensus.target_block_time = 10;
@@ -134,7 +130,7 @@ async fn main() {
                     "/dns4/bootstrap3.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                     "/dns4/bootstrap4.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                 ];
-            },
+            }
             _ => {
                 warn!("Unknown network: {}, using default", network);
             }
@@ -146,7 +142,10 @@ async fn main() {
     }
 
     if let Some(bootstrap) = &opt.bootstrap {
-        config.network.bootstrap_nodes = bootstrap.split(',').map(|s| format!("/dns4/{}/tcp/30333", s)).collect();
+        config.network.bootstrap_nodes = bootstrap
+            .split(',')
+            .map(|s| format!("/dns4/{}/tcp/30333", s))
+            .collect();
     }
 
     if let Some(enable_mining) = opt.enable_mining {
@@ -189,9 +188,12 @@ async fn main() {
     let (genesis_block, genesis_accounts) = if genesis_path.exists() {
         match generate_genesis(&genesis_path) {
             Ok((block, accounts)) => {
-                info!("Loaded genesis block with hash: {}", hex::encode(&block.hash));
+                info!(
+                    "Loaded genesis block with hash: {}",
+                    hex::encode(&block.hash)
+                );
                 (block, accounts)
-            },
+            }
             Err(e) => {
                 error!("Failed to load genesis block: {}", e);
                 std::process::exit(1);
@@ -218,11 +220,18 @@ async fn main() {
     }
 
     impl kumquat::storage::KVStore for StaticKVStore {
-        fn put(&self, key: &[u8], value: &[u8]) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
+        fn put(
+            &self,
+            key: &[u8],
+            value: &[u8],
+        ) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.put(key, value)
         }
 
-        fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, kumquat::storage::kv_store::KVStoreError> {
+        fn get(
+            &self,
+            key: &[u8],
+        ) -> Result<Option<Vec<u8>>, kumquat::storage::kv_store::KVStoreError> {
             self.inner.get(key)
         }
 
@@ -234,11 +243,17 @@ async fn main() {
             self.inner.exists(key)
         }
 
-        fn write_batch(&self, operations: Vec<kumquat::storage::kv_store::WriteBatchOperation>) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
+        fn write_batch(
+            &self,
+            operations: Vec<kumquat::storage::kv_store::WriteBatchOperation>,
+        ) -> Result<(), kumquat::storage::kv_store::KVStoreError> {
             self.inner.write_batch(operations)
         }
 
-        fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, kumquat::storage::kv_store::KVStoreError> {
+        fn scan_prefix(
+            &self,
+            prefix: &[u8],
+        ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, kumquat::storage::kv_store::KVStoreError> {
             self.inner.scan_prefix(prefix)
         }
 
@@ -248,11 +263,15 @@ async fn main() {
     }
 
     // Create a static KVStore
-    let static_kv_store = Arc::new(StaticKVStore { inner: kv_store.clone() });
+    let static_kv_store = Arc::new(StaticKVStore {
+        inner: kv_store.clone(),
+    });
 
     // Create a static reference to the KVStore
     // This is safe because these stores will live for the entire program
-    let static_kv_store_box = Box::new(StaticKVStore { inner: kv_store.clone() });
+    let static_kv_store_box = Box::new(StaticKVStore {
+        inner: kv_store.clone(),
+    });
     let kv_store_static = Box::leak(static_kv_store_box) as &'static StaticKVStore;
 
     let block_store = Arc::new(BlockStore::new(kv_store_static));
@@ -284,7 +303,7 @@ async fn main() {
                         state.balance,
                         state.tokens.len()
                     );
-                },
+                }
                 Err(e) => {
                     error!("Failed to create genesis account: {}", e);
                     std::process::exit(1);
@@ -296,7 +315,7 @@ async fn main() {
         match block_store.put_block(&genesis_block) {
             Ok(_) => {
                 info!("Stored genesis block");
-            },
+            }
             Err(e) => {
                 error!("Failed to store genesis block: {}", e);
                 std::process::exit(1);
@@ -308,12 +327,21 @@ async fn main() {
 
     // Initialize network
     info!("Initializing network...");
-    let (network_tx, _network_rx) = mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
+    let (network_tx, _network_rx) =
+        mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
 
     // Convert config.network to NetworkConfig
     let network_config = NetworkConfig {
-        bind_addr: format!("{}:{}", config.network.listen_addr, config.network.listen_port).parse().unwrap(),
-        seed_peers: config.network.bootstrap_nodes.iter()
+        bind_addr: format!(
+            "{}:{}",
+            config.network.listen_addr, config.network.listen_port
+        )
+        .parse()
+        .unwrap(),
+        seed_peers: config
+            .network
+            .bootstrap_nodes
+            .iter()
             .filter_map(|addr| addr.parse().ok())
             .collect(),
         max_outbound: config.network.max_peers / 2,
@@ -331,7 +359,8 @@ async fn main() {
         Some(tx_store.clone()),
         Some(mempool.clone()),
         None, // No consensus yet
-    ).await;
+    )
+    .await;
 
     // Initialize consensus
     info!("Initializing consensus...");
@@ -344,7 +373,10 @@ async fn main() {
         difficulty_adjustment_window: config.consensus.difficulty_adjustment_interval,
         max_transactions_per_block: config.consensus.max_transactions_per_block,
         poh_tick_rate: 400_000, // Default value
-        miner_address: resolve_miner_address(config.node.node_id.as_deref(), &config.node.node_name),
+        miner_address: resolve_miner_address(
+            config.node.node_id.as_deref(),
+            &config.node.node_name,
+        ),
     };
 
     let consensus = start_consensus(
@@ -354,15 +386,19 @@ async fn main() {
         tx_store.clone(),
         state_store.clone(),
         network_tx.clone(),
-    ).await;
+    )
+    .await;
 
     if config.node.enable_api {
         let api_bind_addr = format!("{}:{}", config.node.api_host, config.node.api_port)
             .parse()
             .expect("Invalid API bind address");
-        let network_bind_addr = format!("{}:{}", config.network.listen_addr, config.network.listen_port)
-            .parse()
-            .expect("Invalid network bind address");
+        let network_bind_addr = format!(
+            "{}:{}",
+            config.network.listen_addr, config.network.listen_port
+        )
+        .parse()
+        .expect("Invalid network bind address");
 
         let runtime = Arc::new(NodeRuntime::new(
             config.node.node_name.clone(),
@@ -389,8 +425,7 @@ async fn main() {
 
         info!(
             "Node API dashboard available at http://{}:{}/dashboard",
-            config.node.api_host,
-            config.node.api_port
+            config.node.api_host, config.node.api_port
         );
     } else {
         info!("Node API is disabled in configuration");
@@ -399,6 +434,8 @@ async fn main() {
     info!("Kumquat node started successfully");
 
     // Keep the main thread alive
-    tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl-c");
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for ctrl-c");
     info!("Shutting down Kumquat node...");
 }

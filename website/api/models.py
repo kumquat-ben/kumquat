@@ -83,7 +83,7 @@ class ManagedNode(models.Model):
     image = models.CharField(max_length=255)
     network_name = models.CharField(max_length=32, default="dev")
     chain_id = models.PositiveBigIntegerField(default=1337)
-    reward_address = models.CharField(max_length=64, blank=True)
+    reward_address = models.CharField(max_length=96, blank=True)
     enable_mining = models.BooleanField(default=False)
     mining_threads = models.PositiveIntegerField(default=1)
     api_port = models.PositiveIntegerField(unique=True)
@@ -118,7 +118,7 @@ class UserWallet(models.Model):
         on_delete=models.CASCADE,
         related_name="wallet",
     )
-    address = models.CharField(max_length=64, unique=True, db_index=True)
+    address = models.CharField(max_length=96, unique=True, db_index=True)
     public_key = models.CharField(max_length=64, unique=True)
     encrypted_private_key = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)

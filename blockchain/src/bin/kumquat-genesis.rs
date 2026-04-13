@@ -1,8 +1,9 @@
+use kumquat::crypto::encode_address;
+use kumquat::init_logger;
+use kumquat::tools::genesis::{generate_genesis, GenesisConfig};
+use log::{error, info, warn};
 use std::path::PathBuf;
 use structopt::StructOpt;
-use kumquat::tools::genesis::{GenesisConfig, generate_genesis};
-use kumquat::init_logger;
-use log::{info, warn, error};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kumquat-genesis", about = "Kumquat genesis block generator")]
@@ -54,17 +55,17 @@ fn main() {
                     config.chain_id = 1337;
                     config.initial_difficulty = 100;
                     config.timestamp = chrono::Utc::now().timestamp() as u64;
-                },
+                }
                 "testnet" => {
                     config.chain_id = 2;
                     config.initial_difficulty = 1000;
                     config.timestamp = 1609459200; // 2021-01-01 00:00:00 UTC
-                },
+                }
                 "mainnet" => {
                     config.chain_id = 1;
                     config.initial_difficulty = 10000;
                     config.timestamp = 1609459200; // 2021-01-01 00:00:00 UTC
-                },
+                }
                 _ => {
                     warn!("Unknown network: {}, using default", network);
                 }
@@ -92,15 +93,18 @@ fn main() {
                     // Generate the genesis block
                     match generate_genesis(&output) {
                         Ok((block, account_states)) => {
-                            info!("Genesis block generated with hash: {}", hex::encode(&block.hash));
+                            info!(
+                                "Genesis block generated with hash: {}",
+                                hex::encode(&block.hash)
+                            );
                             info!("Initial accounts: {}", account_states.len());
-                        },
+                        }
                         Err(e) => {
                             error!("Failed to generate genesis block: {}", e);
                             std::process::exit(1);
                         }
                     }
-                },
+                }
                 Err(e) => {
                     error!("Failed to save genesis configuration: {}", e);
                     std::process::exit(1);
@@ -111,7 +115,7 @@ fn main() {
             match toml::to_string_pretty(&config) {
                 Ok(config_str) => {
                     println!("{}", config_str);
-                },
+                }
                 Err(e) => {
                     error!("Failed to serialize genesis configuration: {}", e);
                     std::process::exit(1);
@@ -122,7 +126,10 @@ fn main() {
         // Generate the genesis block from the configuration
         match generate_genesis(&input) {
             Ok((block, account_states)) => {
-                info!("Genesis block generated with hash: {}", hex::encode(&block.hash));
+                info!(
+                    "Genesis block generated with hash: {}",
+                    hex::encode(&block.hash)
+                );
                 info!("Initial accounts: {}", account_states.len());
 
                 // Print the block details
@@ -138,12 +145,12 @@ fn main() {
                 for (address, state) in &account_states {
                     println!(
                         "    {}: {} cents across {} tokens",
-                        hex::encode(address),
+                        encode_address(address),
                         state.balance,
                         state.tokens.len()
                     );
                 }
-            },
+            }
             Err(e) => {
                 error!("Failed to generate genesis block: {}", e);
                 std::process::exit(1);

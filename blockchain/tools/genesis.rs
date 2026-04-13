@@ -1,12 +1,15 @@
+use log::{info, warn};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use log::{info, warn};
 
-use crate::storage::block_store::{Block, Hash, result_commitment};
-use crate::storage::state::{AccountState, AccountType, Denomination, DenominationToken, TokenMintSource};
 use crate::crypto::hash::sha256;
+use crate::crypto::{decode_address, encode_address};
+use crate::storage::block_store::{result_commitment, Block, Hash};
+use crate::storage::state::{
+    AccountState, AccountType, Denomination, DenominationToken, TokenMintSource,
+};
 
 /// Genesis configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +46,11 @@ impl Default for GenesisConfig {
 
         // Add some initial accounts
         initial_accounts.insert(
-            "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
+            encode_address(&{
+                let mut address = [0u8; 32];
+                address[31] = 1;
+                address
+            }),
             GenesisAccount {
                 balance: None,
                 denominations: Some(
@@ -57,7 +64,11 @@ impl Default for GenesisConfig {
         );
 
         initial_accounts.insert(
-            "0000000000000000000000000000000000000000000000000000000000000002".to_string(),
+            encode_address(&{
+                let mut address = [0u8; 32];
+                address[31] = 2;
+                address
+            }),
             GenesisAccount {
                 balance: None,
                 denominations: Some(
@@ -163,11 +174,8 @@ impl GenesisConfig {
         );
 
         block.hash = sha256(block_data.as_bytes());
-        block.result_commitment = result_commitment(
-            &block.hash,
-            &block.state_root,
-            &block.reward_token_ids,
-        );
+        block.result_commitment =
+            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
 
         block
     }
@@ -176,13 +184,9 @@ impl GenesisConfig {
     pub fn generate_account_states(&self) -> Vec<(Hash, AccountState)> {
         let mut account_states = Vec::new();
 
-        for (address_hex, account) in &self.initial_accounts {
-            // Parse the address
-            let address_bytes = hex::decode(address_hex)
-                .expect("Invalid address hex in genesis config");
-
-            let mut address = [0u8; 32];
-            address.copy_from_slice(&address_bytes);
+        for (address_text, account) in &self.initial_accounts {
+            let address = decode_address(address_text)
+                .unwrap_or_else(|_| panic!("Invalid address '{}' in genesis config", address_text));
 
             // Parse the account type
             let account_type = match account.account_type.as_str() {
@@ -190,7 +194,10 @@ impl GenesisConfig {
                 "Contract" => AccountType::Contract,
                 "System" => AccountType::System,
                 _ => {
-                    warn!("Unknown account type: {}, defaulting to User", account.account_type);
+                    warn!(
+                        "Unknown account type: {}, defaulting to User",
+                        account.account_type
+                    );
                     AccountType::User
                 }
             };
@@ -204,9 +211,13 @@ impl GenesisConfig {
                 let bootstrap_balance = account.balance.unwrap_or(0);
                 match account_type {
                     AccountType::User => AccountState::new_user(bootstrap_balance, 0),
-                    AccountType::Contract => AccountState::new_contract(bootstrap_balance, Vec::new(), 0),
+                    AccountType::Contract => {
+                        AccountState::new_contract(bootstrap_balance, Vec::new(), 0)
+                    }
                     AccountType::System => AccountState::new_system(bootstrap_balance, 0),
-                    AccountType::Validator => AccountState::new_validator(bootstrap_balance, bootstrap_balance, 0),
+                    AccountType::Validator => {
+                        AccountState::new_validator(bootstrap_balance, bootstrap_balance, 0)
+                    }
                 }
             };
 
@@ -216,7 +227,11 @@ impl GenesisConfig {
         account_states
     }
 
-    fn generate_account_tokens(&self, address: Hash, account: &GenesisAccount) -> Vec<DenominationToken> {
+    fn generate_account_tokens(
+        &self,
+        address: Hash,
+        account: &GenesisAccount,
+    ) -> Vec<DenominationToken> {
         if let Some(denominations) = &account.denominations {
             return denominations
                 .iter()
@@ -258,7 +273,9 @@ impl GenesisConfig {
 }
 
 /// Generate a genesis block and initial account states
-pub fn generate_genesis<P: AsRef<Path>>(config_path: P) -> Result<(Block, Vec<(Hash, AccountState)>), String> {
+pub fn generate_genesis<P: AsRef<Path>>(
+    config_path: P,
+) -> Result<(Block, Vec<(Hash, AccountState)>), String> {
     // Load the genesis configuration
     let config = GenesisConfig::load(config_path)?;
 

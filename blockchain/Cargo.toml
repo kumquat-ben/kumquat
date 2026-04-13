@@ -24,6 +24,7 @@ ed25519-dalek = "1.0.1"
 sha2 = "0.10.6"
 rand_core = "0.6.4"
 hex = "0.4.3"
+bech32 = "0.9.1"
 
 # Advanced cryptography dependencies (optional)
 blst = { version = "0.3.10", optional = true }
