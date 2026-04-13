@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration, Instant};
 
 use kumquat::api;
 use kumquat::config::Config;
@@ -10,11 +11,16 @@ use kumquat::consensus::config::ConsensusConfig;
 use kumquat::consensus::start_consensus;
 use kumquat::init_logger;
 use kumquat::mempool::Mempool;
-use kumquat::network::start_enhanced_network;
 use kumquat::network::NetworkConfig;
+use kumquat::network::{start_enhanced_network, EnhancedNetworkHandle};
 use kumquat::node_runtime::NodeRuntime;
+use kumquat::storage::state::AccountState;
+use kumquat::storage::Block;
 use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateStore, TxStore};
 use kumquat::tools::genesis::generate_genesis;
+
+const NETWORK_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(15);
+const NETWORK_BOOTSTRAP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
     if let Some(node_id) = node_id {
@@ -24,6 +30,220 @@ fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
     }
 
     kumquat::crypto::hash::sha256(node_name.as_bytes())
+}
+
+fn parse_genesis_hash(hash_text: &str) -> [u8; 32] {
+    let bytes = match hex::decode(hash_text) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            error!("Invalid configured genesis hash '{}': {}", hash_text, err);
+            std::process::exit(1);
+        }
+    };
+
+    if bytes.len() != 32 {
+        error!(
+            "Invalid configured genesis hash '{}': expected 32 bytes, got {}",
+            hash_text,
+            bytes.len()
+        );
+        std::process::exit(1);
+    }
+
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&bytes);
+    hash
+}
+
+fn resolve_expected_genesis(
+    genesis_path: &Path,
+    configured_hash: Option<&str>,
+) -> ([u8; 32], Block, Vec<([u8; 32], AccountState)>) {
+    if !genesis_path.exists() {
+        info!(
+            "Genesis config missing at {:?}; generating default genesis config.",
+            genesis_path
+        );
+        if let Err(err) = kumquat::tools::genesis::GenesisConfig::generate_default(genesis_path) {
+            error!("Failed to generate default genesis config: {}", err);
+            std::process::exit(1);
+        }
+    }
+
+    let (genesis_block, genesis_accounts) = match generate_genesis(genesis_path) {
+        Ok(result) => result,
+        Err(err) => {
+            error!(
+                "Failed to build genesis block from {:?}: {}",
+                genesis_path, err
+            );
+            std::process::exit(1);
+        }
+    };
+
+    let generated_hash_text = hex::encode(genesis_block.hash);
+    info!(
+        "Resolved expected genesis block hash from {:?}: {}",
+        genesis_path, generated_hash_text
+    );
+
+    if let Some(hash_text) = configured_hash {
+        let configured_hash = parse_genesis_hash(hash_text);
+        info!("Using configured expected genesis hash: {}", hash_text);
+
+        if configured_hash != genesis_block.hash {
+            error!(
+                "Configured genesis hash {} does not match genesis config at {:?} (computed {}). Refusing to start.",
+                hash_text,
+                genesis_path,
+                generated_hash_text
+            );
+            std::process::exit(1);
+        }
+
+        return (configured_hash, genesis_block, genesis_accounts);
+    }
+
+    (genesis_block.hash, genesis_block, genesis_accounts)
+}
+
+fn chain_identity(chain_id: u64, genesis_hash: [u8; 32]) -> String {
+    format!("chain-{}:{}", chain_id, hex::encode(genesis_hash))
+}
+
+fn ensure_local_genesis(
+    expected_genesis_hash: [u8; 32],
+    genesis_block: Block,
+    genesis_accounts: Vec<([u8; 32], AccountState)>,
+    block_store: &BlockStore<'static>,
+    state_store: &StateStore<'static>,
+) {
+    match block_store.get_block_by_height(0) {
+        Ok(Some(existing_genesis)) => {
+            if existing_genesis.hash != expected_genesis_hash {
+                error!(
+                    "Stored genesis hash {} does not match expected genesis hash {}. Refusing to start.",
+                    hex::encode(existing_genesis.hash),
+                    hex::encode(expected_genesis_hash)
+                );
+                std::process::exit(1);
+            }
+            info!(
+                "Verified local genesis block hash matches expected chain root: {}",
+                hex::encode(existing_genesis.hash)
+            );
+            info!(
+                "Using existing local genesis block as chain root: {}",
+                hex::encode(existing_genesis.hash)
+            );
+            return;
+        }
+        Ok(None) => {
+            info!("No local genesis block found in storage; initializing block 0.");
+        }
+        Err(err) => {
+            error!("Failed to inspect local chain root: {}", err);
+            std::process::exit(1);
+        }
+    }
+
+    info!(
+        "Initializing local genesis block with hash: {}",
+        hex::encode(genesis_block.hash)
+    );
+
+    for (address, state) in &genesis_accounts {
+        let mut state = state.clone();
+        state.assign_token_owner(*address);
+        state.sync_balance_from_tokens();
+        match state_store.set_account_state(address, &state) {
+            Ok(_) => {
+                info!(
+                    "Created genesis account: {} with {} cents across {} tokens",
+                    hex::encode(address),
+                    state.balance,
+                    state.tokens.len()
+                );
+            }
+            Err(err) => {
+                error!("Failed to create genesis account: {}", err);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if let Err(err) = block_store.put_block(&genesis_block) {
+        error!("Failed to store genesis block: {}", err);
+        std::process::exit(1);
+    }
+
+    info!(
+        "Stored local genesis block as chain root: {}",
+        hex::encode(genesis_block.hash)
+    );
+}
+
+async fn attempt_network_bootstrap(
+    network: &EnhancedNetworkHandle,
+    block_store: &BlockStore<'static>,
+) -> bool {
+    let Some(sync_service) = &network.sync_service else {
+        info!("Sync service is unavailable; falling back to local genesis initialization.");
+        return false;
+    };
+
+    info!(
+        "Attempting network bootstrap before local genesis initialization (timeout: {:?}).",
+        NETWORK_BOOTSTRAP_TIMEOUT
+    );
+
+    let deadline = Instant::now() + NETWORK_BOOTSTRAP_TIMEOUT;
+    let mut discovered_peers = false;
+    let mut observed_sync_attempt = false;
+
+    while Instant::now() < deadline {
+        if block_store.get_block_by_height(0).ok().flatten().is_some() {
+            info!("Received chain root from the network during bootstrap.");
+            return true;
+        }
+
+        let connected_peers = network.service.peer_manager().connected_peer_count().await;
+        if connected_peers > 0 {
+            discovered_peers = true;
+        }
+
+        let sync_state = sync_service.get_sync_state().await;
+        if sync_state.in_progress
+            || sync_state.target_height > 0
+            || sync_state.blocks_synced > 0
+            || sync_state.sync_peer.is_some()
+        {
+            observed_sync_attempt = true;
+        }
+
+        if discovered_peers && observed_sync_attempt {
+            info!(
+                "Bootstrap peers discovered and sync path observed (peer: {:?}); waiting for chain root.",
+                sync_state.sync_peer
+            );
+        }
+
+        sleep(NETWORK_BOOTSTRAP_POLL_INTERVAL).await;
+    }
+
+    if discovered_peers {
+        warn!(
+            "Connected to bootstrap peers but did not receive a chain root within {:?}; falling back to local genesis.",
+            NETWORK_BOOTSTRAP_TIMEOUT
+        );
+    } else {
+        info!(
+            "No usable bootstrap peers discovered within {:?}; falling back to local genesis.",
+            NETWORK_BOOTSTRAP_TIMEOUT
+        );
+    }
+
+    false
 }
 
 #[derive(Debug, StructOpt)]
@@ -178,30 +398,11 @@ async fn main() {
         std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
     }
 
-    // Load or generate genesis block
+    // Determine genesis config path for local initialization if needed.
     let genesis_path = if let Some(genesis_path) = &opt.genesis {
         genesis_path.clone()
     } else {
         data_dir.join("genesis.toml")
-    };
-
-    let (genesis_block, genesis_accounts) = if genesis_path.exists() {
-        match generate_genesis(&genesis_path) {
-            Ok((block, accounts)) => {
-                info!(
-                    "Loaded genesis block with hash: {}",
-                    hex::encode(&block.hash)
-                );
-                (block, accounts)
-            }
-            Err(e) => {
-                error!("Failed to load genesis block: {}", e);
-                std::process::exit(1);
-            }
-        }
-    } else {
-        error!("Genesis file not found at {:?}", genesis_path);
-        std::process::exit(1);
     };
 
     // Initialize storage
@@ -286,51 +487,32 @@ async fn main() {
         state_store.clone(),
     ));
 
-    // Initialize genesis state if needed
-    if let Ok(None) = block_store.get_block_by_height(0) {
-        info!("Initializing genesis state...");
+    let (expected_genesis_hash, genesis_block, genesis_accounts) =
+        resolve_expected_genesis(&genesis_path, config.consensus.genesis_hash.as_deref());
+    let expected_genesis_hash_text = hex::encode(expected_genesis_hash);
+    let configured_genesis_hash = config.consensus.genesis_hash.clone();
 
-        // Create initial accounts
-        for (address, state) in &genesis_accounts {
-            let mut state = state.clone();
-            state.assign_token_owner(*address);
-            state.sync_balance_from_tokens();
-            match state_store.set_account_state(address, &state) {
-                Ok(_) => {
-                    info!(
-                        "Created genesis account: {} with {} cents across {} tokens",
-                        hex::encode(address),
-                        state.balance,
-                        state.tokens.len()
-                    );
-                }
-                Err(e) => {
-                    error!("Failed to create genesis account: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-
-        // Store genesis block
-        match block_store.put_block(&genesis_block) {
-            Ok(_) => {
-                info!("Stored genesis block");
-            }
-            Err(e) => {
-                error!("Failed to store genesis block: {}", e);
-                std::process::exit(1);
-            }
-        }
+    info!("Genesis config path: {:?}", genesis_path);
+    info!("Expected genesis hash: {}", expected_genesis_hash_text);
+    if let Some(hash) = &configured_genesis_hash {
+        info!("Configured genesis hash pin: {}", hash);
     } else {
-        info!("Genesis state already initialized");
+        info!(
+            "Configured genesis hash pin: none; node will trust the genesis config at {:?}",
+            genesis_path
+        );
     }
+    info!(
+        "Resolved chain identity: {}",
+        chain_identity(config.consensus.chain_id, expected_genesis_hash)
+    );
 
-    // Initialize network
+    // Initialize network before creating a fresh local genesis so the node can
+    // prefer syncing from peers when a usable chain is already available.
     info!("Initializing network...");
     let (network_tx, _network_rx) =
         mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
 
-    // Convert config.network to NetworkConfig
     let network_config = NetworkConfig {
         bind_addr: format!(
             "{}:{}",
@@ -361,6 +543,21 @@ async fn main() {
         None, // No consensus yet
     )
     .await;
+
+    if block_store.get_block_by_height(0).ok().flatten().is_none() {
+        let bootstrapped_from_network = attempt_network_bootstrap(&network, &block_store).await;
+        if bootstrapped_from_network {
+            info!("Using network-synchronized chain root instead of generating local genesis.");
+        }
+    }
+
+    ensure_local_genesis(
+        expected_genesis_hash,
+        genesis_block,
+        genesis_accounts,
+        &block_store,
+        &state_store,
+    );
 
     // Initialize consensus
     info!("Initializing consensus...");
@@ -403,6 +600,9 @@ async fn main() {
         let runtime = Arc::new(NodeRuntime::new(
             config.node.node_name.clone(),
             config.consensus.chain_id,
+            configured_genesis_hash,
+            expected_genesis_hash_text,
+            genesis_path.clone(),
             api_bind_addr,
             network_bind_addr,
             PathBuf::from(&config.node.data_dir),

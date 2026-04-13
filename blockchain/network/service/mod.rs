@@ -1,21 +1,23 @@
 // Network service module
 
-pub mod listener;
+pub mod advanced_router;
 pub mod dialer;
+pub mod listener;
 pub mod router;
 pub mod system_router;
-pub mod advanced_router;
 
-use std::sync::Arc;
-use tokio::sync::mpsc;
 use log::{debug, error};
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 
-use crate::network::NetworkConfig;
+use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::manager::PeerManager;
+use crate::network::peer::registry::PeerRegistry;
 use crate::network::service::listener::start_listener;
 use crate::network::service::router::MessageRouter;
 use crate::network::types::message::NetMessage;
 use crate::network::types::node_info::NodeInfo;
+use crate::network::NetworkConfig;
 
 /// Main network service
 pub struct NetworkService {
@@ -29,38 +31,43 @@ pub struct NetworkService {
     router: Arc<MessageRouter>,
 
     /// Channel for outgoing messages
-    message_rx: mpsc::Receiver<NetMessage>,
+    message_rx: Arc<Mutex<mpsc::Receiver<NetMessage>>>,
 
     /// Channel for incoming messages from peers
     incoming_tx: mpsc::Sender<(String, NetMessage)>,
 
     /// Channel for incoming messages from peers
-    incoming_rx: mpsc::Receiver<(String, NetMessage)>,
+    incoming_rx: Arc<Mutex<mpsc::Receiver<(String, NetMessage)>>>,
 }
 
 // Implement Clone for NetworkService
 impl Clone for NetworkService {
     fn clone(&self) -> Self {
-        // Create new channels
-        let (incoming_tx, incoming_rx) = mpsc::channel(100);
-        let (_, message_rx) = mpsc::channel(100);
-
         Self {
             config: self.config.clone(),
             peer_manager: self.peer_manager.clone(),
             router: self.router.clone(),
-            message_rx,
-            incoming_tx,
-            incoming_rx,
+            message_rx: self.message_rx.clone(),
+            incoming_tx: self.incoming_tx.clone(),
+            incoming_rx: self.incoming_rx.clone(),
         }
     }
 }
 
 impl NetworkService {
     /// Create a new network service
-    pub fn new(
+    pub fn new(config: NetworkConfig, message_rx: mpsc::Receiver<NetMessage>) -> Self {
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
+        Self::new_with_components(config, message_rx, peer_registry, broadcaster)
+    }
+
+    /// Create a new network service with shared peer infrastructure
+    pub fn new_with_components(
         config: NetworkConfig,
         message_rx: mpsc::Receiver<NetMessage>,
+        peer_registry: Arc<PeerRegistry>,
+        broadcaster: Arc<PeerBroadcaster>,
     ) -> Self {
         // Create channels for incoming messages
         let (incoming_tx, incoming_rx) = mpsc::channel(100);
@@ -82,20 +89,22 @@ impl NetworkService {
             incoming_tx.clone(),
             config.max_outbound,
             config.max_inbound,
+            peer_registry,
+            broadcaster,
         );
 
         Self {
             config,
             peer_manager,
             router,
-            message_rx,
+            message_rx: Arc::new(Mutex::new(message_rx)),
             incoming_tx,
-            incoming_rx,
+            incoming_rx: Arc::new(Mutex::new(incoming_rx)),
         }
     }
 
     /// Run the network service
-    pub async fn run(&mut self) {
+    pub async fn run(&self) {
         // Start the peer manager
         self.peer_manager.start().await;
 
@@ -119,23 +128,31 @@ impl NetworkService {
     }
 
     /// Process incoming and outgoing messages
-    async fn process_messages(&mut self) {
-        // We can't clone Receivers, so we need to use mutable references
-        let message_rx = &mut self.message_rx;
-        let incoming_rx = &mut self.incoming_rx;
-
+    async fn process_messages(&self) {
         loop {
+            let message_rx = self.message_rx.clone();
+            let incoming_rx = self.incoming_rx.clone();
             tokio::select! {
                 // Handle outgoing messages
-                Some(message) = message_rx.recv() => {
-                    debug!("Broadcasting message: {:?}", message);
-                    self.peer_manager.broadcast(message).await;
+                message = async {
+                    let mut rx = message_rx.lock().await;
+                    rx.recv().await
+                } => {
+                    if let Some(message) = message {
+                        debug!("Broadcasting message: {:?}", message);
+                        self.peer_manager.broadcast(message).await;
+                    }
                 }
 
                 // Handle incoming messages from peers
-                Some((node_id, message)) = incoming_rx.recv() => {
-                    debug!("Received message from {}: {:?}", node_id, message);
-                    self.router.route_message(node_id, message).await;
+                incoming = async {
+                    let mut rx = incoming_rx.lock().await;
+                    rx.recv().await
+                } => {
+                    if let Some((node_id, message)) = incoming {
+                        debug!("Received message from {}: {:?}", node_id, message);
+                        self.router.route_message(node_id, message).await;
+                    }
                 }
             }
         }

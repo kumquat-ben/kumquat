@@ -22,7 +22,9 @@ struct CommandResponse {
     message: &'static str,
 }
 
-pub async fn serve(runtime: Arc<NodeRuntime>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn serve(
+    runtime: Arc<NodeRuntime>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let bind_addr = runtime.api_bind_addr();
     let app = Router::new()
         .route("/", get(dashboard))
@@ -42,7 +44,9 @@ async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-async fn status(State(runtime): State<Arc<NodeRuntime>>) -> Json<crate::node_runtime::NodeStatusSnapshot> {
+async fn status(
+    State(runtime): State<Arc<NodeRuntime>>,
+) -> Json<crate::node_runtime::NodeStatusSnapshot> {
     Json(runtime.snapshot().await)
 }
 
@@ -184,7 +188,12 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
       <article class="panel">
         <h2>Node</h2>
         <div class="stack">
+          <p>Chain identity: <code>{chain_identity}</code></p>
           <p>Chain ID: <code>{chain_id}</code></p>
+          <p>Expected genesis: <code>{expected_genesis_hash}</code></p>
+          <p>Active genesis: <code>{active_genesis_hash}</code></p>
+          <p>Configured genesis: <code>{configured_genesis_hash}</code></p>
+          <p>Genesis config: <code>{genesis_config_path}</code></p>
           <p>API: <code>{api_bind_addr}</code></p>
           <p>P2P: <code>{network_bind_addr}</code></p>
           <p>Data dir: <code>{data_dir}</code></p>
@@ -223,7 +232,18 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
         mempool_size = snapshot.mempool_size,
         uptime_seconds = snapshot.uptime_seconds,
         db_size = db_size,
+        chain_identity = snapshot.chain_identity,
         chain_id = snapshot.chain_id,
+        expected_genesis_hash = snapshot.expected_genesis_hash,
+        active_genesis_hash = snapshot
+            .active_genesis_hash
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        configured_genesis_hash = snapshot
+            .configured_genesis_hash
+            .clone()
+            .unwrap_or_else(|| "not pinned in config".to_string()),
+        genesis_config_path = snapshot.genesis_config_path,
         api_bind_addr = snapshot.api_bind_addr,
         network_bind_addr = snapshot.network_bind_addr,
         data_dir = snapshot.data_dir,
@@ -232,8 +252,14 @@ async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {
         sync_progress = snapshot
             .sync
             .progress_percent
-            .map(|value| format!("{value:.1}% ({}/{})", snapshot.sync.current_height, snapshot.sync.target_height))
-            .unwrap_or_else(|| format!("{}/{}", snapshot.sync.current_height, snapshot.sync.target_height)),
+            .map(|value| format!(
+                "{value:.1}% ({}/{})",
+                snapshot.sync.current_height, snapshot.sync.target_height
+            ))
+            .unwrap_or_else(|| format!(
+                "{}/{}",
+                snapshot.sync.current_height, snapshot.sync.target_height
+            )),
         latest_hash = latest_hash,
         latest_timestamp = snapshot
             .latest_block_timestamp

@@ -89,12 +89,26 @@ fn main() {
             match config.save(&output) {
                 Ok(_) => {
                     info!("Genesis configuration saved to {:?}", output);
+                    info!(
+                        "Genesis config is explicit; nodes can reuse this file with --genesis {:?}",
+                        output
+                    );
 
                     // Generate the genesis block
                     match generate_genesis(&output) {
                         Ok((block, account_states)) => {
                             info!(
                                 "Genesis block generated with hash: {}",
+                                hex::encode(&block.hash)
+                            );
+                            info!(
+                                "Chain identity for chain {}: chain-{}:{}",
+                                config.chain_id,
+                                config.chain_id,
+                                hex::encode(&block.hash)
+                            );
+                            info!(
+                                "To pin this chain in node config, set consensus.genesis_hash = \"{}\"",
                                 hex::encode(&block.hash)
                             );
                             info!("Initial accounts: {}", account_states.len());
@@ -123,6 +137,14 @@ fn main() {
             }
         }
     } else if let Some(input) = opt.input {
+        let genesis_config = match GenesisConfig::load(&input) {
+            Ok(config) => config,
+            Err(e) => {
+                error!("Failed to load genesis configuration: {}", e);
+                std::process::exit(1);
+            }
+        };
+
         // Generate the genesis block from the configuration
         match generate_genesis(&input) {
             Ok((block, account_states)) => {
@@ -130,11 +152,22 @@ fn main() {
                     "Genesis block generated with hash: {}",
                     hex::encode(&block.hash)
                 );
+                info!(
+                    "Chain identity for this genesis file: chain-{}:{}",
+                    genesis_config.chain_id,
+                    hex::encode(&block.hash)
+                );
                 info!("Initial accounts: {}", account_states.len());
 
                 // Print the block details
                 println!("Genesis Block:");
+                println!("  Config: {:?}", input);
                 println!("  Hash: {}", hex::encode(&block.hash));
+                println!(
+                    "  Chain Identity: chain-{}:{}",
+                    genesis_config.chain_id,
+                    hex::encode(&block.hash)
+                );
                 println!("  Height: {}", block.height);
                 println!("  Timestamp: {}", block.timestamp);
                 println!("  Difficulty: {}", block.difficulty);

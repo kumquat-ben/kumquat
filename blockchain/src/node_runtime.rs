@@ -48,6 +48,11 @@ pub struct SyncStatus {
 pub struct NodeStatusSnapshot {
     pub node_name: String,
     pub chain_id: u64,
+    pub chain_identity: String,
+    pub configured_genesis_hash: Option<String>,
+    pub expected_genesis_hash: String,
+    pub active_genesis_hash: Option<String>,
+    pub genesis_config_path: String,
     pub uptime_seconds: u64,
     pub api_bind_addr: String,
     pub network_bind_addr: String,
@@ -70,6 +75,9 @@ pub struct NodeRuntime {
     start_time: Instant,
     node_name: String,
     chain_id: u64,
+    configured_genesis_hash: Option<String>,
+    expected_genesis_hash: String,
+    genesis_config_path: PathBuf,
     api_bind_addr: SocketAddr,
     network_bind_addr: SocketAddr,
     data_dir: PathBuf,
@@ -89,6 +97,9 @@ impl NodeRuntime {
     pub fn new(
         node_name: String,
         chain_id: u64,
+        configured_genesis_hash: Option<String>,
+        expected_genesis_hash: String,
+        genesis_config_path: PathBuf,
         api_bind_addr: SocketAddr,
         network_bind_addr: SocketAddr,
         data_dir: PathBuf,
@@ -106,6 +117,9 @@ impl NodeRuntime {
             start_time: Instant::now(),
             node_name,
             chain_id,
+            configured_genesis_hash,
+            expected_genesis_hash,
+            genesis_config_path,
             api_bind_addr,
             network_bind_addr,
             data_dir,
@@ -143,13 +157,27 @@ impl NodeRuntime {
             data_gaps.push("Hash rate is not exposed by the mining engine yet.".to_string());
         }
         if sync_snapshot.is_none() {
-            data_gaps.push("Sync service telemetry is unavailable for this node instance.".to_string());
+            data_gaps
+                .push("Sync service telemetry is unavailable for this node instance.".to_string());
         }
-        data_gaps.push("Recent warnings/errors are not yet collected into the dashboard event feed.".to_string());
+        data_gaps.push(
+            "Recent warnings/errors are not yet collected into the dashboard event feed."
+                .to_string(),
+        );
 
         NodeStatusSnapshot {
             node_name: self.node_name.clone(),
             chain_id: self.chain_id,
+            chain_identity: format!("chain-{}:{}", self.chain_id, self.expected_genesis_hash),
+            configured_genesis_hash: self.configured_genesis_hash.clone(),
+            expected_genesis_hash: self.expected_genesis_hash.clone(),
+            active_genesis_hash: self
+                .block_store
+                .get_block_by_height(0)
+                .ok()
+                .flatten()
+                .map(|block| hex::encode(block.hash)),
+            genesis_config_path: self.genesis_config_path.display().to_string(),
             uptime_seconds: self.start_time.elapsed().as_secs(),
             api_bind_addr: self.api_bind_addr.to_string(),
             network_bind_addr: self.network_bind_addr.to_string(),
@@ -229,12 +257,16 @@ fn sync_status_from_state(
         let remaining_blocks = sync_state.target_height.saturating_sub(latest_height);
         let progress_percent = if sync_state.target_height > sync_state.current_height {
             let completed = latest_height.saturating_sub(sync_state.current_height) as f64;
-            let total = sync_state.target_height.saturating_sub(sync_state.current_height) as f64;
+            let total = sync_state
+                .target_height
+                .saturating_sub(sync_state.current_height) as f64;
             Some((completed / total * 100.0).clamp(0.0, 100.0))
         } else {
             None
         };
-        let elapsed_seconds = sync_state.start_time.map(|started| started.elapsed().as_secs());
+        let elapsed_seconds = sync_state
+            .start_time
+            .map(|started| started.elapsed().as_secs());
         let started_at_unix = elapsed_seconds.map(|elapsed| {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

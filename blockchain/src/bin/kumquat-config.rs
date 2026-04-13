@@ -1,8 +1,8 @@
+use kumquat::config::Config;
+use kumquat::init_logger;
+use log::{error, info, warn};
 use std::path::PathBuf;
 use structopt::StructOpt;
-use kumquat::config::{Config, NetworkConfig, ConsensusConfig, StorageConfig, NodeConfig};
-use kumquat::init_logger;
-use log::{info, warn, error};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kumquat-config", about = "Kumquat configuration tool")]
@@ -74,6 +74,10 @@ struct Opt {
     /// Chain ID
     #[structopt(long)]
     chain_id: Option<u64>,
+
+    /// Pin the expected genesis hash in config
+    #[structopt(long)]
+    genesis_hash: Option<String>,
 }
 
 fn main() {
@@ -104,7 +108,7 @@ fn main() {
                     config.consensus.initial_difficulty = 100;
                     config.consensus.enable_mining = true;
                     config.network.bootstrap_nodes = vec![];
-                },
+                }
                 "testnet" => {
                     config.consensus.chain_id = 2;
                     config.consensus.target_block_time = 10;
@@ -113,7 +117,7 @@ fn main() {
                         "/dns4/bootstrap1.kumquat.network/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp".to_string(),
                         "/dns4/bootstrap2.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                     ];
-                },
+                }
                 "mainnet" => {
                     config.consensus.chain_id = 1;
                     config.consensus.target_block_time = 10;
@@ -124,7 +128,7 @@ fn main() {
                         "/dns4/bootstrap3.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                         "/dns4/bootstrap4.kumquat.network/tcp/30333/p2p/12D3KooWHdiAxVd8uMQR1hGWXccidmfCwLqcMpGwR6QcTP6QRMq9".to_string(),
                     ];
-                },
+                }
                 _ => {
                     warn!("Unknown network: {}, using default", network);
                 }
@@ -168,7 +172,8 @@ fn main() {
         }
 
         if let Some(bootstrap) = opt.bootstrap {
-            config.network.bootstrap_nodes = bootstrap.split(',')
+            config.network.bootstrap_nodes = bootstrap
+                .split(',')
                 .map(|s| format!("/dns4/{}/tcp/30333", s))
                 .collect();
         }
@@ -177,12 +182,27 @@ fn main() {
             config.consensus.chain_id = chain_id;
         }
 
+        if let Some(genesis_hash) = opt.genesis_hash {
+            config.consensus.genesis_hash = Some(genesis_hash);
+        }
+
         // Save the configuration
         if let Some(output) = opt.output {
             match config.save(&output) {
                 Ok(_) => {
                     info!("Configuration saved to {:?}", output);
-                },
+                    if let Some(genesis_hash) = &config.consensus.genesis_hash {
+                        info!("Pinned expected genesis hash in config: {}", genesis_hash);
+                        info!(
+                            "Chain identity will be chain-{}:{}",
+                            config.consensus.chain_id, genesis_hash
+                        );
+                    } else {
+                        warn!(
+                            "Configuration does not pin consensus.genesis_hash. Operators should set it explicitly for deterministic chain identity."
+                        );
+                    }
+                }
                 Err(e) => {
                     error!("Failed to save configuration: {}", e);
                     std::process::exit(1);
@@ -193,7 +213,7 @@ fn main() {
             match toml::to_string_pretty(&config) {
                 Ok(config_str) => {
                     println!("{}", config_str);
-                },
+                }
                 Err(e) => {
                     error!("Failed to serialize configuration: {}", e);
                     std::process::exit(1);
@@ -208,13 +228,13 @@ fn main() {
                 match toml::to_string_pretty(&config) {
                     Ok(config_str) => {
                         println!("{}", config_str);
-                    },
+                    }
                     Err(e) => {
                         error!("Failed to serialize configuration: {}", e);
                         std::process::exit(1);
                     }
                 }
-            },
+            }
             Err(e) => {
                 error!("Failed to load configuration: {}", e);
                 std::process::exit(1);

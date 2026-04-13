@@ -1,29 +1,29 @@
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{Duration, interval};
-use log::{debug, error, info, warn};
+use tokio::time::{interval, Duration};
 
-use crate::network::peer::state::{ConnectionState, PeerInfo};
+use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::handler::PeerHandler;
 use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::broadcaster::PeerBroadcaster;
-use crate::network::types::node_info::NodeInfo;
-use crate::network::types::message::NetMessage;
+use crate::network::peer::state::{ConnectionState, PeerInfo};
 use crate::network::service::router::MessageRouter;
+use crate::network::types::message::NetMessage;
+use crate::network::types::node_info::NodeInfo;
 
 /// Manager for peer connections
 pub struct PeerManager {
     /// Map of peer addresses to peer info
-    peers: RwLock<HashMap<SocketAddr, Arc<PeerInfo>>>,
+    peers: Arc<RwLock<HashMap<SocketAddr, Arc<PeerInfo>>>>,
 
     /// Map of node IDs to peer addresses
-    node_id_to_addr: RwLock<HashMap<String, SocketAddr>>,
+    node_id_to_addr: Arc<RwLock<HashMap<String, SocketAddr>>>,
 
     /// Map of peer addresses to message senders
-    peer_senders: RwLock<HashMap<SocketAddr, mpsc::Sender<NetMessage>>>,
+    peer_senders: Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<NetMessage>>>>,
 
     /// Local node information
     local_node_info: NodeInfo,
@@ -39,19 +39,27 @@ pub struct PeerManager {
 
     /// Maximum number of inbound connections
     max_inbound: usize,
+
+    /// Shared peer registry for the running network
+    peer_registry: Arc<PeerRegistry>,
+
+    /// Shared broadcaster for the running network
+    broadcaster: Arc<PeerBroadcaster>,
 }
 
 impl Clone for PeerManager {
     fn clone(&self) -> Self {
         Self {
-            peers: RwLock::new(HashMap::new()),
-            node_id_to_addr: RwLock::new(HashMap::new()),
-            peer_senders: RwLock::new(HashMap::new()),
+            peers: self.peers.clone(),
+            node_id_to_addr: self.node_id_to_addr.clone(),
+            peer_senders: self.peer_senders.clone(),
             local_node_info: self.local_node_info.clone(),
             router: self.router.clone(),
             incoming_tx: self.incoming_tx.clone(),
             max_outbound: self.max_outbound,
             max_inbound: self.max_inbound,
+            peer_registry: self.peer_registry.clone(),
+            broadcaster: self.broadcaster.clone(),
         }
     }
 }
@@ -64,16 +72,20 @@ impl PeerManager {
         incoming_tx: mpsc::Sender<(String, NetMessage)>,
         max_outbound: usize,
         max_inbound: usize,
+        peer_registry: Arc<PeerRegistry>,
+        broadcaster: Arc<PeerBroadcaster>,
     ) -> Self {
         Self {
-            peers: RwLock::new(HashMap::new()),
-            node_id_to_addr: RwLock::new(HashMap::new()),
-            peer_senders: RwLock::new(HashMap::new()),
+            peers: Arc::new(RwLock::new(HashMap::new())),
+            node_id_to_addr: Arc::new(RwLock::new(HashMap::new())),
+            peer_senders: Arc::new(RwLock::new(HashMap::new())),
             local_node_info,
             router,
             incoming_tx,
             max_outbound,
             max_inbound,
+            peer_registry,
+            broadcaster,
         }
     }
 
@@ -87,16 +99,21 @@ impl PeerManager {
         }
 
         // Check connection limits
-        let outbound_count = peers.values()
+        let outbound_count = peers
+            .values()
             .filter(|p| p.is_outbound && p.is_active())
             .count();
 
-        let inbound_count = peers.values()
+        let inbound_count = peers
+            .values()
             .filter(|p| !p.is_outbound && p.is_active())
             .count();
 
         if is_outbound && outbound_count >= self.max_outbound {
-            warn!("Maximum outbound connections reached ({})", self.max_outbound);
+            warn!(
+                "Maximum outbound connections reached ({})",
+                self.max_outbound
+            );
             return false;
         }
 
@@ -135,17 +152,14 @@ impl PeerManager {
 
         if let Some(peer_info) = peer_info {
             // Create and start the peer handler
-            let peer_registry = Arc::new(PeerRegistry::new());
-            let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
-
             let handler = PeerHandler::new(
                 stream,
                 peer_info.id.clone(),
                 addr,
                 self.local_node_info.clone(),
                 self.router.clone(),
-                peer_registry,
-                broadcaster,
+                self.peer_registry.clone(),
+                self.broadcaster.clone(),
                 self.incoming_tx.clone(),
                 false, // Incoming connection
             );
@@ -197,17 +211,14 @@ impl PeerManager {
                 info!("Connected to peer {}", addr);
 
                 // Create and start the peer handler
-                let peer_registry = Arc::new(PeerRegistry::new());
-                let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
-
                 let handler = PeerHandler::new(
                     stream,
                     peer_info.id.clone(),
                     addr,
                     self.local_node_info.clone(),
                     self.router.clone(),
-                    peer_registry,
-                    broadcaster,
+                    self.peer_registry.clone(),
+                    self.broadcaster.clone(),
                     self.incoming_tx.clone(),
                     true, // Outbound connection
                 );
@@ -292,15 +303,14 @@ impl PeerManager {
     /// Get the number of connected peers
     pub async fn connected_peer_count(&self) -> usize {
         let peers = self.peers.read().await;
-        peers.values()
-            .filter(|p| p.is_active())
-            .count()
+        peers.values().filter(|p| p.is_active()).count()
     }
 
     /// Get a list of connected peer addresses
     pub async fn connected_peers(&self) -> Vec<SocketAddr> {
         let peers = self.peers.read().await;
-        peers.iter()
+        peers
+            .iter()
             .filter(|(_, p)| p.is_active())
             .map(|(addr, _)| *addr)
             .collect()
@@ -324,7 +334,8 @@ impl PeerManager {
     async fn check_reconnects(&self) {
         let peers_to_reconnect = {
             let peers = self.peers.read().await;
-            peers.iter()
+            peers
+                .iter()
                 .filter(|(_, p)| p.is_outbound && p.should_retry())
                 .map(|(addr, _)| *addr)
                 .collect::<Vec<_>>()
@@ -343,6 +354,8 @@ impl PeerManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::peer::broadcaster::PeerBroadcaster;
+    use crate::network::peer::registry::PeerRegistry;
     use crate::network::service::router::MessageRouter;
 
     #[tokio::test]
@@ -361,12 +374,16 @@ mod tests {
         );
 
         // Create a peer manager
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
         let peer_manager = PeerManager::new(
             local_node_info,
             router,
             incoming_tx,
             8,
             32,
+            peer_registry,
+            broadcaster,
         );
 
         // Add some peers
