@@ -271,7 +271,9 @@
             <div class="wallet-generator-head">
               <p class="section-eyebrow">Your Wallet</p>
               {% if wallet_generation_success %}
-                <span class="wallet-status wallet-status-success">Wallet created</span>
+                <span class="wallet-status wallet-status-success">
+                  {% if wallet_generation_status == "regenerated" %}Wallet regenerated{% else %}Wallet created{% endif %}
+                </span>
               {% endif %}
             </div>
 
@@ -301,6 +303,10 @@
                 <code class="wallet-detail-value">{{ wallet.public_key }}</code>
               </div>
             </div>
+            <form action="/wallets/regenerate" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-secondary button-block" type="submit">Regenerate wallet</button>
+            </form>
           {% else %}
             <div class="wallet-generator-head">
               <p class="section-eyebrow">Create Wallet</p>

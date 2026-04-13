@@ -51,6 +51,7 @@ EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY = "early_access_signup_error"
 WALLET_PRIVATE_KEY_SESSION_KEY = "wallet_private_key"
 WALLET_GENERATION_ERROR_SESSION_KEY = "wallet_generation_error"
 WALLET_GENERATION_SUCCESS_SESSION_KEY = "wallet_generation_success"
+WALLET_GENERATION_STATUS_SESSION_KEY = "wallet_generation_status"
 
 BILL_ITEMS = [
     {"label": "$100", "kind": "bill", "id": "KMQ-00100000"},
@@ -216,7 +217,31 @@ def _home_wallet_context(request):
         "wallet_private_key": request.session.pop(WALLET_PRIVATE_KEY_SESSION_KEY, ""),
         "wallet_generation_error": request.session.pop(WALLET_GENERATION_ERROR_SESSION_KEY, ""),
         "wallet_generation_success": request.session.pop(WALLET_GENERATION_SUCCESS_SESSION_KEY, False),
+        "wallet_generation_status": request.session.pop(WALLET_GENERATION_STATUS_SESSION_KEY, "created"),
     }
+
+
+def _upsert_user_wallet(*, user, wallet_material, replace_existing):
+    existing_wallet = UserWallet.objects.filter(user=user).first()
+    encrypted_private_key = _encrypt_wallet_private_key(wallet_material["private_key"])
+
+    if existing_wallet and not replace_existing:
+        return existing_wallet, False, False
+
+    if existing_wallet:
+        existing_wallet.address = wallet_material["address"]
+        existing_wallet.public_key = wallet_material["public_key"]
+        existing_wallet.encrypted_private_key = encrypted_private_key
+        existing_wallet.save(update_fields=["address", "public_key", "encrypted_private_key", "updated_at"])
+        return existing_wallet, False, True
+
+    wallet = UserWallet.objects.create(
+        user=user,
+        address=wallet_material["address"],
+        public_key=wallet_material["public_key"],
+        encrypted_private_key=encrypted_private_key,
+    )
+    return wallet, True, False
 
 
 def _build_dashboard_context():
@@ -1466,6 +1491,15 @@ def auth_logout_view(request):
 
 @csrf_exempt
 def wallet_generate_view(request):
+    return _wallet_write_view(request, replace_existing=False)
+
+
+@csrf_exempt
+def wallet_regenerate_view(request):
+    return _wallet_write_view(request, replace_existing=True)
+
+
+def _wallet_write_view(request, *, replace_existing):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
@@ -1475,7 +1509,7 @@ def wallet_generate_view(request):
         return HttpResponseRedirect("/auth/sign-in")
 
     existing_wallet = UserWallet.objects.filter(user=request.user).first()
-    if existing_wallet:
+    if existing_wallet and not replace_existing:
         error_message = "You already have a wallet."
         if _is_json_request(request):
             return JsonResponse({"error": error_message, "wallet": _serialize_wallet(existing_wallet)}, status=409)
@@ -1484,15 +1518,14 @@ def wallet_generate_view(request):
 
     wallet_material = _generate_wallet_material()
     try:
-        wallet = UserWallet.objects.create(
+        wallet, created, regenerated = _upsert_user_wallet(
             user=request.user,
-            address=wallet_material["address"],
-            public_key=wallet_material["public_key"],
-            encrypted_private_key=_encrypt_wallet_private_key(wallet_material["private_key"]),
+            wallet_material=wallet_material,
+            replace_existing=replace_existing,
         )
     except IntegrityError:
         wallet = UserWallet.objects.filter(user=request.user).first()
-        error_message = "You already have a wallet."
+        error_message = "Could not regenerate wallet because the new address collided. Try again."
         if _is_json_request(request):
             return JsonResponse({"error": error_message, "wallet": _serialize_wallet(wallet)}, status=409)
         request.session[WALLET_GENERATION_ERROR_SESSION_KEY] = error_message
@@ -1501,17 +1534,18 @@ def wallet_generate_view(request):
     if _is_json_request(request):
         return JsonResponse(
             {
-                "status": "created",
+                "status": "created" if created else "regenerated" if regenerated else "existing",
                 "wallet": {
                     **_serialize_wallet(wallet),
                     "private_key": wallet_material["private_key"],
                 },
             },
-            status=201,
+            status=201 if created else 200,
         )
 
     request.session[WALLET_PRIVATE_KEY_SESSION_KEY] = wallet_material["private_key"]
     request.session[WALLET_GENERATION_SUCCESS_SESSION_KEY] = True
+    request.session[WALLET_GENERATION_STATUS_SESSION_KEY] = "created" if created else "regenerated"
     return HttpResponseRedirect("/#wallet")
 
 

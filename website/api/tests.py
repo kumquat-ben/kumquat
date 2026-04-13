@@ -66,6 +66,37 @@ class WalletGenerationTests(TestCase):
         self.assertEqual(second_response.status_code, 409)
         self.assertEqual(UserWallet.objects.filter(user=self.user).count(), 1)
 
+    def test_user_can_regenerate_existing_wallet(self):
+        self.client.force_login(self.user)
+
+        first_response = self.client.post(
+            "/wallets/generate",
+            data="{}",
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+        self.assertEqual(first_response.status_code, 201)
+        original_wallet = UserWallet.objects.get(user=self.user)
+        original_address = original_wallet.address
+        original_public_key = original_wallet.public_key
+
+        second_response = self.client.post(
+            "/wallets/regenerate",
+            data="{}",
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(second_response.status_code, 200)
+        payload = second_response.json()
+        updated_wallet = UserWallet.objects.get(user=self.user)
+
+        self.assertEqual(payload["status"], "regenerated")
+        self.assertEqual(UserWallet.objects.filter(user=self.user).count(), 1)
+        self.assertNotEqual(updated_wallet.address, original_address)
+        self.assertNotEqual(updated_wallet.public_key, original_public_key)
+        self.assertEqual(updated_wallet.address, payload["wallet"]["address"])
+
     def test_wallet_generation_requires_authentication(self):
         response = self.client.post(
             "/wallets/generate",
@@ -75,3 +106,12 @@ class WalletGenerationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+        regenerate_response = self.client.post(
+            "/wallets/regenerate",
+            data="{}",
+            content_type="application/json",
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(regenerate_response.status_code, 401)
