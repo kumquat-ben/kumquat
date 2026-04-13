@@ -11,6 +11,7 @@
     <nav class="nav-links" aria-label="Primary">
       <a href="#story">Story</a>
       <a href="#how-it-works">How it works</a>
+      <a href="#wallet">Wallet</a>
       <a href="#denominations">Denominations</a>
     </nav>
     <a
@@ -37,8 +38,8 @@
         traceable. It doesn't slow down as it scales.
       </p>
       <div class="hero-actions">
-        <a class="button button-primary" href="{% if auth_user %}#how-it-works{% else %}/auth/sign-in{% endif %}">
-          {% if auth_user %}See the wallet model{% else %}Sign in with Google{% endif %}
+        <a class="button button-primary" href="{% if auth_user %}#wallet{% else %}/auth/sign-in{% endif %}">
+          {% if auth_user %}Generate your wallet{% else %}Sign in with Google{% endif %}
         </a>
         <a class="button button-secondary" href="#story">Read the story</a>
       </div>
@@ -115,6 +116,14 @@
                 <span class="meta-pill">Superuser</span>
               {% endif %}
             </div>
+            {% if wallet %}
+              <p class="body-copy identity-wallet-copy">
+                Wallet address: <code>{{ wallet.address }}</code>
+              </p>
+              <a class="button button-secondary button-block" href="#wallet">Open wallet</a>
+            {% else %}
+              <a class="button button-secondary button-block" href="#wallet">Create wallet</a>
+            {% endif %}
             {% if auth_user.is_superuser %}
               <a class="button button-secondary button-block" href="/dashboard">Admin dashboard</a>
               <a class="button button-secondary button-block" href="/sms">SMS inbox</a>
@@ -220,6 +229,91 @@
             </div>
           {% endfor %}
         </div>
+      </div>
+    </section>
+
+    <section class="wallet-section" id="wallet">
+      <div class="wallet-section-copy">
+        <p class="section-eyebrow">Wallet</p>
+        <h2 class="section-title">Generate a chain-compatible wallet <em>from the website.</em></h2>
+        <p class="body-copy">
+          The website generates an Ed25519 keypair and derives the wallet address by
+          hashing the public key with SHA-256, matching the blockchain implementation.
+        </p>
+        {% if auth_user %}
+          <p class="body-copy">
+            Use this address anywhere the blockchain expects a 64-character wallet address,
+            including node reward configuration.
+          </p>
+        {% else %}
+          <p class="body-copy">
+            Sign in first to create and store a wallet for your account.
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="wallet-generator-card">
+        {% if auth_user %}
+          {% if wallet %}
+            <div class="wallet-generator-head">
+              <p class="section-eyebrow">Your Wallet</p>
+              {% if wallet_generation_success %}
+                <span class="wallet-status wallet-status-success">Wallet created</span>
+              {% endif %}
+            </div>
+
+            {% if wallet_private_key %}
+              <div class="wallet-alert wallet-alert-warning">
+                <p class="wallet-alert-title">Private key</p>
+                <p class="body-copy">
+                  This is the only time the website will show your private key in plaintext.
+                </p>
+                <code class="wallet-secret">{{ wallet_private_key }}</code>
+              </div>
+            {% endif %}
+
+            {% if wallet_generation_error %}
+              <div class="wallet-alert wallet-alert-error">
+                <p class="wallet-alert-title">{{ wallet_generation_error }}</p>
+              </div>
+            {% endif %}
+
+            <div class="wallet-details">
+              <div class="wallet-detail-row">
+                <span class="wallet-detail-label">Address</span>
+                <code class="wallet-detail-value">{{ wallet.address }}</code>
+              </div>
+              <div class="wallet-detail-row">
+                <span class="wallet-detail-label">Public key</span>
+                <code class="wallet-detail-value">{{ wallet.public_key }}</code>
+              </div>
+            </div>
+          {% else %}
+            <div class="wallet-generator-head">
+              <p class="section-eyebrow">Create Wallet</p>
+            </div>
+
+            {% if wallet_generation_error %}
+              <div class="wallet-alert wallet-alert-error">
+                <p class="wallet-alert-title">{{ wallet_generation_error }}</p>
+              </div>
+            {% endif %}
+
+            <p class="body-copy">
+              Generate one wallet for this account. The private key is encrypted at rest
+              after creation.
+            </p>
+            <form action="/wallets/generate" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-primary button-block" type="submit">Generate wallet</button>
+            </form>
+          {% endif %}
+        {% else %}
+          <p class="body-copy">
+            Wallet generation is available to signed-in users only.
+          </p>
+          <a class="button button-primary" href="/auth/sign-in">Sign in to create a wallet</a>
+        {% endif %}
       </div>
     </section>
 

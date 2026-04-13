@@ -5,18 +5,22 @@ import hmac
 import json
 import re
 import secrets
+import base64
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.core.validators import validate_email
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.db.models import Max
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
@@ -24,7 +28,7 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedire
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup, ManagedNode, VonageInboundSms
+from .models import EarlyAccessSignup, ManagedNode, UserWallet, VonageInboundSms
 from .node_launcher import (
     NodeLauncherError,
     dashboard_proxy_path,
@@ -44,6 +48,9 @@ KUMQUAT_ADDRESS_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 EARLY_ACCESS_SIGNUP_SESSION_KEY = "early_access_signup"
 EARLY_ACCESS_SIGNUP_SUCCESS_SESSION_KEY = "early_access_signup_success"
 EARLY_ACCESS_SIGNUP_ERROR_SESSION_KEY = "early_access_signup_error"
+WALLET_PRIVATE_KEY_SESSION_KEY = "wallet_private_key"
+WALLET_GENERATION_ERROR_SESSION_KEY = "wallet_generation_error"
+WALLET_GENERATION_SUCCESS_SESSION_KEY = "wallet_generation_success"
 
 BILL_ITEMS = [
     {"label": "$100", "kind": "bill", "id": "KMQ-00100000"},
@@ -158,6 +165,60 @@ def _home_signup_context(request):
     }
 
 
+def _wallet_fernet():
+    material = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(material))
+
+
+def _encrypt_wallet_private_key(private_key_hex):
+    return _wallet_fernet().encrypt(private_key_hex.encode("utf-8")).decode("utf-8")
+
+
+def _decrypt_wallet_private_key(encrypted_private_key):
+    return _wallet_fernet().decrypt(encrypted_private_key.encode("utf-8")).decode("utf-8")
+
+
+def _generate_wallet_material():
+    private_key = Ed25519PrivateKey.generate()
+    private_key_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_key_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    address_bytes = hashlib.sha256(public_key_bytes).digest()
+    return {
+        "private_key": private_key_bytes.hex(),
+        "public_key": public_key_bytes.hex(),
+        "address": address_bytes.hex(),
+    }
+
+
+def _serialize_wallet(wallet):
+    return {
+        "address": wallet.address,
+        "public_key": wallet.public_key,
+        "created_at": wallet.created_at.isoformat() if wallet.created_at else None,
+        "updated_at": wallet.updated_at.isoformat() if wallet.updated_at else None,
+    }
+
+
+def _home_wallet_context(request):
+    wallet = None
+    if request.user.is_authenticated:
+        wallet = UserWallet.objects.filter(user=request.user).first()
+
+    return {
+        "wallet": _serialize_wallet(wallet) if wallet else None,
+        "wallet_private_key": request.session.pop(WALLET_PRIVATE_KEY_SESSION_KEY, ""),
+        "wallet_generation_error": request.session.pop(WALLET_GENERATION_ERROR_SESSION_KEY, ""),
+        "wallet_generation_success": request.session.pop(WALLET_GENERATION_SUCCESS_SESSION_KEY, False),
+    }
+
+
 def _build_dashboard_context():
     User = get_user_model()
     users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
@@ -206,6 +267,7 @@ def home_page_view(request):
         "wallet_rows": WALLET_ROWS,
         "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
         **_home_signup_context(request),
+        **_home_wallet_context(request),
     }
     return render(request, "website/home.html", context)
 
@@ -296,12 +358,17 @@ def admin_vonage_sms_page_view(request):
 
 def _serialize_user(user):
     full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip()
+    try:
+        wallet = user.wallet
+    except UserWallet.DoesNotExist:
+        wallet = None
     return {
         "email": user.email,
         "first_name": user.first_name,
         "last_name": user.last_name,
         "full_name": full_name or user.username,
         "username": user.username,
+        "wallet_address": wallet.address if wallet else "",
         "is_staff": user.is_staff,
         "is_superuser": user.is_superuser,
         "is_active": user.is_active,
@@ -1393,6 +1460,57 @@ def auth_logout_view(request):
     if _is_json_request(request):
         return JsonResponse({"status": "ok"})
     return _redirect_back(request, "/")
+
+
+@csrf_exempt
+def wallet_generate_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if not request.user.is_authenticated:
+        if _is_json_request(request):
+            return JsonResponse({"error": "Authentication required."}, status=401)
+        return HttpResponseRedirect("/auth/sign-in")
+
+    existing_wallet = UserWallet.objects.filter(user=request.user).first()
+    if existing_wallet:
+        error_message = "You already have a wallet."
+        if _is_json_request(request):
+            return JsonResponse({"error": error_message, "wallet": _serialize_wallet(existing_wallet)}, status=409)
+        request.session[WALLET_GENERATION_ERROR_SESSION_KEY] = error_message
+        return HttpResponseRedirect("/#wallet")
+
+    wallet_material = _generate_wallet_material()
+    try:
+        wallet = UserWallet.objects.create(
+            user=request.user,
+            address=wallet_material["address"],
+            public_key=wallet_material["public_key"],
+            encrypted_private_key=_encrypt_wallet_private_key(wallet_material["private_key"]),
+        )
+    except IntegrityError:
+        wallet = UserWallet.objects.filter(user=request.user).first()
+        error_message = "You already have a wallet."
+        if _is_json_request(request):
+            return JsonResponse({"error": error_message, "wallet": _serialize_wallet(wallet)}, status=409)
+        request.session[WALLET_GENERATION_ERROR_SESSION_KEY] = error_message
+        return HttpResponseRedirect("/#wallet")
+
+    if _is_json_request(request):
+        return JsonResponse(
+            {
+                "status": "created",
+                "wallet": {
+                    **_serialize_wallet(wallet),
+                    "private_key": wallet_material["private_key"],
+                },
+            },
+            status=201,
+        )
+
+    request.session[WALLET_PRIVATE_KEY_SESSION_KEY] = wallet_material["private_key"]
+    request.session[WALLET_GENERATION_SUCCESS_SESSION_KEY] = True
+    return HttpResponseRedirect("/#wallet")
 
 
 def healthz_view(_request):

@@ -110,3 +110,22 @@ class ManagedNode(models.Model):
 
     def __str__(self):
         return self.display_name or self.name
+
+
+class UserWallet(models.Model):
+    user = models.OneToOneField(
+        get_user_model(),
+        on_delete=models.CASCADE,
+        related_name="wallet",
+    )
+    address = models.CharField(max_length=64, unique=True, db_index=True)
+    public_key = models.CharField(max_length=64, unique=True)
+    encrypted_private_key = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.address}"

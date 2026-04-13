@@ -1358,3 +1358,111 @@ code {
     width: 100%;
   }
 }
+
+.wallet-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.wallet-section-copy,
+.wallet-generator-card {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 2rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    rgba(13, 17, 24, 0.9);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+}
+
+.wallet-section-copy {
+  padding: 2rem;
+}
+
+.wallet-generator-card {
+  padding: 1.5rem;
+}
+
+.wallet-generator-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.wallet-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.wallet-status-success {
+  color: #09130b;
+  background: #9be7a7;
+}
+
+.wallet-alert {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 1.25rem;
+}
+
+.wallet-alert-warning {
+  background: rgba(255, 191, 87, 0.12);
+  border: 1px solid rgba(255, 191, 87, 0.35);
+}
+
+.wallet-alert-error {
+  background: rgba(255, 101, 101, 0.12);
+  border: 1px solid rgba(255, 101, 101, 0.35);
+}
+
+.wallet-alert-title,
+.wallet-detail-label,
+.identity-wallet-copy code {
+  font-weight: 600;
+}
+
+.wallet-secret,
+.wallet-detail-value {
+  display: block;
+  margin-top: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: #f3f6fb;
+  overflow-wrap: anywhere;
+}
+
+.wallet-details {
+  display: grid;
+  gap: 1rem;
+}
+
+.wallet-detail-row {
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wallet-detail-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(245, 247, 250, 0.62);
+}
+
+@media (max-width: 960px) {
+  .wallet-section {
+    grid-template-columns: 1fr;
+  }
+}

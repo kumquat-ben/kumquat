@@ -22,6 +22,7 @@ from .views import (
     messages_view,
     sign_in_page_view,
     vonage_sms_callback_view,
+    wallet_generate_view,
 )
 
 urlpatterns = [
@@ -42,6 +43,7 @@ urlpatterns = [
     path("early-access", early_access_signup_view, name="early-access"),
     path("healthz", healthz_view, name="healthz"),
     path("messages", messages_view, name="messages"),
+    path("wallets/generate", wallet_generate_view, name="wallet-generate"),
     path("webhooks/vonage/sms", vonage_sms_callback_view, name="vonage-sms-callback"),
     path("admin/dashboard", RedirectView.as_view(url="/dashboard", permanent=False)),
     path("admin/vonage/sms", RedirectView.as_view(url="/sms", permanent=False)),
