@@ -1,10 +1,10 @@
+use dashmap::DashMap;
+use log::debug;
 use std::collections::{BinaryHeap, HashSet};
 use std::sync::Arc;
-use dashmap::DashMap;
 use tokio::sync::RwLock;
-use log::debug;
 
-use crate::mempool::types::{TransactionRecord, TransactionStatus, Address, Hash};
+use crate::mempool::types::{Address, Hash, TransactionRecord, TransactionStatus};
 use crate::storage::state_store::StateStore;
 
 /// Error types for mempool operations
@@ -38,12 +38,16 @@ pub enum MempoolError {
 impl std::fmt::Display for MempoolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MempoolError::DuplicateTransaction => write!(f, "Transaction already exists in the mempool"),
+            MempoolError::DuplicateTransaction => {
+                write!(f, "Transaction already exists in the mempool")
+            }
             MempoolError::InvalidSignature => write!(f, "Transaction has an invalid signature"),
             MempoolError::InvalidNonce => write!(f, "Transaction has an invalid nonce"),
             MempoolError::InsufficientBalance => write!(f, "Sender has insufficient balance"),
             MempoolError::PoolFull => write!(f, "Mempool is full"),
-            MempoolError::TooManyFromSender => write!(f, "Sender has too many transactions in the mempool"),
+            MempoolError::TooManyFromSender => {
+                write!(f, "Sender has too many transactions in the mempool")
+            }
             MempoolError::Expired => write!(f, "Transaction is expired"),
             MempoolError::Other(msg) => write!(f, "Other error: {}", msg),
         }
@@ -210,7 +214,11 @@ impl Mempool {
 
         let fee_token_id = tx.fee_token_id.unwrap();
 
-        if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+        if tx
+            .transfer_token_ids
+            .iter()
+            .any(|token_id| *token_id == fee_token_id)
+        {
             return Err(MempoolError::InsufficientBalance);
         }
 
@@ -218,7 +226,11 @@ impl Mempool {
             return Err(MempoolError::InsufficientBalance);
         }
 
-        if !tx.transfer_token_ids.iter().all(|token_id| account.owns_token(token_id)) {
+        if !tx
+            .transfer_token_ids
+            .iter()
+            .all(|token_id| account.owns_token(token_id))
+        {
             return Err(MempoolError::InsufficientBalance);
         }
 
@@ -288,7 +300,8 @@ impl Mempool {
             .unwrap()
             .as_secs();
 
-        let expired: Vec<Hash> = self.transactions
+        let expired: Vec<Hash> = self
+            .transactions
             .iter()
             .filter(|entry| {
                 let tx = entry.value();
@@ -360,15 +373,7 @@ mod tests {
         let mempool = Mempool::new();
 
         // Create a transaction
-        let tx = TransactionRecord::new(
-            [1u8; 32],
-            [2u8; 32],
-            100,
-            10,
-            1000,
-            1,
-            None,
-        );
+        let tx = TransactionRecord::new([1u8; 32], [2u8; 32], 100, 10, 1000, 1, None);
 
         // Insert the transaction
         assert!(mempool.insert(tx.clone()).await.is_ok());
@@ -388,15 +393,7 @@ mod tests {
         let mempool = Mempool::new();
 
         // Create a transaction
-        let tx = TransactionRecord::new(
-            [1u8; 32],
-            [2u8; 32],
-            100,
-            10,
-            1000,
-            1,
-            None,
-        );
+        let tx = TransactionRecord::new([1u8; 32], [2u8; 32], 100, 10, 1000, 1, None);
 
         // Insert the transaction
         assert!(mempool.insert(tx.clone()).await.is_ok());
@@ -412,15 +409,7 @@ mod tests {
         let mempool = Mempool::new();
 
         // Create a transaction
-        let tx = TransactionRecord::new(
-            [1u8; 32],
-            [2u8; 32],
-            100,
-            10,
-            1000,
-            1,
-            None,
-        );
+        let tx = TransactionRecord::new([1u8; 32], [2u8; 32], 100, 10, 1000, 1, None);
 
         // Insert the transaction
         assert!(mempool.insert(tx.clone()).await.is_ok());
@@ -438,15 +427,7 @@ mod tests {
         let mempool = Mempool::new();
 
         // Create a transaction
-        let tx = TransactionRecord::new(
-            [1u8; 32],
-            [2u8; 32],
-            100,
-            10,
-            1000,
-            1,
-            None,
-        );
+        let tx = TransactionRecord::new([1u8; 32], [2u8; 32], 100, 10, 1000, 1, None);
 
         // Insert the transaction
         assert!(mempool.insert(tx.clone()).await.is_ok());
@@ -461,7 +442,10 @@ mod tests {
         assert_eq!(mempool.included_count(), 1);
 
         // Check transaction status
-        assert_eq!(mempool.get_transaction_status(&tx.tx_id), TransactionStatus::Included);
+        assert_eq!(
+            mempool.get_transaction_status(&tx.tx_id),
+            TransactionStatus::Included
+        );
     }
 
     #[cfg(feature = "legacy-test-compat")]
@@ -472,23 +456,13 @@ mod tests {
 
         // Create transactions with different gas prices
         let tx1 = TransactionRecord::new(
-            [1u8; 32],
-            [2u8; 32],
-            100,
-            10, // Lower gas price
-            1000,
-            1,
-            None,
+            [1u8; 32], [2u8; 32], 100, 10, // Lower gas price
+            1000, 1, None,
         );
 
         let tx2 = TransactionRecord::new(
-            [3u8; 32],
-            [4u8; 32],
-            200,
-            20, // Higher gas price
-            1000,
-            1,
-            None,
+            [3u8; 32], [4u8; 32], 200, 20, // Higher gas price
+            1000, 1, None,
         );
 
         // Insert the transactions
@@ -516,32 +490,17 @@ mod tests {
         // Create transactions from the same sender
         let tx1 = TransactionRecord::new(
             [1u8; 32], // Same sender
-            [2u8; 32],
-            100,
-            10,
-            1000,
-            1,
-            None,
+            [2u8; 32], 100, 10, 1000, 1, None,
         );
 
         let tx2 = TransactionRecord::new(
             [1u8; 32], // Same sender
-            [2u8; 32],
-            200,
-            20,
-            1000,
-            2,
-            None,
+            [2u8; 32], 200, 20, 1000, 2, None,
         );
 
         let tx3 = TransactionRecord::new(
             [1u8; 32], // Same sender
-            [2u8; 32],
-            300,
-            30,
-            1000,
-            3,
-            None,
+            [2u8; 32], 300, 30, 1000, 3, None,
         );
 
         // Insert the first two transactions

@@ -1,14 +1,14 @@
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use log::{debug, error, info, warn};
 
-use crate::storage::block_store::{Block, BlockStore};
 use crate::consensus::engine::ConsensusEngine;
-use crate::consensus::validation::block_validator::{BlockValidator, BlockValidationResult};
-use crate::network::types::message::NetMessage;
+use crate::consensus::validation::block_validator::{BlockValidationResult, BlockValidator};
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::reputation::{ReputationSystem, ReputationEvent};
+use crate::network::peer::reputation::{ReputationEvent, ReputationSystem};
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::{Block, BlockStore};
 
 /// Error types for consensus integration
 #[derive(Debug, thiserror::Error)]
@@ -98,15 +98,22 @@ impl ConsensusIntegration {
     }
 
     /// Handle a block from the network
-    pub async fn handle_block(&self, block: Block, source_peer: &str) -> Result<(), ConsensusError> {
-        info!("Handling block from peer {}: height={}", source_peer, block.height);
+    pub async fn handle_block(
+        &self,
+        block: Block,
+        source_peer: &str,
+    ) -> Result<(), ConsensusError> {
+        info!(
+            "Handling block from peer {}: height={}",
+            source_peer, block.height
+        );
 
         // Validate the block if we have a validator
         if let Some(validator) = &self.validator {
             match validator.validate_block(&block, &Default::default()) {
                 BlockValidationResult::Valid => {
                     debug!("Block is valid");
-                },
+                }
                 BlockValidationResult::AlreadyKnown => {
                     debug!("Block already known: height={}", block.height);
 
@@ -116,7 +123,7 @@ impl ConsensusIntegration {
                     }
 
                     return Err(ConsensusError::DuplicateBlock);
-                },
+                }
                 BlockValidationResult::UnknownParent => {
                     warn!("Block has unknown parent: height={}", block.height);
 
@@ -126,7 +133,7 @@ impl ConsensusIntegration {
                     }
 
                     return Err(ConsensusError::UnknownParent);
-                },
+                }
                 BlockValidationResult::Invalid(reason) => {
                     warn!("Invalid block from peer {}: {}", source_peer, reason);
 
@@ -144,7 +151,10 @@ impl ConsensusIntegration {
         let block_rx = self.consensus.block_channel();
         if let Err(e) = block_rx.send(block.clone()).await {
             error!("Failed to send block to consensus engine: {:?}", e);
-            return Err(ConsensusError::ConsensusError(format!("Failed to send block: {}", e)));
+            return Err(ConsensusError::ConsensusError(format!(
+                "Failed to send block: {}",
+                e
+            )));
         }
 
         // Update peer reputation (good block)
@@ -159,7 +169,7 @@ impl ConsensusIntegration {
     pub async fn start_consensus_listener(&mut self) -> Result<(), String> {
         // Check if we have a subscription channel
         let _rx = match &self.block_subscription {
-            Some(_) => {},
+            Some(_) => {}
             None => return Err("No block subscription channel".to_string()),
         };
 
@@ -226,7 +236,7 @@ impl ConsensusIntegration {
                     // Broadcast to all peers
                     broadcaster.broadcast(NetMessage::NewBlock(block)).await;
                     debug!("Block broadcast to peers");
-                },
+                }
                 None => {
                     warn!("Block subscription channel closed");
                     break;

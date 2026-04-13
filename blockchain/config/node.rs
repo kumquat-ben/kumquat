@@ -1,32 +1,32 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Node configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
     /// Node ID (public key)
     pub node_id: Option<String>,
-    
+
     /// Node name
     pub node_name: String,
-    
+
     /// Data directory
     pub data_dir: String,
-    
+
     /// Log level
     pub log_level: String,
-    
+
     /// Enable metrics
     pub enable_metrics: bool,
-    
+
     /// Metrics port
     pub metrics_port: u16,
-    
+
     /// Enable API
     pub enable_api: bool,
-    
+
     /// API port
     pub api_port: u16,
-    
+
     /// API host
     pub api_host: String,
 }

@@ -1,7 +1,7 @@
-use rocksdb::{DB, Options, WriteBatch, IteratorMode};
-use std::path::Path;
-use std::io::Error;
+use rocksdb::{IteratorMode, Options, WriteBatch, DB};
 use std::fmt;
+use std::io::Error;
+use std::path::Path;
 
 /// Custom error type for KVStore operations
 #[derive(Debug)]
@@ -40,9 +40,13 @@ impl fmt::Display for KVStoreError {
             KVStoreError::KeyNotFound(key) => write!(f, "Key not found: {}", key),
             KVStoreError::InvalidDataFormat(msg) => write!(f, "Invalid data format: {}", msg),
             KVStoreError::BatchOperationFailed(msg) => write!(f, "Batch operation failed: {}", msg),
-            KVStoreError::DatabaseAlreadyExists(path) => write!(f, "Database already exists: {}", path),
+            KVStoreError::DatabaseAlreadyExists(path) => {
+                write!(f, "Database already exists: {}", path)
+            }
             KVStoreError::DatabaseNotFound(path) => write!(f, "Database not found: {}", path),
-            KVStoreError::ColumnFamilyNotFound(name) => write!(f, "Column family not found: {}", name),
+            KVStoreError::ColumnFamilyNotFound(name) => {
+                write!(f, "Column family not found: {}", name)
+            }
             KVStoreError::Other(err) => write!(f, "Other error: {}", err),
         }
     }
@@ -164,17 +168,20 @@ impl RocksDBStore {
 
 impl KVStore for RocksDBStore {
     fn put(&self, key: &[u8], value: &[u8]) -> Result<(), KVStoreError> {
-        self.db.put(key, value)
+        self.db
+            .put(key, value)
             .map_err(|e| KVStoreError::RocksDBError(format!("Failed to put key: {}", e)))
     }
 
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, KVStoreError> {
-        self.db.get(key)
+        self.db
+            .get(key)
             .map_err(|e| KVStoreError::RocksDBError(format!("Failed to get key: {}", e)))
     }
 
     fn delete(&self, key: &[u8]) -> Result<(), KVStoreError> {
-        self.db.delete(key)
+        self.db
+            .delete(key)
             .map_err(|e| KVStoreError::RocksDBError(format!("Failed to delete key: {}", e)))
     }
 
@@ -192,24 +199,27 @@ impl KVStore for RocksDBStore {
             match op {
                 WriteBatchOperation::Put { key, value } => {
                     batch.put(&key, &value);
-                },
+                }
                 WriteBatchOperation::Delete { key } => {
                     batch.delete(&key);
-                },
+                }
             }
         }
 
-        self.db.write(batch)
-            .map_err(|e| KVStoreError::BatchOperationFailed(format!("Failed to write batch: {}", e)))
+        self.db.write(batch).map_err(|e| {
+            KVStoreError::BatchOperationFailed(format!("Failed to write batch: {}", e))
+        })
     }
 
     fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, KVStoreError> {
         let mut results = Vec::new();
-        let iterator = self.db.iterator(IteratorMode::From(prefix, rocksdb::Direction::Forward));
+        let iterator = self
+            .db
+            .iterator(IteratorMode::From(prefix, rocksdb::Direction::Forward));
 
         for item in iterator {
-            let (key, value) = item
-                .map_err(|e| KVStoreError::RocksDBError(format!("Failed to iterate: {}", e)))?;
+            let (key, value) =
+                item.map_err(|e| KVStoreError::RocksDBError(format!("Failed to iterate: {}", e)))?;
 
             // Check if key starts with prefix
             if key.starts_with(prefix) {
@@ -224,7 +234,8 @@ impl KVStore for RocksDBStore {
     }
 
     fn flush(&self) -> Result<(), KVStoreError> {
-        self.db.flush()
+        self.db
+            .flush()
             .map_err(|e| KVStoreError::RocksDBError(format!("Failed to flush: {}", e)))
     }
 }

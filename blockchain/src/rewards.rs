@@ -44,7 +44,11 @@ struct EraWeights {
     weights: Vec<(Denomination, f64)>,
 }
 
-pub fn reward_tokens_for_block(owner: Hash, block_height: u64, block_hash: &Hash) -> Vec<DenominationToken> {
+pub fn reward_tokens_for_block(
+    owner: Hash,
+    block_height: u64,
+    block_hash: &Hash,
+) -> Vec<DenominationToken> {
     if block_height == 0 || block_height >= MINING_SCHEDULE.mining_schedule.total_blocks {
         return Vec::new();
     }
@@ -85,7 +89,11 @@ fn era_weights_for_height(block_height: u64) -> Option<EraWeights> {
     let era_index = ((block_height - 1) / blocks_per_era) as usize;
     let era = MINING_SCHEDULE.eras.get(era_index)?;
 
-    let total_units = era.denominations.iter().map(|item| item.units_in_era).sum::<u64>() as f64;
+    let total_units = era
+        .denominations
+        .iter()
+        .map(|item| item.units_in_era)
+        .sum::<u64>() as f64;
     if total_units == 0.0 {
         return Some(EraWeights {
             avg_units_per_block: era.avg_units_per_block,
@@ -100,7 +108,8 @@ fn era_weights_for_height(block_height: u64) -> Option<EraWeights> {
             continue;
         }
 
-        let Some(denomination) = Denomination::parse(item.denomination.trim_start_matches('$')) else {
+        let Some(denomination) = Denomination::parse(item.denomination.trim_start_matches('$'))
+        else {
             continue;
         };
 
@@ -129,7 +138,11 @@ fn sample_reward_count(era: &EraWeights, block_hash: &Hash) -> u32 {
     }
 }
 
-fn sample_denomination(era: &EraWeights, block_hash: &Hash, window_index: usize) -> Option<Denomination> {
+fn sample_denomination(
+    era: &EraWeights,
+    block_hash: &Hash,
+    window_index: usize,
+) -> Option<Denomination> {
     if era.weights.is_empty() {
         return None;
     }
@@ -214,7 +227,9 @@ mod tests {
         for nonce in 0u8..=64 {
             let block_hash = [nonce; 32];
             let minted = reward_tokens_for_block([9u8; 32], block_height, &block_hash);
-            assert!(minted.iter().all(|token| token.denomination != Denomination::Dollars100));
+            assert!(minted
+                .iter()
+                .all(|token| token.denomination != Denomination::Dollars100));
         }
     }
 

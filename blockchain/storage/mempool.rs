@@ -4,14 +4,14 @@
 //! allowing for transaction recovery after node restarts and efficient
 //! management of pending transactions.
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use log::{debug, error, info};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
+use crate::storage::block_store::Hash;
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::tx_store::TransactionRecord;
-use crate::storage::block_store::Hash;
 
 /// Error types for mempool storage operations
 #[derive(Error, Debug)]
@@ -136,14 +136,22 @@ impl<'a> MempoolStore<'a> {
         });
 
         // Add to sender index
-        let sender_key = format!("mempool:sender:{}:{}", hex::encode(&tx.sender), hex::encode(&tx.tx_id));
+        let sender_key = format!(
+            "mempool:sender:{}:{}",
+            hex::encode(&tx.sender),
+            hex::encode(&tx.tx_id)
+        );
         batch.push(WriteBatchOperation::Put {
             key: sender_key.as_bytes().to_vec(),
             value: tx.tx_id.to_vec(),
         });
 
         // Add to priority index
-        let priority_key = format!("mempool:priority:{}:{}", priority_score, hex::encode(&tx.tx_id));
+        let priority_key = format!(
+            "mempool:priority:{}:{}",
+            priority_score,
+            hex::encode(&tx.tx_id)
+        );
         batch.push(WriteBatchOperation::Put {
             key: priority_key.as_bytes().to_vec(),
             value: tx.tx_id.to_vec(),
@@ -152,7 +160,10 @@ impl<'a> MempoolStore<'a> {
         // Execute the batch operation
         self.store.write_batch(batch)?;
 
-        debug!("Added transaction {} to mempool storage", hex::encode(&tx.tx_id));
+        debug!(
+            "Added transaction {} to mempool storage",
+            hex::encode(&tx.tx_id)
+        );
         Ok(())
     }
 
@@ -178,13 +189,21 @@ impl<'a> MempoolStore<'a> {
         });
 
         // Remove from sender index
-        let sender_key = format!("mempool:sender:{}:{}", hex::encode(&tx.sender), hex::encode(tx_id));
+        let sender_key = format!(
+            "mempool:sender:{}:{}",
+            hex::encode(&tx.sender),
+            hex::encode(tx_id)
+        );
         batch.push(WriteBatchOperation::Delete {
             key: sender_key.as_bytes().to_vec(),
         });
 
         // Remove from priority index
-        let priority_key = format!("mempool:priority:{}:{}", metadata.priority_score, hex::encode(tx_id));
+        let priority_key = format!(
+            "mempool:priority:{}:{}",
+            metadata.priority_score,
+            hex::encode(tx_id)
+        );
         batch.push(WriteBatchOperation::Delete {
             key: priority_key.as_bytes().to_vec(),
         });
@@ -192,7 +211,10 @@ impl<'a> MempoolStore<'a> {
         // Execute the batch operation
         self.store.write_batch(batch)?;
 
-        debug!("Removed transaction {} from mempool storage", hex::encode(tx_id));
+        debug!(
+            "Removed transaction {} from mempool storage",
+            hex::encode(tx_id)
+        );
         Ok(())
     }
 
@@ -200,7 +222,9 @@ impl<'a> MempoolStore<'a> {
     pub fn get_transaction(&self, tx_id: &Hash) -> Result<TransactionRecord, MempoolStorageError> {
         let tx_key = format!("mempool:tx:{}", hex::encode(tx_id));
 
-        let value = self.store.get(tx_key.as_bytes())
+        let value = self
+            .store
+            .get(tx_key.as_bytes())
             .map_err(MempoolStorageError::from)?
             .ok_or_else(|| MempoolStorageError::TransactionNotFound(hex::encode(tx_id)))?;
 
@@ -209,10 +233,15 @@ impl<'a> MempoolStore<'a> {
     }
 
     /// Get transaction metadata from the mempool storage
-    pub fn get_transaction_metadata(&self, tx_id: &Hash) -> Result<MempoolTransactionMetadata, MempoolStorageError> {
+    pub fn get_transaction_metadata(
+        &self,
+        tx_id: &Hash,
+    ) -> Result<MempoolTransactionMetadata, MempoolStorageError> {
         let metadata_key = format!("mempool:meta:{}", hex::encode(tx_id));
 
-        let value = self.store.get(metadata_key.as_bytes())
+        let value = self
+            .store
+            .get(metadata_key.as_bytes())
             .map_err(MempoolStorageError::from)?
             .ok_or_else(|| MempoolStorageError::TransactionNotFound(hex::encode(tx_id)))?;
 
@@ -240,13 +269,18 @@ impl<'a> MempoolStore<'a> {
         if let Some(new_score) = new_priority_score {
             if new_score != metadata.priority_score {
                 // Remove old priority index entry
-                let old_priority_key = format!("mempool:priority:{}:{}", metadata.priority_score, hex::encode(tx_id));
+                let old_priority_key = format!(
+                    "mempool:priority:{}:{}",
+                    metadata.priority_score,
+                    hex::encode(tx_id)
+                );
                 batch.push(WriteBatchOperation::Delete {
                     key: old_priority_key.as_bytes().to_vec(),
                 });
 
                 // Add new priority index entry
-                let new_priority_key = format!("mempool:priority:{}:{}", new_score, hex::encode(tx_id));
+                let new_priority_key =
+                    format!("mempool:priority:{}:{}", new_score, hex::encode(tx_id));
                 batch.push(WriteBatchOperation::Put {
                     key: new_priority_key.as_bytes().to_vec(),
                     value: tx_id.to_vec(),
@@ -270,14 +304,19 @@ impl<'a> MempoolStore<'a> {
         // Execute the batch operation
         self.store.write_batch(batch)?;
 
-        debug!("Updated metadata for transaction {} in mempool storage", hex::encode(tx_id));
+        debug!(
+            "Updated metadata for transaction {} in mempool storage",
+            hex::encode(tx_id)
+        );
         Ok(())
     }
 
     /// Get all transactions in the mempool
     pub fn get_all_transactions(&self) -> Result<Vec<TransactionRecord>, MempoolStorageError> {
         let prefix = "mempool:tx:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         let mut transactions = Vec::with_capacity(results.len());
@@ -291,14 +330,20 @@ impl<'a> MempoolStore<'a> {
     }
 
     /// Get transactions by sender
-    pub fn get_transactions_by_sender(&self, sender: &Hash) -> Result<Vec<TransactionRecord>, MempoolStorageError> {
+    pub fn get_transactions_by_sender(
+        &self,
+        sender: &Hash,
+    ) -> Result<Vec<TransactionRecord>, MempoolStorageError> {
         let prefix = format!("mempool:sender:{}", hex::encode(sender));
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         let mut transactions = Vec::with_capacity(results.len());
         for (_, tx_id_bytes) in results {
-            let tx_id: Hash = tx_id_bytes.try_into()
+            let tx_id: Hash = tx_id_bytes
+                .try_into()
                 .map_err(|_| MempoolStorageError::Other("Invalid transaction ID".to_string()))?;
 
             let tx = self.get_transaction(&tx_id)?;
@@ -309,9 +354,14 @@ impl<'a> MempoolStore<'a> {
     }
 
     /// Get transactions by priority (highest first)
-    pub fn get_transactions_by_priority(&self, limit: usize) -> Result<Vec<TransactionRecord>, MempoolStorageError> {
+    pub fn get_transactions_by_priority(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<TransactionRecord>, MempoolStorageError> {
         let prefix = "mempool:priority:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         // Sort by priority (descending)
@@ -320,7 +370,8 @@ impl<'a> MempoolStore<'a> {
 
         let mut transactions = Vec::with_capacity(limit.min(sorted_results.len()));
         for (_, tx_id_bytes) in sorted_results.into_iter().take(limit) {
-            let tx_id: Hash = tx_id_bytes.try_into()
+            let tx_id: Hash = tx_id_bytes
+                .try_into()
                 .map_err(|_| MempoolStorageError::Other("Invalid transaction ID".to_string()))?;
 
             let tx = self.get_transaction(&tx_id)?;
@@ -333,16 +384,23 @@ impl<'a> MempoolStore<'a> {
     /// Count transactions in the mempool
     pub fn count_transactions(&self) -> Result<usize, MempoolStorageError> {
         let prefix = "mempool:tx:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         Ok(results.len())
     }
 
     /// Count transactions by sender
-    pub fn count_transactions_by_sender(&self, sender: &Hash) -> Result<usize, MempoolStorageError> {
+    pub fn count_transactions_by_sender(
+        &self,
+        sender: &Hash,
+    ) -> Result<usize, MempoolStorageError> {
         let prefix = format!("mempool:sender:{}", hex::encode(sender));
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         Ok(results.len())
@@ -352,21 +410,23 @@ impl<'a> MempoolStore<'a> {
     pub fn clear(&self) -> Result<(), MempoolStorageError> {
         // Get all transaction IDs
         let prefix = "mempool:tx:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         let mut batch = Vec::new();
 
         for (key, value) in results {
             // Extract tx_id from the key
-            let tx_id_hex = String::from_utf8_lossy(&key[prefix.len()..])
-                .to_string();
+            let tx_id_hex = String::from_utf8_lossy(&key[prefix.len()..]).to_string();
 
             let tx_id = hex::decode(&tx_id_hex)
                 .map_err(|_| MempoolStorageError::Other("Invalid transaction ID".to_string()))?;
 
-            let tx_id: Hash = tx_id.try_into()
-                .map_err(|_| MempoolStorageError::Other("Invalid transaction ID length".to_string()))?;
+            let tx_id: Hash = tx_id.try_into().map_err(|_| {
+                MempoolStorageError::Other("Invalid transaction ID length".to_string())
+            })?;
 
             // Deserialize the transaction to get sender
             let tx: TransactionRecord = bincode::deserialize(&value)
@@ -376,9 +436,7 @@ impl<'a> MempoolStore<'a> {
             let metadata = self.get_transaction_metadata(&tx_id)?;
 
             // Delete all related keys
-            batch.push(WriteBatchOperation::Delete {
-                key: key,
-            });
+            batch.push(WriteBatchOperation::Delete { key: key });
 
             let metadata_key = format!("mempool:meta:{}", tx_id_hex);
             batch.push(WriteBatchOperation::Delete {
@@ -390,7 +448,8 @@ impl<'a> MempoolStore<'a> {
                 key: sender_key.as_bytes().to_vec(),
             });
 
-            let priority_key = format!("mempool:priority:{}:{}", metadata.priority_score, tx_id_hex);
+            let priority_key =
+                format!("mempool:priority:{}:{}", metadata.priority_score, tx_id_hex);
             batch.push(WriteBatchOperation::Delete {
                 key: priority_key.as_bytes().to_vec(),
             });
@@ -406,7 +465,10 @@ impl<'a> MempoolStore<'a> {
     }
 
     /// Prune expired transactions
-    pub fn prune_expired_transactions(&self, max_age_seconds: u64) -> Result<usize, MempoolStorageError> {
+    pub fn prune_expired_transactions(
+        &self,
+        max_age_seconds: u64,
+    ) -> Result<usize, MempoolStorageError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -416,7 +478,9 @@ impl<'a> MempoolStore<'a> {
 
         // Get all transaction metadata
         let prefix = "mempool:meta:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(MempoolStorageError::from)?;
 
         let mut expired_tx_ids = Vec::new();
@@ -450,8 +514,8 @@ mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::TransactionStatus;
-    use tempfile::tempdir;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tempfile::tempdir;
 
     fn create_test_transaction(tx_id: [u8; 32], sender: [u8; 32], nonce: u64) -> TransactionRecord {
         TransactionRecord {
@@ -521,7 +585,7 @@ mod tests {
         let result = mempool_store.get_transaction(&tx_id);
         assert!(result.is_err());
         match result {
-            Err(MempoolStorageError::TransactionNotFound(_)) => {},
+            Err(MempoolStorageError::TransactionNotFound(_)) => {}
             _ => panic!("Expected TransactionNotFound error"),
         }
     }
@@ -540,7 +604,9 @@ mod tests {
         mempool_store.add_transaction(&tx, 100).unwrap();
 
         // Update metadata
-        mempool_store.update_transaction_metadata(&tx_id, false, Some(200)).unwrap();
+        mempool_store
+            .update_transaction_metadata(&tx_id, false, Some(200))
+            .unwrap();
 
         // Get updated metadata
         let metadata = mempool_store.get_transaction_metadata(&tx_id).unwrap();
@@ -586,7 +652,9 @@ mod tests {
             let tx_id = [i as u8; 32];
             let sender = [i as u8; 32];
             let tx = create_test_transaction(tx_id, sender, 1);
-            mempool_store.add_transaction(&tx, (i * 100) as u64).unwrap();
+            mempool_store
+                .add_transaction(&tx, (i * 100) as u64)
+                .unwrap();
         }
 
         // Get transactions by priority (highest first)
@@ -618,7 +686,9 @@ mod tests {
         assert_eq!(count, 5);
 
         // Count transactions by sender
-        let sender_count = mempool_store.count_transactions_by_sender(&[0; 32]).unwrap();
+        let sender_count = mempool_store
+            .count_transactions_by_sender(&[0; 32])
+            .unwrap();
         assert_eq!(sender_count, 1);
     }
 
@@ -664,7 +734,9 @@ mod tests {
 
                 let metadata_key = format!("mempool:meta:{}", hex::encode(&tx_id));
                 let metadata_value = bincode::serialize(&metadata).unwrap();
-                kv_store.put(metadata_key.as_bytes(), &metadata_value).unwrap();
+                kv_store
+                    .put(metadata_key.as_bytes(), &metadata_value)
+                    .unwrap();
             }
         }
 

@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use log::{error, warn};
 use hex;
+use log::{error, warn};
+use serde::{Deserialize, Serialize};
 
-use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::block_store::Hash;
+use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 
 /// Transaction record structure
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -127,8 +127,8 @@ impl<'a> TxStore<'a> {
 
     /// Store a transaction record
     pub fn put_transaction(&self, tx: &TransactionRecord) -> Result<(), TxStoreError> {
-        let value = bincode::serialize(tx)
-            .map_err(|e| TxStoreError::SerializationError(e.to_string()))?;
+        let value =
+            bincode::serialize(tx).map_err(|e| TxStoreError::SerializationError(e.to_string()))?;
 
         // Create a batch operation
         let mut batch = Vec::new();
@@ -150,14 +150,22 @@ impl<'a> TxStore<'a> {
         }
 
         // Secondary index: transactions by sender
-        let sender_tx_key = format!("tx_sender:{}:{}", hex::encode(&tx.sender), hex::encode(&tx.tx_id));
+        let sender_tx_key = format!(
+            "tx_sender:{}:{}",
+            hex::encode(&tx.sender),
+            hex::encode(&tx.tx_id)
+        );
         batch.push(WriteBatchOperation::Put {
             key: sender_tx_key.as_bytes().to_vec(),
             value: tx.tx_id.to_vec(),
         });
 
         // Secondary index: transactions by recipient
-        let recipient_tx_key = format!("tx_recipient:{}:{}", hex::encode(&tx.recipient), hex::encode(&tx.tx_id));
+        let recipient_tx_key = format!(
+            "tx_recipient:{}:{}",
+            hex::encode(&tx.recipient),
+            hex::encode(&tx.tx_id)
+        );
         batch.push(WriteBatchOperation::Put {
             key: recipient_tx_key.as_bytes().to_vec(),
             value: tx.tx_id.to_vec(),
@@ -187,7 +195,7 @@ impl<'a> TxStore<'a> {
                         value: tx.nonce.to_be_bytes().to_vec(),
                     });
                 }
-            },
+            }
             _ => {
                 // No existing nonce, store this one
                 batch.push(WriteBatchOperation::Put {
@@ -205,15 +213,19 @@ impl<'a> TxStore<'a> {
     pub fn get_transaction(&self, tx_id: &Hash) -> Result<Option<TransactionRecord>, TxStoreError> {
         let key = format!("tx:{}", hex::encode(tx_id));
         match self.store.get(key.as_bytes()) {
-            Ok(Some(bytes)) => {
-                match bincode::deserialize(&bytes) {
-                    Ok(tx) => Ok(Some(tx)),
-                    Err(e) => {
-                        error!("Failed to deserialize transaction {}: {}", hex::encode(tx_id), e);
-                        Err(TxStoreError::SerializationError(format!(
-                            "Failed to deserialize transaction {}: {}", hex::encode(tx_id), e
-                        )))
-                    }
+            Ok(Some(bytes)) => match bincode::deserialize(&bytes) {
+                Ok(tx) => Ok(Some(tx)),
+                Err(e) => {
+                    error!(
+                        "Failed to deserialize transaction {}: {}",
+                        hex::encode(tx_id),
+                        e
+                    );
+                    Err(TxStoreError::SerializationError(format!(
+                        "Failed to deserialize transaction {}: {}",
+                        hex::encode(tx_id),
+                        e
+                    )))
                 }
             },
             Ok(None) => Ok(None),
@@ -225,7 +237,10 @@ impl<'a> TxStore<'a> {
     }
 
     /// Get all transactions for a specific sender
-    pub fn get_transactions_by_sender(&self, sender: &Hash) -> Result<Vec<TransactionRecord>, TxStoreError> {
+    pub fn get_transactions_by_sender(
+        &self,
+        sender: &Hash,
+    ) -> Result<Vec<TransactionRecord>, TxStoreError> {
         let prefix = format!("tx_sender:{}:", hex::encode(sender));
         let mut transactions = Vec::new();
 
@@ -243,7 +258,10 @@ impl<'a> TxStore<'a> {
                             Some(tx) => transactions.push(tx),
                             None => {
                                 // This shouldn't happen, but log it if it does
-                                warn!("Transaction {} referenced in index but not found", hex::encode(&tx_id));
+                                warn!(
+                                    "Transaction {} referenced in index but not found",
+                                    hex::encode(&tx_id)
+                                );
                             }
                         }
                     } else {
@@ -251,7 +269,7 @@ impl<'a> TxStore<'a> {
                     }
                 }
                 Ok(transactions)
-            },
+            }
             Err(e) => {
                 error!("Failed to scan transactions by sender: {}", e);
                 Err(TxStoreError::KVStoreError(e))
@@ -260,7 +278,10 @@ impl<'a> TxStore<'a> {
     }
 
     /// Get all transactions for a specific recipient
-    pub fn get_transactions_by_recipient(&self, recipient: &Hash) -> Result<Vec<TransactionRecord>, TxStoreError> {
+    pub fn get_transactions_by_recipient(
+        &self,
+        recipient: &Hash,
+    ) -> Result<Vec<TransactionRecord>, TxStoreError> {
         let prefix = format!("tx_recipient:{}:", hex::encode(recipient));
         let mut transactions = Vec::new();
 
@@ -278,7 +299,10 @@ impl<'a> TxStore<'a> {
                             Some(tx) => transactions.push(tx),
                             None => {
                                 // This shouldn't happen, but log it if it does
-                                warn!("Transaction {} referenced in index but not found", hex::encode(&tx_id));
+                                warn!(
+                                    "Transaction {} referenced in index but not found",
+                                    hex::encode(&tx_id)
+                                );
                             }
                         }
                     } else {
@@ -286,7 +310,7 @@ impl<'a> TxStore<'a> {
                     }
                 }
                 Ok(transactions)
-            },
+            }
             Err(e) => {
                 error!("Failed to scan transactions by recipient: {}", e);
                 Err(TxStoreError::KVStoreError(e))
@@ -295,7 +319,10 @@ impl<'a> TxStore<'a> {
     }
 
     /// Get all transactions in a specific block
-    pub fn get_transactions_by_block(&self, block_height: u64) -> Result<Vec<TransactionRecord>, TxStoreError> {
+    pub fn get_transactions_by_block(
+        &self,
+        block_height: u64,
+    ) -> Result<Vec<TransactionRecord>, TxStoreError> {
         let prefix = format!("tx_block:{}:", block_height);
         let mut transactions = Vec::new();
 
@@ -313,8 +340,11 @@ impl<'a> TxStore<'a> {
                             Some(tx) => transactions.push(tx),
                             None => {
                                 // This shouldn't happen, but log it if it does
-                                warn!("Transaction {} referenced in block {} but not found",
-                                     hex::encode(&tx_id), block_height);
+                                warn!(
+                                    "Transaction {} referenced in block {} but not found",
+                                    hex::encode(&tx_id),
+                                    block_height
+                                );
                             }
                         }
                     } else {
@@ -322,9 +352,12 @@ impl<'a> TxStore<'a> {
                     }
                 }
                 Ok(transactions)
-            },
+            }
             Err(e) => {
-                error!("Failed to scan transactions by block {}: {}", block_height, e);
+                error!(
+                    "Failed to scan transactions by block {}: {}",
+                    block_height, e
+                );
                 Err(TxStoreError::KVStoreError(e))
             }
         }
@@ -343,21 +376,29 @@ impl<'a> TxStore<'a> {
                 } else {
                     error!("Invalid nonce format for sender {}", hex::encode(sender));
                     Err(TxStoreError::InvalidDataFormat(format!(
-                        "Invalid nonce format for sender {}", hex::encode(sender)
+                        "Invalid nonce format for sender {}",
+                        hex::encode(sender)
                     )))
                 }
-            },
+            }
             Ok(None) => Ok(None),
             Err(e) => {
-                error!("Failed to get latest nonce for sender {}: {}",
-                       hex::encode(sender), e);
+                error!(
+                    "Failed to get latest nonce for sender {}: {}",
+                    hex::encode(sender),
+                    e
+                );
                 Err(TxStoreError::KVStoreError(e))
             }
         }
     }
 
     /// Update transaction status
-    pub fn update_transaction_status(&self, tx_id: &Hash, status: TransactionStatus) -> Result<(), TxStoreError> {
+    pub fn update_transaction_status(
+        &self,
+        tx_id: &Hash,
+        status: TransactionStatus,
+    ) -> Result<(), TxStoreError> {
         // Get the transaction
         let tx = match self.get_transaction(tx_id)? {
             Some(tx) => tx,
@@ -379,7 +420,11 @@ impl<'a> TxStore<'a> {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
             Err(e) => {
-                error!("Failed to check if transaction exists {}: {}", hex::encode(tx_id), e);
+                error!(
+                    "Failed to check if transaction exists {}: {}",
+                    hex::encode(tx_id),
+                    e
+                );
                 Err(TxStoreError::KVStoreError(e))
             }
         }
@@ -452,7 +497,9 @@ mod tests {
         assert!(!tx_store.has_transaction(&[4; 32]));
 
         // Test update_transaction_status
-        tx_store.update_transaction_status(&[1; 32], TransactionStatus::Confirmed).unwrap();
+        tx_store
+            .update_transaction_status(&[1; 32], TransactionStatus::Confirmed)
+            .unwrap();
         let updated = tx_store.get_transaction(&[1; 32]).unwrap();
         assert_eq!(updated.status, TransactionStatus::Confirmed);
 
@@ -472,8 +519,8 @@ mod tests {
                 tx_id: [i as u8 + 1; 32],
                 sender: [2; 32],
                 recipient: [3; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+                transfer_token_ids: vec![],
+                fee_token_id: None,
                 value: 100 * i,
                 gas_price: 5,
                 gas_limit: 21000,
@@ -525,22 +572,31 @@ mod tests {
         tx_store.put_transaction(&tx).unwrap();
 
         // Update to included
-        tx_store.update_transaction_status(&[1; 32], TransactionStatus::Included).unwrap();
+        tx_store
+            .update_transaction_status(&[1; 32], TransactionStatus::Included)
+            .unwrap();
         let included = tx_store.get_transaction(&[1; 32]).unwrap();
         assert_eq!(included.status, TransactionStatus::Included);
 
         // Update to confirmed
-        tx_store.update_transaction_status(&[1; 32], TransactionStatus::Confirmed).unwrap();
+        tx_store
+            .update_transaction_status(&[1; 32], TransactionStatus::Confirmed)
+            .unwrap();
         let confirmed = tx_store.get_transaction(&[1; 32]).unwrap();
         assert_eq!(confirmed.status, TransactionStatus::Confirmed);
 
         // Update to failed
-        tx_store.update_transaction_status(&[1; 32], TransactionStatus::Failed(TransactionError::OutOfGas)).unwrap();
+        tx_store
+            .update_transaction_status(
+                &[1; 32],
+                TransactionStatus::Failed(TransactionError::OutOfGas),
+            )
+            .unwrap();
         let failed = tx_store.get_transaction(&[1; 32]).unwrap();
         match failed.status {
             TransactionStatus::Failed(error) => {
                 assert_eq!(error, TransactionError::OutOfGas);
-            },
+            }
             _ => panic!("Expected Failed status"),
         }
     }

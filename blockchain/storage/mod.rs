@@ -17,48 +17,64 @@
 //! - `object_transaction`: Transaction types for object operations
 //! - `object_processor`: Processor for object transactions
 
-pub mod kv_store;
-pub mod block_store;
-pub mod tx_store;
-pub mod state_store;
-pub mod poh_store;
-pub mod trie;
 pub mod batch_operations;
-pub mod rocksdb_schema;
-pub mod state_manager;
+pub mod block_store;
+pub mod kv_store;
 pub mod mempool;
-pub mod snapshot;
-pub mod state;
-pub mod state_validation;
-pub mod state_pruning;
-pub mod state_sharding;
-pub mod state_sync;
-pub mod state_indexing;
 pub mod object;
+pub mod object_processor;
 pub mod object_store;
 pub mod object_transaction;
-pub mod object_processor;
+pub mod poh_store;
+pub mod rocksdb_schema;
+pub mod snapshot;
+pub mod state;
+pub mod state_indexing;
+pub mod state_manager;
+pub mod state_pruning;
+pub mod state_sharding;
+pub mod state_store;
+pub mod state_sync;
+pub mod state_validation;
+pub mod trie;
+pub mod tx_store;
 
 // Re-export common types
-pub use block_store::{Block, Hash, BlockStore};
-pub use tx_store::{TransactionRecord, TransactionStatus, TransactionError, TxStore};
-pub use state_store::StateStore;
+pub use batch_operations::{BatchOperationError, BatchOperationManager};
+pub use block_store::{Block, BlockStore, Hash};
 pub use kv_store::{KVStore, KVStoreError, RocksDBStore, WriteBatchOperation};
+pub use mempool::{MempoolStorageError, MempoolStore, MempoolTransactionMetadata};
+pub use object::{Object, ObjectError, ObjectId, Ownership};
+pub use object_processor::{ObjectProcessor, ObjectProcessorError};
+pub use object_store::{ObjectStore, ObjectStoreError};
+pub use object_transaction::{ObjectTransactionKind, ObjectTransactionRecord};
 pub use poh_store::{PoHEntry, PoHStore};
+pub use rocksdb_schema::{DatabaseStats, KeyType, RocksDBManager, Schema};
+pub use snapshot::{
+    CompressionType, SnapshotConfig, SnapshotError, SnapshotManager, SnapshotMetadata, SnapshotType,
+};
+pub use state::{
+    AccountChange, AccountChangeType, AccountState, AccountType, AmountCents, ChainParameters,
+    Denomination, DenominationToken, GlobalState, StateError, StateResult, StateRoot,
+    StateTransition, TokenMintSource,
+};
+pub use state_indexing::{
+    IndexConfig, IndexType, IndexingError, IndexingProgress, IndexingResult, IndexingStatus,
+    StateIndex, StateIndexingManager,
+};
+pub use state_manager::StateManager;
+pub use state_pruning::{
+    PrunerConfig, PruningError, PruningMode, PruningResult, PruningStats, StatePruner,
+};
+pub use state_sharding::{
+    ShardConfig, ShardingError, ShardingResult, ShardingStrategy, StateShard, StateShardingManager,
+};
+pub use state_store::StateStore;
+pub use state_sync::{
+    NetworkClient, StateSynchronizer, SyncConfig, SyncError, SyncMode, SyncProgress, SyncResult,
+    SyncStatus,
+};
+pub use state_validation::{StateValidator, ValidationError, ValidationResult};
 pub use trie::mpt::{MerklePatriciaTrie, Proof, ProofItem};
 pub use trie::node::Node;
-pub use batch_operations::{BatchOperationManager, BatchOperationError};
-pub use rocksdb_schema::{Schema, KeyType, RocksDBManager, DatabaseStats};
-pub use state_manager::StateManager;
-pub use mempool::{MempoolStore, MempoolTransactionMetadata, MempoolStorageError};
-pub use snapshot::{SnapshotManager, SnapshotConfig, SnapshotMetadata, SnapshotType, CompressionType, SnapshotError};
-pub use state::{AccountState, AccountType, StateRoot, StateError, StateResult, GlobalState, ChainParameters, StateTransition, AccountChange, AccountChangeType, AmountCents, Denomination, DenominationToken, TokenMintSource};
-pub use state_validation::{StateValidator, ValidationError, ValidationResult};
-pub use state_pruning::{StatePruner, PruningMode, PrunerConfig, PruningError, PruningResult, PruningStats};
-pub use state_sharding::{StateShardingManager, StateShard, ShardingStrategy, ShardConfig, ShardingError, ShardingResult};
-pub use state_sync::{StateSynchronizer, SyncMode, SyncConfig, SyncStatus, SyncProgress, SyncError, SyncResult, NetworkClient};
-pub use state_indexing::{StateIndexingManager, StateIndex, IndexType, IndexConfig, IndexingStatus, IndexingProgress, IndexingError, IndexingResult};
-pub use object::{Object, ObjectId, Ownership, ObjectError};
-pub use object_store::{ObjectStore, ObjectStoreError};
-pub use object_transaction::{ObjectTransactionRecord, ObjectTransactionKind};
-pub use object_processor::{ObjectProcessor, ObjectProcessorError};
+pub use tx_store::{TransactionError, TransactionRecord, TransactionStatus, TxStore};

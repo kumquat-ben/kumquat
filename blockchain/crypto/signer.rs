@@ -1,6 +1,6 @@
 use ed25519_dalek::{PublicKey, Signature, Signer, Verifier};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -14,11 +14,7 @@ pub fn sign_message(keypair: &VibeKeypair, message: &[u8]) -> VibeSignature {
 }
 
 /// Verify a signature against a message and public key
-pub fn verify_signature(
-    message: &[u8],
-    signature: &VibeSignature,
-    public_key: &PublicKey,
-) -> bool {
+pub fn verify_signature(message: &[u8], signature: &VibeSignature, public_key: &PublicKey) -> bool {
     match Signature::from_bytes(&signature.0) {
         Ok(sig) => public_key.verify(message, &sig).is_ok(),
         Err(_) => false,

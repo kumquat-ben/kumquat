@@ -1,5 +1,5 @@
-use tempfile::tempdir;
 use kumquat::storage::KVStore;
+use tempfile::tempdir;
 
 fn main() {
     println!("Testing Kumquat Storage System");
@@ -13,7 +13,7 @@ fn main() {
         Ok(store) => {
             println!("Successfully created RocksDBStore");
             store
-        },
+        }
         Err(e) => {
             println!("Failed to create RocksDBStore: {:?}", e);
             return;
@@ -34,11 +34,11 @@ fn main() {
         Ok(Some(value)) => {
             println!("Successfully retrieved value: {:?}", value);
             assert_eq!(value, b"test_value");
-        },
+        }
         Ok(None) => {
             println!("Key not found");
             return;
-        },
+        }
         Err(e) => {
             println!("Failed to get value: {:?}", e);
             return;
@@ -70,11 +70,11 @@ fn main() {
         Ok(Some(value)) => {
             println!("Successfully retrieved batch_key1: {:?}", value);
             assert_eq!(value, b"batch_value1");
-        },
+        }
         Ok(None) => {
             println!("batch_key1 not found");
             return;
-        },
+        }
         Err(e) => {
             println!("Failed to get batch_key1: {:?}", e);
             return;
@@ -85,11 +85,11 @@ fn main() {
         Ok(Some(value)) => {
             println!("Successfully retrieved batch_key2: {:?}", value);
             assert_eq!(value, b"batch_value2");
-        },
+        }
         Ok(None) => {
             println!("batch_key2 not found");
             return;
-        },
+        }
         Err(e) => {
             println!("Failed to get batch_key2: {:?}", e);
             return;
@@ -100,12 +100,19 @@ fn main() {
     println!("\nTesting prefix scan...");
     match store.scan_prefix(b"batch_") {
         Ok(results) => {
-            println!("Successfully scanned prefix, found {} results", results.len());
+            println!(
+                "Successfully scanned prefix, found {} results",
+                results.len()
+            );
             assert_eq!(results.len(), 2);
             for (key, value) in results.iter() {
-                println!("Key: {:?}, Value: {:?}", String::from_utf8_lossy(&key), String::from_utf8_lossy(&value));
+                println!(
+                    "Key: {:?}, Value: {:?}",
+                    String::from_utf8_lossy(&key),
+                    String::from_utf8_lossy(&value)
+                );
             }
-        },
+        }
         Err(e) => {
             println!("Failed to scan prefix: {:?}", e);
             return;
@@ -126,10 +133,10 @@ fn main() {
         Ok(Some(_)) => {
             println!("Key still exists after deletion");
             return;
-        },
+        }
         Ok(None) => {
             println!("Successfully verified key deletion");
-        },
+        }
         Err(e) => {
             println!("Failed to verify key deletion: {:?}", e);
             return;

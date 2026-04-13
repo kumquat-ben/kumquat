@@ -1,14 +1,14 @@
-use std::sync::Arc;
 use log::{debug, error, info, warn};
+use std::sync::Arc;
 
-use crate::storage::{
-    BlockStore, TxStore, StateStore, BatchOperationManager,
-    Block, TransactionRecord, AccountState, Hash,
-};
-use crate::consensus::validation::{BlockValidator, BlockValidationResult};
-use crate::consensus::validation::fork_choice::{choose_fork, resolve_fork, ForkChoice};
-use crate::consensus::types::{Target, ChainState};
 use crate::consensus::mining::mempool::Mempool;
+use crate::consensus::types::{ChainState, Target};
+use crate::consensus::validation::fork_choice::{choose_fork, resolve_fork, ForkChoice};
+use crate::consensus::validation::{BlockValidationResult, BlockValidator};
+use crate::storage::{
+    AccountState, BatchOperationManager, Block, BlockStore, Hash, StateStore, TransactionRecord,
+    TxStore,
+};
 
 /// Result of block processing
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +71,12 @@ impl<'a> BlockProcessor<'a> {
     }
 
     /// Process a new block
-    pub async fn process_block(&self, block: &Block, target: &Target, chain_state: &ChainState) -> BlockProcessingResult {
+    pub async fn process_block(
+        &self,
+        block: &Block,
+        target: &Target,
+        chain_state: &ChainState,
+    ) -> BlockProcessingResult {
         info!("Processing block at height {}", block.height);
 
         // Validate the block
@@ -86,61 +91,79 @@ impl<'a> BlockProcessor<'a> {
                     ForkChoice::Accept => {
                         // Block builds on the current chain, continue processing
                         debug!("Block builds on current chain");
-                    },
+                    }
                     ForkChoice::Reject => {
                         // Block is not part of the best chain, reject it
-                        warn!("Block rejected by fork choice rule: height={}", block.height);
-                        return BlockProcessingResult::Invalid("Rejected by fork choice rule".to_string());
-                    },
+                        warn!(
+                            "Block rejected by fork choice rule: height={}",
+                            block.height
+                        );
+                        return BlockProcessingResult::Invalid(
+                            "Rejected by fork choice rule".to_string(),
+                        );
+                    }
                     ForkChoice::Fork => {
                         // We have a fork, need to resolve it
                         warn!("Fork detected at height {}", block.height);
 
                         // Get the current tip
-                        let current_tip = match self.block_store.get_block_by_hash(&chain_state.tip_hash) {
-                            Ok(Some(tip)) => tip,
-                            Ok(None) => {
-                                error!("Current tip block not found");
-                                return BlockProcessingResult::Error("Current tip block not found".to_string());
-                            },
-                            Err(e) => {
-                                error!("Failed to get current tip: {}", e);
-                                return BlockProcessingResult::Error(format!("Failed to get current tip: {}", e));
-                            }
-                        };
+                        let current_tip =
+                            match self.block_store.get_block_by_hash(&chain_state.tip_hash) {
+                                Ok(Some(tip)) => tip,
+                                Ok(None) => {
+                                    error!("Current tip block not found");
+                                    return BlockProcessingResult::Error(
+                                        "Current tip block not found".to_string(),
+                                    );
+                                }
+                                Err(e) => {
+                                    error!("Failed to get current tip: {}", e);
+                                    return BlockProcessingResult::Error(format!(
+                                        "Failed to get current tip: {}",
+                                        e
+                                    ));
+                                }
+                            };
 
                         // Resolve the fork
                         match resolve_fork(&self.block_store, &current_tip, block) {
                             Ok(canonical_tip) => {
                                 if canonical_tip.hash != block.hash {
                                     // The current chain is still the best chain
-                                    info!("Current chain is the canonical tip, rejecting new block");
-                                    return BlockProcessingResult::Invalid("Not the canonical tip".to_string());
+                                    info!(
+                                        "Current chain is the canonical tip, rejecting new block"
+                                    );
+                                    return BlockProcessingResult::Invalid(
+                                        "Not the canonical tip".to_string(),
+                                    );
                                 }
 
                                 // The new block is the canonical tip, continue processing
                                 info!("New block is the canonical tip, accepting it");
-                            },
+                            }
                             Err(e) => {
                                 error!("Failed to resolve fork: {}", e);
-                                return BlockProcessingResult::Error(format!("Failed to resolve fork: {}", e));
+                                return BlockProcessingResult::Error(format!(
+                                    "Failed to resolve fork: {}",
+                                    e
+                                ));
                             }
                         }
-                    },
+                    }
                     ForkChoice::Replace => {
                         // Replace the current chain with this block
                         debug!("Replacing current chain with this block");
                     }
                 }
-            },
+            }
             BlockValidationResult::AlreadyKnown => {
                 debug!("Block already known: height={}", block.height);
                 return BlockProcessingResult::AlreadyKnown;
-            },
+            }
             BlockValidationResult::UnknownParent => {
                 warn!("Block has unknown parent: height={}", block.height);
                 return BlockProcessingResult::UnknownParent;
-            },
+            }
             BlockValidationResult::Invalid(reason) => {
                 warn!("Invalid block: {}", reason);
                 return BlockProcessingResult::Invalid(reason);
@@ -161,12 +184,18 @@ impl<'a> BlockProcessor<'a> {
             Ok(changes) => changes,
             Err(e) => {
                 error!("Failed to apply transactions: {}", e);
-                return BlockProcessingResult::Error(format!("Failed to apply transactions: {}", e));
+                return BlockProcessingResult::Error(format!(
+                    "Failed to apply transactions: {}",
+                    e
+                ));
             }
         };
 
         // Commit the block, transactions, and state changes atomically
-        match self.batch_manager.commit_block(block, &transactions, &state_changes) {
+        match self
+            .batch_manager
+            .commit_block(block, &transactions, &state_changes)
+        {
             Ok(_) => {
                 info!("Block committed successfully: height={}", block.height);
 
@@ -176,7 +205,7 @@ impl<'a> BlockProcessor<'a> {
                 }
 
                 BlockProcessingResult::Success
-            },
+            }
             Err(e) => {
                 error!("Failed to commit block: {}", e);
                 BlockProcessingResult::Error(format!("Failed to commit block: {}", e))
@@ -192,11 +221,15 @@ impl<'a> BlockProcessor<'a> {
             match self.tx_store.get_transaction(tx_hash) {
                 Ok(Some(tx)) => {
                     transactions.push(tx);
-                },
+                }
                 Ok(None) => {
                     // Transaction not found, try to get it from the mempool
                     if let Some(mempool) = &self.mempool {
-                        if let Some(tx) = mempool.get_pending_transactions(100).iter().find(|tx| tx.tx_id == *tx_hash) {
+                        if let Some(tx) = mempool
+                            .get_pending_transactions(100)
+                            .iter()
+                            .find(|tx| tx.tx_id == *tx_hash)
+                        {
                             // Create a confirmed transaction record
                             let mut tx_record = tx.clone();
                             tx_record.block_height = block.height;
@@ -208,9 +241,13 @@ impl<'a> BlockProcessor<'a> {
                     } else {
                         return Err(format!("Transaction not found: {}", hex::encode(tx_hash)));
                     }
-                },
+                }
                 Err(e) => {
-                    return Err(format!("Failed to get transaction {}: {}", hex::encode(tx_hash), e));
+                    return Err(format!(
+                        "Failed to get transaction {}: {}",
+                        hex::encode(tx_hash),
+                        e
+                    ));
                 }
             }
         }
@@ -219,7 +256,11 @@ impl<'a> BlockProcessor<'a> {
     }
 
     /// Apply transactions to get state changes
-    fn apply_transactions(&self, block: &Block, transactions: &[TransactionRecord]) -> Result<Vec<(Hash, AccountState)>, String> {
+    fn apply_transactions(
+        &self,
+        block: &Block,
+        transactions: &[TransactionRecord],
+    ) -> Result<Vec<(Hash, AccountState)>, String> {
         let mut state_changes = Vec::new();
 
         // Create a temporary state store for validation
@@ -234,32 +275,53 @@ impl<'a> BlockProcessor<'a> {
         }
 
         if block.height > 0 {
-            let expected_reward_token_ids = crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash)
-                .iter()
-                .map(|token| token.token_id)
-                .collect::<Vec<_>>();
-            if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
-                return Err(format!("reward token ids mismatch for block {}", block.height));
+            let expected_reward_token_ids =
+                crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash)
+                    .iter()
+                    .map(|token| token.token_id)
+                    .collect::<Vec<_>>();
+            if !block.reward_token_ids.is_empty()
+                && block.reward_token_ids != expected_reward_token_ids
+            {
+                return Err(format!(
+                    "reward token ids mismatch for block {}",
+                    block.height
+                ));
             }
 
             let mut miner = match temp_state.get_account_state(&block.miner) {
                 Some(account) => account,
                 None => {
-                    match temp_state.create_account(&block.miner, 0, crate::storage::state::AccountType::User) {
-                        Ok(()) => temp_state.get_account_state(&block.miner)
-                            .ok_or_else(|| format!("Failed to create miner account: {}", hex::encode(&block.miner)))?,
+                    match temp_state.create_account(
+                        &block.miner,
+                        0,
+                        crate::storage::state::AccountType::User,
+                    ) {
+                        Ok(()) => temp_state.get_account_state(&block.miner).ok_or_else(|| {
+                            format!(
+                                "Failed to create miner account: {}",
+                                hex::encode(&block.miner)
+                            )
+                        })?,
                         Err(e) => return Err(format!("Failed to create miner account: {}", e)),
                     }
                 }
             };
 
-            miner.tokens.extend(crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash));
+            miner
+                .tokens
+                .extend(crate::storage::block_store::reward_outcome(
+                    block.miner,
+                    block.height,
+                    &block.hash,
+                ));
             miner.sync_balance_from_tokens();
             miner.last_updated = block.height;
             miner.assign_token_owner(block.miner);
 
             state_changes.push((block.miner, miner.clone()));
-            temp_state.update_account(&block.miner, &miner)
+            temp_state
+                .update_account(&block.miner, &miner)
                 .map_err(|e| format!("Failed to update miner account: {}", e))?;
         }
 
@@ -282,7 +344,7 @@ impl<'a> BlockProcessor<'a> {
             Ok(()) => {
                 info!("Block rolled back successfully: height={}", height);
                 Ok(())
-            },
+            }
             Err(e) => {
                 error!("Failed to rollback block: {}", e);
                 Err(format!("Failed to rollback block: {}", e))
@@ -294,8 +356,8 @@ impl<'a> BlockProcessor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::RocksDBStore;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_block_processor_creation() {

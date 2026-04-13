@@ -3,14 +3,14 @@
 //! This module provides functionality for synchronizing blockchain state
 //! between nodes, enabling fast catch-up and state verification.
 
+use log::{error, info};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use log::{error, info};
 
-use crate::storage::kv_store::{KVStore, KVStoreError};
-use crate::storage::state::{AccountState, StateRoot, StateError};
-use crate::storage::state_store::{StateStore, StateStoreError};
 use crate::storage::block_store::BlockStore;
+use crate::storage::kv_store::{KVStore, KVStoreError};
+use crate::storage::state::{AccountState, StateError, StateRoot};
+use crate::storage::state_store::{StateStore, StateStoreError};
 
 /// Error type for state synchronization operations
 #[derive(Debug, Error)]
@@ -296,17 +296,17 @@ impl<'a> StateSynchronizer<'a> {
                     info!("Starting full sync to height {}", target_height);
                     // Simulate a successful sync
                     Ok(())
-                },
+                }
                 SyncMode::Fast => {
                     info!("Starting fast sync to height {}", target_height);
                     // Simulate a successful sync
                     Ok(())
-                },
+                }
                 SyncMode::Light => {
                     info!("Starting light sync to height {}", target_height);
                     // Simulate a successful sync
                     Ok(())
-                },
+                }
             };
 
             // Update progress based on result
@@ -316,11 +316,11 @@ impl<'a> StateSynchronizer<'a> {
                     progress.status = SyncStatus::Completed;
                     progress.current_height = target_height;
                     info!("State sync completed to height {}", target_height);
-                },
+                }
                 Err(e) => {
                     progress.status = SyncStatus::Failed;
                     error!("State sync failed: {}", e);
-                },
+                }
             }
         });
 
@@ -378,7 +378,8 @@ impl<'a> StateSynchronizer<'a> {
 
             // Store accounts
             for (address, account) in &accounts {
-                state_store.put_account(address, account, target_height)?
+                state_store
+                    .put_account(address, account, target_height)?
                     .map_err(|e| SyncError::StateError(e))?;
                 accounts_synced += 1;
             }
@@ -408,7 +409,8 @@ impl<'a> StateSynchronizer<'a> {
         }
 
         // Store state root
-        state_store.put_state_root(&state_root)?
+        state_store
+            .put_state_root(&state_root)?
             .map_err(|e| SyncError::StateError(e))?;
 
         Ok(())
@@ -451,7 +453,8 @@ impl<'a> StateSynchronizer<'a> {
         let state_root = network_client.get_state_root(target_height)?;
 
         // Store state root
-        state_store.put_state_root(&state_root)?
+        state_store
+            .put_state_root(&state_root)?
             .map_err(|e| SyncError::StateError(e))?;
 
         // Update progress
@@ -481,17 +484,22 @@ pub trait NetworkClient: Send + Sync {
     fn get_account_proof(&self, address: &[u8], height: u64) -> SyncResult<Vec<u8>>;
 
     /// Get accounts in range
-    fn get_accounts_in_range(&self, start_key: &[u8], end_key: &[u8], height: u64, limit: usize)
-        -> SyncResult<Vec<(Vec<u8>, AccountState)>>;
+    fn get_accounts_in_range(
+        &self,
+        start_key: &[u8],
+        end_key: &[u8],
+        height: u64,
+        limit: usize,
+    ) -> SyncResult<Vec<(Vec<u8>, AccountState)>>;
 }
 
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::state::AccountType;
     use std::collections::HashMap;
+    use tempfile::tempdir;
 
     // Mock implementation of NetworkClient for testing
     struct MockNetworkClient {
@@ -533,8 +541,13 @@ mod tests {
             Ok(Vec::new())
         }
 
-        fn get_accounts_in_range(&self, start_key: &[u8], end_key: &[u8], _height: u64, limit: usize)
-            -> SyncResult<Vec<(Vec<u8>, AccountState)>> {
+        fn get_accounts_in_range(
+            &self,
+            start_key: &[u8],
+            end_key: &[u8],
+            _height: u64,
+            limit: usize,
+        ) -> SyncResult<Vec<(Vec<u8>, AccountState)>> {
             let mut result = Vec::new();
 
             for (address, account) in &self.accounts {
@@ -610,7 +623,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut synchronizer = StateSynchronizer::new(&kv_store, &state_store, &block_store, config);
+        let mut synchronizer =
+            StateSynchronizer::new(&kv_store, &state_store, &block_store, config);
         synchronizer.set_network_client(Arc::new(mock_client));
 
         // Start sync
@@ -633,7 +647,10 @@ mod tests {
         assert_eq!(progress.current_height, height);
 
         // Verify state root was stored
-        let stored_root = state_store.get_state_root_at_height(height).unwrap().unwrap();
+        let stored_root = state_store
+            .get_state_root_at_height(height)
+            .unwrap()
+            .unwrap();
         assert_eq!(stored_root.root_hash, state_root.root_hash);
     }
 
@@ -662,7 +679,8 @@ mod tests {
             ..Default::default()
         };
 
-        let mut synchronizer = StateSynchronizer::new(&kv_store, &state_store, &block_store, config);
+        let mut synchronizer =
+            StateSynchronizer::new(&kv_store, &state_store, &block_store, config);
         synchronizer.set_network_client(Arc::new(mock_client));
 
         // Start sync

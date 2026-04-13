@@ -3,19 +3,19 @@
 //! This module provides an advanced message routing system for the blockchain,
 //! with support for prioritization, load balancing, and specialized routing.
 
-use std::sync::Arc;
-use std::collections::HashMap;
-use tokio::sync::{RwLock, Mutex};
 use log::{debug, error, info, warn};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 
-use crate::network::types::message::NetMessage;
-use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::broadcaster::PeerBroadcaster;
-use crate::network::handlers::message_handler::HandlerRegistry;
+use crate::consensus::engine::ConsensusEngine;
 use crate::mempool::Mempool;
+use crate::network::handlers::message_handler::HandlerRegistry;
+use crate::network::peer::broadcaster::PeerBroadcaster;
+use crate::network::peer::registry::PeerRegistry;
+use crate::network::types::message::NetMessage;
 use crate::storage::block_store::BlockStore;
 use crate::storage::tx_store::TxStore;
-use crate::consensus::engine::ConsensusEngine;
 
 /// Message type categories
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -46,9 +46,13 @@ impl From<&NetMessage> for MessageType {
     fn from(message: &NetMessage) -> Self {
         match message {
             NetMessage::Handshake(_) => MessageType::Handshake,
-            NetMessage::NewBlock(_) | NetMessage::RequestBlock(_) | NetMessage::ResponseBlock(_) => MessageType::Block,
+            NetMessage::NewBlock(_)
+            | NetMessage::RequestBlock(_)
+            | NetMessage::ResponseBlock(_) => MessageType::Block,
             NetMessage::NewTransaction(_) => MessageType::Transaction,
-            NetMessage::RequestBlockRange { .. } | NetMessage::ResponseBlockRange(_) => MessageType::Sync,
+            NetMessage::RequestBlockRange { .. } | NetMessage::ResponseBlockRange(_) => {
+                MessageType::Sync
+            }
             NetMessage::Ping(_) | NetMessage::Pong(_) => MessageType::Ping,
             NetMessage::Disconnect(_) => MessageType::Disconnect,
         }
@@ -190,7 +194,9 @@ impl AdvancedMessageRouter {
                     let message_type = MessageType::from(&message);
 
                     // Get the appropriate handler
-                    let handler: Arc<dyn crate::network::handlers::message_handler::MessageHandler> = {
+                    let handler: Arc<
+                        dyn crate::network::handlers::message_handler::MessageHandler,
+                    > = {
                         let handlers = handlers.read().await;
                         match handlers.get(&message_type) {
                             Some(handler) => Arc::clone(&handler),
@@ -226,7 +232,12 @@ impl AdvancedMessageRouter {
     }
 
     /// Create a sync request
-    pub async fn create_sync_request(&self, peer_id: String, start_height: u64, end_height: u64) -> u64 {
+    pub async fn create_sync_request(
+        &self,
+        peer_id: String,
+        start_height: u64,
+        end_height: u64,
+    ) -> u64 {
         let request_id = {
             let mut next_id = self.next_request_id.lock().await;
             let id = *next_id;
@@ -248,7 +259,10 @@ impl AdvancedMessageRouter {
         let mut requests = self.sync_requests.write().await;
         requests.insert(request_id, request.clone());
 
-        info!("Created sync request: id={}, start={}, end={}", request_id, start_height, end_height);
+        info!(
+            "Created sync request: id={}, start={}, end={}",
+            request_id, start_height, end_height
+        );
 
         request_id
     }

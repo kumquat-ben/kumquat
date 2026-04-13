@@ -1,17 +1,17 @@
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 use log::{error, info, warn};
 use sha2::Digest;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 
-use crate::storage::block_store::{Block, BlockStore, result_commitment};
-use crate::storage::tx_store::TxStore;
-use crate::storage::state_store::StateStore;
-use crate::consensus::types::{ChainState, BlockTemplate, Target};
 use crate::consensus::config::ConsensusConfig;
-use crate::consensus::pow::miner::PoWMiner;
 use crate::consensus::mining::mempool::Mempool;
 use crate::consensus::poh::generator::PoHGenerator;
+use crate::consensus::pow::miner::PoWMiner;
+use crate::consensus::types::{BlockTemplate, ChainState, Target};
 use crate::network::types::message::NetMessage;
+use crate::storage::block_store::{result_commitment, Block, BlockStore};
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::TxStore;
 
 /// Block producer for creating new blocks
 pub struct BlockProducer<'a> {
@@ -74,9 +74,9 @@ impl<'a> BlockProducer<'a> {
     /// Create a block template
     pub async fn create_block_template(&self) -> BlockTemplate {
         // Get pending transactions from the mempool
-        let transactions = self.mempool.get_pending_transactions(
-            self.config.max_transactions_per_block
-        );
+        let transactions = self
+            .mempool
+            .get_pending_transactions(self.config.max_transactions_per_block);
 
         // Keep the full transaction records
         let selected_transactions = transactions.clone();
@@ -104,7 +104,8 @@ impl<'a> BlockProducer<'a> {
             crate::crypto::hash::sha256(b"empty_tx_root")
         } else {
             // Create a list of transaction hashes
-            let tx_hashes: Vec<crate::crypto::hash::Hash> = selected_transactions.iter()
+            let tx_hashes: Vec<crate::crypto::hash::Hash> = selected_transactions
+                .iter()
                 .map(|tx| crate::crypto::hash::Hash::new(tx.tx_id))
                 .collect();
 
@@ -121,7 +122,10 @@ impl<'a> BlockProducer<'a> {
 
         // Get the previous block's PoH sequence number if this is not the genesis block
         let prev_poh_seq = if self.chain_state.height > 0 {
-            match self.block_store.get_block_by_hash(&self.chain_state.tip_hash) {
+            match self
+                .block_store
+                .get_block_by_hash(&self.chain_state.tip_hash)
+            {
                 Ok(Some(prev_block)) => prev_block.poh_seq,
                 _ => 0, // Default to 0 if we can't get the previous block
             }
@@ -136,10 +140,10 @@ impl<'a> BlockProducer<'a> {
             timestamp,
             transactions: selected_transactions,
             state_root,
-            tx_root, // Use the calculated transaction root
-            poh_seq, // Use the current PoH sequence
+            tx_root,      // Use the calculated transaction root
+            poh_seq,      // Use the current PoH sequence
             prev_poh_seq, // Use the previous block's PoH sequence
-            poh_hash, // Use the current PoH hash
+            poh_hash,     // Use the current PoH hash
             target: Target::from_difficulty(self.chain_state.total_difficulty),
             total_difficulty: self.chain_state.total_difficulty as u128,
             miner: self.config.miner_address,
@@ -147,7 +151,10 @@ impl<'a> BlockProducer<'a> {
     }
 
     /// Calculate the transaction root (Merkle root of transactions)
-    fn calculate_tx_root(&self, tx_hashes: &[crate::crypto::hash::Hash]) -> crate::crypto::hash::Hash {
+    fn calculate_tx_root(
+        &self,
+        tx_hashes: &[crate::crypto::hash::Hash],
+    ) -> crate::crypto::hash::Hash {
         if tx_hashes.is_empty() {
             // Empty transaction list has a special hash
             return crate::crypto::hash::Hash::new(crate::crypto::hash::sha256(b"empty_tx_root"));
@@ -204,13 +211,15 @@ impl<'a> BlockProducer<'a> {
             Some(mining_result) => {
                 let mut block = mining_result.block;
 
-                match self.state_store.calculate_projected_state_root_with_block_reward(
-                    block.height,
-                    block.timestamp,
-                    &template_transactions,
-                    &block.miner,
-                    &block.hash,
-                ) {
+                match self
+                    .state_store
+                    .calculate_projected_state_root_with_block_reward(
+                        block.height,
+                        block.timestamp,
+                        &template_transactions,
+                        &block.miner,
+                        &block.hash,
+                    ) {
                     Ok(root) => {
                         block.state_root = root.root_hash;
                     }
@@ -219,11 +228,8 @@ impl<'a> BlockProducer<'a> {
                         return None;
                     }
                 }
-                block.result_commitment = result_commitment(
-                    &block.hash,
-                    &block.state_root,
-                    &block.reward_token_ids,
-                );
+                block.result_commitment =
+                    result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
 
                 // Mark transactions as included
                 for tx_id in &block.transactions {
@@ -255,12 +261,19 @@ impl<'a> BlockProducer<'a> {
 
     /// Update the chain state
     pub fn update_chain_state(&mut self, new_state: ChainState) {
-        info!("BlockProducer: Updating chain state: height {} -> {}, hash {} -> {}",
-              self.chain_state.height, new_state.height,
-              hex::encode(&self.chain_state.tip_hash), hex::encode(&new_state.tip_hash));
+        info!(
+            "BlockProducer: Updating chain state: height {} -> {}, hash {} -> {}",
+            self.chain_state.height,
+            new_state.height,
+            hex::encode(&self.chain_state.tip_hash),
+            hex::encode(&new_state.tip_hash)
+        );
         self.chain_state = new_state;
-        info!("BlockProducer: Chain state updated: height={}, tip_hash={}",
-              self.chain_state.height, hex::encode(&self.chain_state.tip_hash));
+        info!(
+            "BlockProducer: Chain state updated: height={}, tip_hash={}",
+            self.chain_state.height,
+            hex::encode(&self.chain_state.tip_hash)
+        );
     }
 
     /// Get the current chain state height
@@ -277,8 +290,8 @@ impl<'a> BlockProducer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{StateRoot, TransactionRecord, TransactionStatus};
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::{StateRoot, TransactionRecord, TransactionStatus};
     use tempfile::tempdir;
 
     #[tokio::test]

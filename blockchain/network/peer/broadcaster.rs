@@ -1,7 +1,7 @@
+use log::{debug, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use log::{debug, warn};
 
 use crate::network::peer::registry::PeerRegistry;
 
@@ -95,7 +95,10 @@ impl PeerBroadcaster {
         // Report success
         let success_count = peer_count - failed_peers.len();
         if success_count > 0 {
-            debug!("Successfully broadcast to {}/{} peers", success_count, peer_count);
+            debug!(
+                "Successfully broadcast to {}/{} peers",
+                success_count, peer_count
+            );
         }
 
         // Clean up failed peers in a separate task to avoid holding the read lock
@@ -167,7 +170,11 @@ impl PeerBroadcaster {
     }
 
     /// Broadcast a message to all peers except one
-    pub async fn broadcast_except(&self, message: NetMessage, except_peer_id: &str) -> Result<(), String> {
+    pub async fn broadcast_except(
+        &self,
+        message: NetMessage,
+        except_peer_id: &str,
+    ) -> Result<(), String> {
         let senders = self.peer_senders.read().await;
         let peer_count = senders.len();
 
@@ -182,7 +189,10 @@ impl PeerBroadcaster {
             _ => "message",
         };
 
-        debug!("Broadcasting {} to all peers except {}", message_type, except_peer_id);
+        debug!(
+            "Broadcasting {} to all peers except {}",
+            message_type, except_peer_id
+        );
 
         let mut failed_peers = Vec::new();
 
@@ -221,7 +231,11 @@ impl PeerBroadcaster {
         // Report success
         let success_count = peer_count - failed_peers.len() - 1; // Subtract 1 for the excluded peer
         if success_count > 0 {
-            debug!("Successfully broadcast to {}/{} peers", success_count, peer_count - 1);
+            debug!(
+                "Successfully broadcast to {}/{} peers",
+                success_count,
+                peer_count - 1
+            );
         }
 
         // Clean up failed peers in a separate task to avoid holding the read lock

@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::crypto::signer::{VibeSignature, sign_message};
 use crate::crypto::keys::VibeKeypair;
+use crate::crypto::signer::{sign_message, VibeSignature};
 
 /// Type alias for address (public key hash)
 pub type Address = [u8; 32];
@@ -157,15 +157,7 @@ impl TransactionRecord {
         let sender = keypair.address();
 
         // Create an unsigned transaction
-        let mut tx = Self::new(
-            sender,
-            recipient,
-            value,
-            gas_price,
-            gas_limit,
-            nonce,
-            data,
-        );
+        let mut tx = Self::new(sender, recipient, value, gas_price, gas_limit, nonce, data);
 
         // Sign the transaction
         tx.sign(keypair);
@@ -214,7 +206,9 @@ pub enum TransactionStatus {
 impl Ord for TransactionRecord {
     fn cmp(&self, other: &Self) -> Ordering {
         // First compare by gas price (higher gas price has higher priority)
-        other.gas_price.cmp(&self.gas_price)
+        other
+            .gas_price
+            .cmp(&self.gas_price)
             // Then compare by timestamp (older transactions have higher priority)
             .then(self.timestamp.cmp(&other.timestamp))
     }

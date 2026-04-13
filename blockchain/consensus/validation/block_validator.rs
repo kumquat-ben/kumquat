@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use log::{error, warn};
 use sha2::Digest;
+use std::sync::Arc;
 
-use crate::storage::block_store::{Block, BlockStore, pow_hash, result_commitment, reward_outcome};
-use crate::storage::tx_store::TxStore;
-use crate::storage::state_store::StateStore;
-use crate::consensus::types::Target;
 use crate::consensus::poh::verifier::PoHVerifier;
+use crate::consensus::types::Target;
 use crate::crypto::hash::{sha256, Hash};
+use crate::storage::block_store::{pow_hash, result_commitment, reward_outcome, Block, BlockStore};
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::TxStore;
 use crate::storage::TransactionRecord;
 
 /// Result of block validation
@@ -116,7 +116,10 @@ impl<'a> BlockValidator<'a> {
         let transactions = match self.load_block_transactions(block) {
             Ok(transactions) => transactions,
             Err(err) => {
-                error!("Failed to load block transactions for hash validation: {}", err);
+                error!(
+                    "Failed to load block transactions for hash validation: {}",
+                    err
+                );
                 return false;
             }
         };
@@ -129,7 +132,10 @@ impl<'a> BlockValidator<'a> {
         ) {
             Ok(root) => root.root_hash,
             Err(err) => {
-                error!("Failed to calculate pre-reward state root for block {}: {}", block.height, err);
+                error!(
+                    "Failed to calculate pre-reward state root for block {}: {}",
+                    block.height, err
+                );
                 return false;
             }
         };
@@ -196,11 +202,8 @@ impl<'a> BlockValidator<'a> {
     }
 
     fn validate_result_commitment(&self, block: &Block) -> bool {
-        let expected_commitment = result_commitment(
-            &block.hash,
-            &block.state_root,
-            &block.reward_token_ids,
-        );
+        let expected_commitment =
+            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
 
         if block.result_commitment != expected_commitment {
             error!(
@@ -231,8 +234,11 @@ impl<'a> BlockValidator<'a> {
         let tx_hashes: Vec<Hash> = transactions.iter().map(|tx| Hash::new(tx.tx_id)).collect();
         let calculated_tx_root = self.calculate_tx_root(&tx_hashes);
         if calculated_tx_root != Hash::new(block.tx_root) {
-            error!("Transaction root mismatch: expected {}, calculated {}",
-                   hex::encode(&block.tx_root), hex::encode(&calculated_tx_root));
+            error!(
+                "Transaction root mismatch: expected {}, calculated {}",
+                hex::encode(&block.tx_root),
+                hex::encode(&calculated_tx_root)
+            );
             return false;
         }
 
@@ -256,10 +262,17 @@ impl<'a> BlockValidator<'a> {
                     transactions.push(tx);
                 }
                 Ok(None) => {
-                    return Err(format!("Transaction not found in transaction store: {}", hex::encode(tx_hash)));
+                    return Err(format!(
+                        "Transaction not found in transaction store: {}",
+                        hex::encode(tx_hash)
+                    ));
                 }
                 Err(err) => {
-                    return Err(format!("Failed to load transaction {}: {}", hex::encode(tx_hash), err));
+                    return Err(format!(
+                        "Failed to load transaction {}: {}",
+                        hex::encode(tx_hash),
+                        err
+                    ));
                 }
             }
         }
@@ -323,7 +336,7 @@ impl<'a> BlockValidator<'a> {
             Ok(None) => {
                 error!("Previous block {} not found", hex::encode(&block.prev_hash));
                 return false;
-            },
+            }
             Err(e) => {
                 error!("Error retrieving previous block: {}", e);
                 return false;
@@ -340,18 +353,22 @@ impl<'a> BlockValidator<'a> {
         }
 
         // Calculate the state root after applying transactions
-        let calculated_state_root = match temp_state.calculate_state_root(block.height, block.timestamp) {
-            Ok(root) => root.root_hash,
-            Err(e) => {
-                error!("Failed to calculate state root: {}", e);
-                return false;
-            }
-        };
+        let calculated_state_root =
+            match temp_state.calculate_state_root(block.height, block.timestamp) {
+                Ok(root) => root.root_hash,
+                Err(e) => {
+                    error!("Failed to calculate state root: {}", e);
+                    return false;
+                }
+            };
 
         // Compare the calculated state root with the one in the block
         if calculated_state_root != block.state_root {
-            error!("State root mismatch: expected {}, calculated {}",
-                   hex::encode(&block.state_root), hex::encode(&calculated_state_root));
+            error!(
+                "State root mismatch: expected {}, calculated {}",
+                hex::encode(&block.state_root),
+                hex::encode(&calculated_state_root)
+            );
             return false;
         }
 
@@ -371,7 +388,7 @@ impl<'a> BlockValidator<'a> {
             Ok(None) => {
                 error!("Previous block {} not found", hex::encode(&block.prev_hash));
                 return false;
-            },
+            }
             Err(e) => {
                 error!("Error retrieving previous block: {}", e);
                 return false;
@@ -386,8 +403,11 @@ impl<'a> BlockValidator<'a> {
 
         // Compare with the block's PoH hash
         if block.poh_hash != expected_poh_hash {
-            error!("PoH hash mismatch: expected {}, got {}",
-                   hex::encode(&expected_poh_hash), hex::encode(&block.poh_hash));
+            error!(
+                "PoH hash mismatch: expected {}, got {}",
+                hex::encode(&expected_poh_hash),
+                hex::encode(&block.poh_hash)
+            );
             return false;
         }
 
@@ -399,20 +419,23 @@ impl<'a> BlockValidator<'a> {
         };
 
         // Verify the PoH sequence using the verifier
-        if !self.poh_verifier.verify_event(
-            &poh_entry,
-            &prev_block.hash,
-            &event_data
-        ) {
-            error!("Invalid PoH sequence: prev_seq={}, curr_seq={}",
-                   prev_block.poh_seq, block.poh_seq);
+        if !self
+            .poh_verifier
+            .verify_event(&poh_entry, &prev_block.hash, &event_data)
+        {
+            error!(
+                "Invalid PoH sequence: prev_seq={}, curr_seq={}",
+                prev_block.poh_seq, block.poh_seq
+            );
             return false;
         }
 
         // Verify that the PoH sequence number is increasing
         if block.poh_seq <= prev_block.poh_seq {
-            error!("PoH sequence not increasing: prev_seq={}, curr_seq={}",
-                   prev_block.poh_seq, block.poh_seq);
+            error!(
+                "PoH sequence not increasing: prev_seq={}, curr_seq={}",
+                prev_block.poh_seq, block.poh_seq
+            );
             return false;
         }
 
@@ -425,8 +448,10 @@ impl<'a> BlockValidator<'a> {
         let max_ticks = expected_ticks * 12 / 10;
 
         if actual_ticks < min_ticks || actual_ticks > max_ticks {
-            warn!("PoH sequence count unusual: expected ~{}, got {}",
-                  expected_ticks, actual_ticks);
+            warn!(
+                "PoH sequence count unusual: expected ~{}, got {}",
+                expected_ticks, actual_ticks
+            );
             // This is just a warning, not a validation failure
         }
 
@@ -437,17 +462,25 @@ impl<'a> BlockValidator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::block_store::{pow_hash, result_commitment, reward_outcome, CanonicalBlockHeader};
+    use crate::storage::block_store::{
+        pow_hash, result_commitment, reward_outcome, CanonicalBlockHeader,
+    };
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
-    fn setup_validator() -> (Arc<BlockStore<'static>>, Arc<TxStore<'static>>, Arc<StateStore<'static>>, BlockValidator<'static>) {
+    fn setup_validator() -> (
+        Arc<BlockStore<'static>>,
+        Arc<TxStore<'static>>,
+        Arc<StateStore<'static>>,
+        BlockValidator<'static>,
+    ) {
         let temp_dir = tempdir().unwrap();
         let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
         let block_store = Arc::new(BlockStore::new(kv_store));
         let tx_store = Arc::new(TxStore::new(kv_store));
         let state_store = Arc::new(StateStore::new(kv_store));
-        let validator = BlockValidator::new(block_store.clone(), tx_store.clone(), state_store.clone());
+        let validator =
+            BlockValidator::new(block_store.clone(), tx_store.clone(), state_store.clone());
         std::mem::forget(temp_dir);
         (block_store, tx_store, state_store, validator)
     }
@@ -525,7 +558,13 @@ mod tests {
             .map(|token| token.token_id)
             .collect::<Vec<_>>();
         let state_root = state_store
-            .calculate_projected_state_root_with_block_reward(height, timestamp, transactions, &miner, &hash)
+            .calculate_projected_state_root_with_block_reward(
+                height,
+                timestamp,
+                transactions,
+                &miner,
+                &hash,
+            )
             .unwrap()
             .root_hash;
 
@@ -554,15 +593,24 @@ mod tests {
         let (block_store, _tx_store, state_store, validator) = setup_validator();
         let genesis = genesis_block();
         let target = Target::from_difficulty(1);
-        assert_eq!(validator.validate_block(&genesis, &target), BlockValidationResult::Valid);
+        assert_eq!(
+            validator.validate_block(&genesis, &target),
+            BlockValidationResult::Valid
+        );
 
         block_store.put_block(&genesis).unwrap();
         let valid_block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [7u8; 32]);
         block_store.put_block(&valid_block).unwrap();
-        assert_eq!(validator.validate_block(&valid_block, &target), BlockValidationResult::AlreadyKnown);
+        assert_eq!(
+            validator.validate_block(&valid_block, &target),
+            BlockValidationResult::AlreadyKnown
+        );
 
         let orphan_block = build_block(&state_store, vec![], &[], [99u8; 32], 2, 20, [8u8; 32]);
-        assert_eq!(validator.validate_block(&orphan_block, &target), BlockValidationResult::UnknownParent);
+        assert_eq!(
+            validator.validate_block(&orphan_block, &target),
+            BlockValidationResult::UnknownParent
+        );
     }
 
     #[test]
@@ -573,10 +621,14 @@ mod tests {
 
         let mut block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [9u8; 32]);
         block.reward_token_ids.push([77u8; 32]);
-        block.result_commitment = result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+        block.result_commitment =
+            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
 
         let target = Target::from_difficulty(1);
-        assert!(matches!(validator.validate_block(&block, &target), BlockValidationResult::Invalid(_)));
+        assert!(matches!(
+            validator.validate_block(&block, &target),
+            BlockValidationResult::Invalid(_)
+        ));
     }
 
     #[test]
@@ -589,6 +641,9 @@ mod tests {
         block.result_commitment = [255u8; 32];
 
         let target = Target::from_difficulty(1);
-        assert!(matches!(validator.validate_block(&block, &target), BlockValidationResult::Invalid(_)));
+        assert!(matches!(
+            validator.validate_block(&block, &target),
+            BlockValidationResult::Invalid(_)
+        ));
     }
 }

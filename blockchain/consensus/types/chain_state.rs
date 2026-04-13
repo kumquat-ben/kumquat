@@ -78,7 +78,10 @@ impl ChainState {
         self.blocks.insert(hash, block);
 
         // Add to block_hashes map
-        self.block_hashes.entry(height).or_insert_with(Vec::new).push(hash);
+        self.block_hashes
+            .entry(height)
+            .or_insert_with(Vec::new)
+            .push(hash);
     }
 
     /// Get a block by hash
@@ -89,17 +92,22 @@ impl ChainState {
     /// Get blocks at a specific height
     pub fn get_blocks_at_height(&self, height: u64) -> Vec<&Block> {
         match self.block_hashes.get(&height) {
-            Some(hashes) => {
-                hashes.iter()
-                    .filter_map(|hash| self.blocks.get(hash))
-                    .collect()
-            }
+            Some(hashes) => hashes
+                .iter()
+                .filter_map(|hash| self.blocks.get(hash))
+                .collect(),
             None => Vec::new(),
         }
     }
 
     /// Update the tip
-    pub fn update_tip(&mut self, hash: Hash, height: u64, state_root: StateRoot, total_difficulty: u64) {
+    pub fn update_tip(
+        &mut self,
+        hash: Hash,
+        height: u64,
+        state_root: StateRoot,
+        total_difficulty: u64,
+    ) {
         self.tip_hash = hash;
         self.height = height;
         self.state_root = state_root;

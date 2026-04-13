@@ -3,15 +3,15 @@
 //! This module provides functionality for indexing blockchain state data,
 //! enabling efficient queries and analytics.
 
+use log::error;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use thiserror::Error;
-use log::error;
 
+use crate::storage::block_store::BlockStore;
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::state::{AccountState, StateError};
 use crate::storage::state_store::{StateStore, StateStoreError};
-use crate::storage::block_store::BlockStore;
 
 /// Error type for state indexing operations
 #[derive(Debug, Error)]
@@ -94,7 +94,14 @@ impl std::fmt::Debug for IndexConfig {
             .field("name", &self.name)
             .field("index_type", &self.index_type)
             .field("historical", &self.historical)
-            .field("custom_index_fn", &if self.custom_index_fn.is_some() { "<function>" } else { "None" })
+            .field(
+                "custom_index_fn",
+                &if self.custom_index_fn.is_some() {
+                    "<function>"
+                } else {
+                    "None"
+                },
+            )
             .finish()
     }
 }
@@ -268,7 +275,12 @@ impl<'a> StateIndex<'a> {
     }
 
     /// Index an account
-    pub fn index_account(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    pub fn index_account(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         if !self.enabled {
             return Ok(());
         }
@@ -282,16 +294,34 @@ impl<'a> StateIndex<'a> {
     }
 
     /// Index account by balance
-    fn index_balance(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    fn index_balance(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         let balance = account.balance;
-        let key = format!("index:{}:balance:{}:{}", self.name, balance, hex::encode(address));
+        let key = format!(
+            "index:{}:balance:{}:{}",
+            self.name,
+            balance,
+            hex::encode(address)
+        );
 
-        self.store.put(key.as_bytes(), &[])
+        self.store
+            .put(key.as_bytes(), &[])
             .map_err(IndexingError::KVStoreError)?;
 
         if self.config.historical {
-            let historical_key = format!("index:{}:balance:{}:{}:{}", self.name, balance, height, hex::encode(address));
-            self.store.put(historical_key.as_bytes(), &[])
+            let historical_key = format!(
+                "index:{}:balance:{}:{}:{}",
+                self.name,
+                balance,
+                height,
+                hex::encode(address)
+            );
+            self.store
+                .put(historical_key.as_bytes(), &[])
                 .map_err(IndexingError::KVStoreError)?;
         }
 
@@ -299,16 +329,34 @@ impl<'a> StateIndex<'a> {
     }
 
     /// Index account by account type
-    fn index_account_type(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    fn index_account_type(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         let account_type = format!("{:?}", account.account_type);
-        let key = format!("index:{}:account_type:{}:{}", self.name, account_type, hex::encode(address));
+        let key = format!(
+            "index:{}:account_type:{}:{}",
+            self.name,
+            account_type,
+            hex::encode(address)
+        );
 
-        self.store.put(key.as_bytes(), &[])
+        self.store
+            .put(key.as_bytes(), &[])
             .map_err(IndexingError::KVStoreError)?;
 
         if self.config.historical {
-            let historical_key = format!("index:{}:account_type:{}:{}:{}", self.name, account_type, height, hex::encode(address));
-            self.store.put(historical_key.as_bytes(), &[])
+            let historical_key = format!(
+                "index:{}:account_type:{}:{}:{}",
+                self.name,
+                account_type,
+                height,
+                hex::encode(address)
+            );
+            self.store
+                .put(historical_key.as_bytes(), &[])
                 .map_err(IndexingError::KVStoreError)?;
         }
 
@@ -316,16 +364,34 @@ impl<'a> StateIndex<'a> {
     }
 
     /// Index account by transaction count (nonce)
-    fn index_transaction_count(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    fn index_transaction_count(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         let nonce = account.nonce;
-        let key = format!("index:{}:tx_count:{}:{}", self.name, nonce, hex::encode(address));
+        let key = format!(
+            "index:{}:tx_count:{}:{}",
+            self.name,
+            nonce,
+            hex::encode(address)
+        );
 
-        self.store.put(key.as_bytes(), &[])
+        self.store
+            .put(key.as_bytes(), &[])
             .map_err(IndexingError::KVStoreError)?;
 
         if self.config.historical {
-            let historical_key = format!("index:{}:tx_count:{}:{}:{}", self.name, nonce, height, hex::encode(address));
-            self.store.put(historical_key.as_bytes(), &[])
+            let historical_key = format!(
+                "index:{}:tx_count:{}:{}:{}",
+                self.name,
+                nonce,
+                height,
+                hex::encode(address)
+            );
+            self.store
+                .put(historical_key.as_bytes(), &[])
                 .map_err(IndexingError::KVStoreError)?;
         }
 
@@ -333,19 +399,37 @@ impl<'a> StateIndex<'a> {
     }
 
     /// Index account using custom function
-    fn index_custom(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    fn index_custom(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         if let Some(custom_fn) = &self.config.custom_index_fn {
             let index_values = custom_fn(account);
 
             for value in index_values {
-                let key = format!("index:{}:custom:{}:{}", self.name, value, hex::encode(address));
+                let key = format!(
+                    "index:{}:custom:{}:{}",
+                    self.name,
+                    value,
+                    hex::encode(address)
+                );
 
-                self.store.put(key.as_bytes(), &[])
+                self.store
+                    .put(key.as_bytes(), &[])
                     .map_err(IndexingError::KVStoreError)?;
 
                 if self.config.historical {
-                    let historical_key = format!("index:{}:custom:{}:{}:{}", self.name, value, height, hex::encode(address));
-                    self.store.put(historical_key.as_bytes(), &[])
+                    let historical_key = format!(
+                        "index:{}:custom:{}:{}:{}",
+                        self.name,
+                        value,
+                        height,
+                        hex::encode(address)
+                    );
+                    self.store
+                        .put(historical_key.as_bytes(), &[])
                         .map_err(IndexingError::KVStoreError)?;
                 }
             }
@@ -367,9 +451,10 @@ impl<'a> StateIndex<'a> {
         height: Option<u64>,
     ) -> IndexingResult<Vec<(Vec<u8>, AccountState)>> {
         if self.config.index_type != IndexType::Balance {
-            return Err(IndexingError::InvalidIndexConfig(
-                format!("Index {} is not a balance index", self.name),
-            ));
+            return Err(IndexingError::InvalidIndexConfig(format!(
+                "Index {} is not a balance index",
+                self.name
+            )));
         }
 
         let mut results = Vec::new();
@@ -377,14 +462,17 @@ impl<'a> StateIndex<'a> {
         if let Some(height) = height {
             // Query historical data
             if !self.config.historical {
-                return Err(IndexingError::InvalidIndexConfig(
-                    format!("Index {} does not support historical queries", self.name),
-                ));
+                return Err(IndexingError::InvalidIndexConfig(format!(
+                    "Index {} does not support historical queries",
+                    self.name
+                )));
             }
 
             for balance in min_balance..=max_balance {
                 let prefix = format!("index:{}:balance:{}:{}", self.name, balance, height);
-                let entries = self.store.scan_prefix(prefix.as_bytes())
+                let entries = self
+                    .store
+                    .scan_prefix(prefix.as_bytes())
                     .map_err(IndexingError::KVStoreError)?;
 
                 for (key, _) in entries {
@@ -412,7 +500,9 @@ impl<'a> StateIndex<'a> {
             // Query current data
             for balance in min_balance..=max_balance {
                 let prefix = format!("index:{}:balance:{}:", self.name, balance);
-                let entries = self.store.scan_prefix(prefix.as_bytes())
+                let entries = self
+                    .store
+                    .scan_prefix(prefix.as_bytes())
                     .map_err(IndexingError::KVStoreError)?;
 
                 for (key, _) in entries {
@@ -449,9 +539,10 @@ impl<'a> StateIndex<'a> {
         height: Option<u64>,
     ) -> IndexingResult<Vec<(Vec<u8>, AccountState)>> {
         if self.config.index_type != IndexType::AccountType {
-            return Err(IndexingError::InvalidIndexConfig(
-                format!("Index {} is not an account type index", self.name),
-            ));
+            return Err(IndexingError::InvalidIndexConfig(format!(
+                "Index {} is not an account type index",
+                self.name
+            )));
         }
 
         let mut results = Vec::new();
@@ -459,13 +550,19 @@ impl<'a> StateIndex<'a> {
         if let Some(height) = height {
             // Query historical data
             if !self.config.historical {
-                return Err(IndexingError::InvalidIndexConfig(
-                    format!("Index {} does not support historical queries", self.name),
-                ));
+                return Err(IndexingError::InvalidIndexConfig(format!(
+                    "Index {} does not support historical queries",
+                    self.name
+                )));
             }
 
-            let prefix = format!("index:{}:account_type:{}:{}:", self.name, account_type, height);
-            let entries = self.store.scan_prefix(prefix.as_bytes())
+            let prefix = format!(
+                "index:{}:account_type:{}:{}:",
+                self.name, account_type, height
+            );
+            let entries = self
+                .store
+                .scan_prefix(prefix.as_bytes())
                 .map_err(IndexingError::KVStoreError)?;
 
             for (key, _) in entries {
@@ -487,7 +584,9 @@ impl<'a> StateIndex<'a> {
         } else {
             // Query current data
             let prefix = format!("index:{}:account_type:{}:", self.name, account_type);
-            let entries = self.store.scan_prefix(prefix.as_bytes())
+            let entries = self
+                .store
+                .scan_prefix(prefix.as_bytes())
                 .map_err(IndexingError::KVStoreError)?;
 
             for (key, _) in entries {
@@ -519,9 +618,10 @@ impl<'a> StateIndex<'a> {
         height: Option<u64>,
     ) -> IndexingResult<Vec<(Vec<u8>, AccountState)>> {
         if self.config.index_type != IndexType::Custom {
-            return Err(IndexingError::InvalidIndexConfig(
-                format!("Index {} is not a custom index", self.name),
-            ));
+            return Err(IndexingError::InvalidIndexConfig(format!(
+                "Index {} is not a custom index",
+                self.name
+            )));
         }
 
         let mut results = Vec::new();
@@ -529,13 +629,16 @@ impl<'a> StateIndex<'a> {
         if let Some(height) = height {
             // Query historical data
             if !self.config.historical {
-                return Err(IndexingError::InvalidIndexConfig(
-                    format!("Index {} does not support historical queries", self.name),
-                ));
+                return Err(IndexingError::InvalidIndexConfig(format!(
+                    "Index {} does not support historical queries",
+                    self.name
+                )));
             }
 
             let prefix = format!("index:{}:custom:{}:{}:", self.name, value, height);
-            let entries = self.store.scan_prefix(prefix.as_bytes())
+            let entries = self
+                .store
+                .scan_prefix(prefix.as_bytes())
                 .map_err(IndexingError::KVStoreError)?;
 
             for (key, _) in entries {
@@ -557,7 +660,9 @@ impl<'a> StateIndex<'a> {
         } else {
             // Query current data
             let prefix = format!("index:{}:custom:{}:", self.name, value);
-            let entries = self.store.scan_prefix(prefix.as_bytes())
+            let entries = self
+                .store
+                .scan_prefix(prefix.as_bytes())
                 .map_err(IndexingError::KVStoreError)?;
 
             for (key, _) in entries {
@@ -656,18 +761,19 @@ impl<'a> StateIndexingManager<'a> {
 
         // Delete index data from the store
         let prefix = format!("index:{}:", name);
-        let entries = self.store.scan_prefix(prefix.as_bytes())
+        let entries = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(IndexingError::KVStoreError)?;
 
         let mut batch = Vec::new();
         for (key, _) in entries {
-            batch.push(WriteBatchOperation::Delete {
-                key: key.clone(),
-            });
+            batch.push(WriteBatchOperation::Delete { key: key.clone() });
         }
 
         if !batch.is_empty() {
-            self.store.write_batch(batch)
+            self.store
+                .write_batch(batch)
                 .map_err(IndexingError::KVStoreError)?;
         }
 
@@ -681,7 +787,12 @@ impl<'a> StateIndexingManager<'a> {
     }
 
     /// Index an account in all indexes
-    pub fn index_account(&self, address: &[u8], account: &AccountState, height: u64) -> IndexingResult<()> {
+    pub fn index_account(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> IndexingResult<()> {
         let indexes = self.indexes.read().unwrap();
 
         for (_, index) in indexes.iter() {
@@ -694,14 +805,17 @@ impl<'a> StateIndexingManager<'a> {
     /// Start indexing
     pub fn start_indexing(&self, target_height: u64) -> IndexingResult<()> {
         // Check if indexing is already in progress
-        let was_indexing = self.indexing_in_progress.swap(true, std::sync::atomic::Ordering::SeqCst);
+        let was_indexing = self
+            .indexing_in_progress
+            .swap(true, std::sync::atomic::Ordering::SeqCst);
         if was_indexing {
             return Err(IndexingError::IndexingInProgress);
         }
 
         // Ensure we reset the flag when we're done
         let _guard = scopeguard::guard((), |_| {
-            self.indexing_in_progress.store(false, std::sync::atomic::Ordering::SeqCst);
+            self.indexing_in_progress
+                .store(false, std::sync::atomic::Ordering::SeqCst);
         });
 
         // Get all accounts
@@ -766,7 +880,9 @@ impl<'a> StateIndexingManager<'a> {
 
         let mut accounts = Vec::new();
         let prefix = "account:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(IndexingError::KVStoreError)?;
 
         for (key, _value) in results {
@@ -789,9 +905,9 @@ impl<'a> StateIndexingManager<'a> {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::state::AccountType;
+    use tempfile::tempdir;
 
     // Helper function to create a test environment
     fn setup_test_env() -> (
@@ -814,29 +930,34 @@ mod tests {
     }
 
     // Helper function to create a test account
-    fn create_test_account(balance: u64, nonce: u64, account_type: AccountType, height: u64) -> AccountState {
+    fn create_test_account(
+        balance: u64,
+        nonce: u64,
+        account_type: AccountType,
+        height: u64,
+    ) -> AccountState {
         match account_type {
             AccountType::User => {
                 let mut account = AccountState::new_user(balance, height);
                 account.nonce = nonce;
                 account
-            },
+            }
             AccountType::Contract => {
                 let code = vec![1, 2, 3, 4]; // Dummy code
                 let mut account = AccountState::new_contract(balance, code, height);
                 account.nonce = nonce;
                 account
-            },
+            }
             AccountType::System => {
                 let mut account = AccountState::new_system(balance, height);
                 account.nonce = nonce;
                 account
-            },
+            }
             AccountType::Validator => {
                 let mut account = AccountState::new_validator(balance, 1000, height);
                 account.nonce = nonce;
                 account
-            },
+            }
         }
     }
 
@@ -873,7 +994,7 @@ mod tests {
         let result = manager.get_index("non_existent");
         assert!(result.is_err());
         match result {
-            Err(IndexingError::IndexNotFound(_)) => {},
+            Err(IndexingError::IndexNotFound(_)) => {}
             _ => panic!("Expected IndexNotFound error"),
         }
     }
@@ -887,15 +1008,24 @@ mod tests {
 
         let address1 = create_test_address(1);
         let account1 = create_test_account(1000, 1, AccountType::User, height);
-        state_store.put_account(&address1, &account1, height).unwrap().unwrap();
+        state_store
+            .put_account(&address1, &account1, height)
+            .unwrap()
+            .unwrap();
 
         let address2 = create_test_address(2);
         let account2 = create_test_account(2000, 2, AccountType::User, height);
-        state_store.put_account(&address2, &account2, height).unwrap().unwrap();
+        state_store
+            .put_account(&address2, &account2, height)
+            .unwrap()
+            .unwrap();
 
         let address3 = create_test_address(3);
         let account3 = create_test_account(3000, 3, AccountType::User, height);
-        state_store.put_account(&address3, &account3, height).unwrap().unwrap();
+        state_store
+            .put_account(&address3, &account3, height)
+            .unwrap()
+            .unwrap();
 
         // Create an index manager
         let manager = StateIndexingManager::new(&kv_store, &state_store, &block_store);
@@ -925,7 +1055,9 @@ mod tests {
         assert_eq!(results[0].1.balance, 2000);
 
         // Query by balance range with height
-        let results = index.query_by_balance_range(1500, 3500, 10, Some(height)).unwrap();
+        let results = index
+            .query_by_balance_range(1500, 3500, 10, Some(height))
+            .unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].1.balance, 2000);
         assert_eq!(results[1].1.balance, 3000);
@@ -940,15 +1072,24 @@ mod tests {
 
         let address1 = create_test_address(1);
         let account1 = create_test_account(1000, 1, AccountType::User, height);
-        state_store.put_account(&address1, &account1, height).unwrap().unwrap();
+        state_store
+            .put_account(&address1, &account1, height)
+            .unwrap()
+            .unwrap();
 
         let address2 = create_test_address(2);
         let account2 = create_test_account(2000, 2, AccountType::Contract, height);
-        state_store.put_account(&address2, &account2, height).unwrap().unwrap();
+        state_store
+            .put_account(&address2, &account2, height)
+            .unwrap()
+            .unwrap();
 
         let address3 = create_test_address(3);
         let account3 = create_test_account(3000, 3, AccountType::Validator, height);
-        state_store.put_account(&address3, &account3, height).unwrap().unwrap();
+        state_store
+            .put_account(&address3, &account3, height)
+            .unwrap()
+            .unwrap();
 
         // Create an index manager
         let manager = StateIndexingManager::new(&kv_store, &state_store, &block_store);
@@ -977,7 +1118,9 @@ mod tests {
         assert_eq!(results[0].0, address1);
 
         // Query by account type with height
-        let results = index.query_by_account_type("Validator", 10, Some(height)).unwrap();
+        let results = index
+            .query_by_account_type("Validator", 10, Some(height))
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, address3);
     }
@@ -991,11 +1134,17 @@ mod tests {
 
         let address1 = create_test_address(1);
         let account1 = create_test_account(1000, 1, AccountType::User, height);
-        state_store.put_account(&address1, &account1, height).unwrap().unwrap();
+        state_store
+            .put_account(&address1, &account1, height)
+            .unwrap()
+            .unwrap();
 
         let address2 = create_test_address(2);
         let account2 = create_test_account(2000, 2, AccountType::User, height);
-        state_store.put_account(&address2, &account2, height).unwrap().unwrap();
+        state_store
+            .put_account(&address2, &account2, height)
+            .unwrap()
+            .unwrap();
 
         // Create an index manager
         let manager = StateIndexingManager::new(&kv_store, &state_store, &block_store);

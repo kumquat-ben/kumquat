@@ -3,13 +3,10 @@
 //! This module provides debugging tools for the blockchain,
 //! including state inspection, transaction tracing, and block analysis.
 
-use std::sync::Arc;
 use log::error;
+use std::sync::Arc;
 
-use crate::storage::{
-    BlockStore, StateStore, TxStore,
-    Block, AccountState, TransactionRecord,
-};
+use crate::storage::{AccountState, Block, BlockStore, StateStore, TransactionRecord, TxStore};
 
 /// Debug tools for blockchain inspection
 pub struct DebugTools<'a> {
@@ -93,7 +90,10 @@ impl<'a> DebugTools<'a> {
         if tx.block_height > 0 {
             match self.block_store.get_block_by_height(tx.block_height) {
                 Ok(Some(block)) => {
-                    trace.push(format!("Block: height={}, hash={:?}", block.height, block.hash));
+                    trace.push(format!(
+                        "Block: height={}, hash={:?}",
+                        block.height, block.hash
+                    ));
                 }
                 Ok(None) => {
                     trace.push("Block not found".to_string());
@@ -109,7 +109,10 @@ impl<'a> DebugTools<'a> {
         // Get the sender account
         match self.state_store.get_latest_account(&tx.sender) {
             Ok(Some(account)) => {
-                trace.push(format!("Sender account: balance={}, nonce={}", account.balance, account.nonce));
+                trace.push(format!(
+                    "Sender account: balance={}, nonce={}",
+                    account.balance, account.nonce
+                ));
             }
             Ok(None) => {
                 trace.push("Sender account not found".to_string());
@@ -122,7 +125,10 @@ impl<'a> DebugTools<'a> {
         // Get the receiver account
         match self.state_store.get_latest_account(&tx.recipient) {
             Ok(Some(account)) => {
-                trace.push(format!("Receiver account: balance={}, nonce={}", account.balance, account.nonce));
+                trace.push(format!(
+                    "Receiver account: balance={}, nonce={}",
+                    account.balance, account.nonce
+                ));
             }
             Ok(None) => {
                 trace.push("Receiver account not found".to_string());

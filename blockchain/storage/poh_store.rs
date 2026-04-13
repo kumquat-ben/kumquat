@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use crate::storage::kv_store::KVStore;
+use serde::{Deserialize, Serialize};
 
 /// Proof of History entry structure
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -53,15 +53,14 @@ impl<'a> PoHStore<'a> {
     pub fn get_latest_sequence(&self) -> Option<u64> {
         let prefix = b"poh:seq:";
         match self.store.scan_prefix(prefix) {
-            Ok(entries) => {
-                entries.iter()
-                    .filter_map(|(key, _)| {
-                        let key_str = std::str::from_utf8(key).ok()?;
-                        let seq_str = key_str.strip_prefix("poh:seq:")?;
-                        seq_str.parse::<u64>().ok()
-                    })
-                    .max()
-            },
+            Ok(entries) => entries
+                .iter()
+                .filter_map(|(key, _)| {
+                    let key_str = std::str::from_utf8(key).ok()?;
+                    let seq_str = key_str.strip_prefix("poh:seq:")?;
+                    seq_str.parse::<u64>().ok()
+                })
+                .max(),
             Err(_) => None,
         }
     }

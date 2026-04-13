@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use log::{error, info, warn};
+use std::collections::HashMap;
 
-use crate::storage::block_store::{Block, BlockStore};
 use crate::consensus::types::ChainState;
+use crate::storage::block_store::{Block, BlockStore};
 
 /// Fork choice result
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,12 +67,15 @@ pub fn choose_fork(
         match block_store.get_block_by_hash(&current_block.prev_hash) {
             Ok(Some(parent)) => {
                 current_block = parent;
-            },
+            }
             Ok(None) => {
                 // If we can't find the parent, we can't validate the chain
-                warn!("Cannot find parent block at height {}", current_block.height - 1);
+                warn!(
+                    "Cannot find parent block at height {}",
+                    current_block.height - 1
+                );
                 return ForkChoice::Fork;
-            },
+            }
             Err(e) => {
                 error!("Error getting parent block: {}", e);
                 return ForkChoice::Reject;
@@ -86,7 +89,7 @@ pub fn choose_fork(
         Ok(None) => {
             error!("Current tip block not found");
             return ForkChoice::Reject;
-        },
+        }
         Err(e) => {
             error!("Error getting current tip block: {}", e);
             return ForkChoice::Reject;
@@ -124,10 +127,16 @@ pub fn resolve_fork(
 
     // Compare the total difficulty (cumulative work)
     if fork1_tip.total_difficulty > fork2_tip.total_difficulty {
-        info!("Fork 1 has more work ({} vs {})", fork1_tip.total_difficulty, fork2_tip.total_difficulty);
+        info!(
+            "Fork 1 has more work ({} vs {})",
+            fork1_tip.total_difficulty, fork2_tip.total_difficulty
+        );
         Ok(fork1_tip.clone())
     } else if fork2_tip.total_difficulty > fork1_tip.total_difficulty {
-        info!("Fork 2 has more work ({} vs {})", fork2_tip.total_difficulty, fork1_tip.total_difficulty);
+        info!(
+            "Fork 2 has more work ({} vs {})",
+            fork2_tip.total_difficulty, fork1_tip.total_difficulty
+        );
         Ok(fork2_tip.clone())
     } else {
         // If the work is equal, choose the chain with the lower hash (deterministic tie-breaking)
@@ -185,10 +194,13 @@ pub fn find_common_ancestor(
                     if visited2.contains_key(&current1.hash) {
                         return Ok(current1.clone());
                     }
-                },
+                }
                 Ok(None) => {
-                    return Err(format!("Cannot find parent of block at height {}", current1.height));
-                },
+                    return Err(format!(
+                        "Cannot find parent of block at height {}",
+                        current1.height
+                    ));
+                }
                 Err(e) => {
                     return Err(format!("Error getting parent block: {}", e));
                 }
@@ -206,10 +218,13 @@ pub fn find_common_ancestor(
                     if visited1.contains_key(&current2.hash) {
                         return Ok(current2.clone());
                     }
-                },
+                }
                 Ok(None) => {
-                    return Err(format!("Cannot find parent of block at height {}", current2.height));
-                },
+                    return Err(format!(
+                        "Cannot find parent of block at height {}",
+                        current2.height
+                    ));
+                }
                 Err(e) => {
                     return Err(format!("Error getting parent block: {}", e));
                 }
@@ -229,10 +244,15 @@ mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::StateRoot;
-    use tempfile::tempdir;
     use std::sync::Arc;
+    use tempfile::tempdir;
 
-    fn test_block(height: u64, hash_byte: u8, prev_hash: [u8; 32], total_difficulty: u128) -> Block {
+    fn test_block(
+        height: u64,
+        hash_byte: u8,
+        prev_hash: [u8; 32],
+        total_difficulty: u128,
+    ) -> Block {
         Block {
             height,
             hash: [hash_byte; 32],
@@ -263,12 +283,12 @@ mod tests {
 
         // Create a chain state
         let chain_state = ChainState::new(
-            10, // height
-            [10u8; 32], // tip_hash
+            10,                                 // height
+            [10u8; 32],                         // tip_hash
             StateRoot::new([0u8; 32], 10, 100), // state_root
-            1000, // total_difficulty
-            0, // finalized_height
-            [0u8; 32], // finalized_hash
+            1000,                               // total_difficulty
+            0,                                  // finalized_height
+            [0u8; 32],                          // finalized_hash
         );
 
         // Create a block that builds on the current chain

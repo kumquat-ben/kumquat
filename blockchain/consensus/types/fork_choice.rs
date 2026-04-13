@@ -33,15 +33,9 @@ impl ForkChoice {
             ForkChoice::HighestTotalDifficulty => {
                 block1.total_difficulty.cmp(&block2.total_difficulty)
             }
-            ForkChoice::MostRecent => {
-                block1.timestamp.cmp(&block2.timestamp)
-            }
-            ForkChoice::MostBlocks => {
-                block1.height.cmp(&block2.height)
-            }
-            ForkChoice::MostPoH => {
-                block1.poh_seq.cmp(&block2.poh_seq)
-            }
+            ForkChoice::MostRecent => block1.timestamp.cmp(&block2.timestamp),
+            ForkChoice::MostBlocks => block1.height.cmp(&block2.height),
+            ForkChoice::MostPoH => block1.poh_seq.cmp(&block2.poh_seq),
         }
     }
 

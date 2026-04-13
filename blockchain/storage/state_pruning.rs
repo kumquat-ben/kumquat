@@ -3,13 +3,13 @@
 //! This module provides functionality for pruning old state data,
 //! reducing storage requirements while maintaining blockchain integrity.
 
+use log::{error, info};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
-use log::{error, info};
 
+use crate::storage::block_store::{BlockStore, Hash};
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::state_store::{StateStore, StateStoreError};
-use crate::storage::block_store::{BlockStore, Hash};
 
 /// Error type for state pruning operations
 #[derive(Debug, Error)]
@@ -158,20 +158,27 @@ impl<'a> StatePruner<'a> {
     /// Prune state data
     pub fn prune(&self) -> PruningResult<PruningStats> {
         // Ensure pruning is not already in progress
-        let was_pruning = self.pruning_in_progress.swap(true, std::sync::atomic::Ordering::SeqCst);
+        let was_pruning = self
+            .pruning_in_progress
+            .swap(true, std::sync::atomic::Ordering::SeqCst);
         if was_pruning {
             return Err(PruningError::PruningInProgress);
         }
 
         // Ensure we reset the flag when we're done
         let _guard = scopeguard::guard((), |_| {
-            self.pruning_in_progress.store(false, std::sync::atomic::Ordering::SeqCst);
+            self.pruning_in_progress
+                .store(false, std::sync::atomic::Ordering::SeqCst);
         });
 
         // Get the current block height
         let current_height = match self.block_store.get_latest_height() {
             Some(height) => height,
-            None => return Err(PruningError::Other("Failed to get latest height".to_string())),
+            None => {
+                return Err(PruningError::Other(
+                    "Failed to get latest height".to_string(),
+                ))
+            }
         };
 
         // Determine which heights to keep
@@ -201,7 +208,11 @@ impl<'a> StatePruner<'a> {
             }
             PruningMode::KeepLastNBlocks(n) => {
                 // Keep the last n blocks
-                let start_height = if current_height >= n { current_height - n + 1 } else { 0 };
+                let start_height = if current_height >= n {
+                    current_height - n + 1
+                } else {
+                    0
+                };
                 for height in start_height..=current_height {
                     heights_to_keep.insert(height);
                 }
@@ -288,7 +299,8 @@ impl<'a> StatePruner<'a> {
 
             // Execute the batch
             if !batch.is_empty() {
-                self.store.write_batch(batch)
+                self.store
+                    .write_batch(batch)
                     .map_err(PruningError::KVStoreError)?;
             }
         }
@@ -306,7 +318,9 @@ impl<'a> StatePruner<'a> {
 
         // Scan all state root keys
         let prefix = "state_root:";
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(PruningError::KVStoreError)?;
 
         for (key, value) in results {
@@ -332,7 +346,9 @@ impl<'a> StatePruner<'a> {
 
         // Scan all account keys for this height
         let prefix = format!("account:*:{}", height);
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(PruningError::KVStoreError)?;
 
         for (key, _) in results {
@@ -398,8 +414,8 @@ impl std::fmt::Display for PruningStats {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::kv_store::RocksDBStore;
+    use tempfile::tempdir;
 
     // Helper function to create a test environment
     fn setup_test_env() -> (
@@ -423,10 +439,22 @@ mod tests {
 
     #[test]
     fn test_pruning_mode_parsing() {
-        assert_eq!(PruningMode::from_string("archive").unwrap(), PruningMode::Archive);
-        assert_eq!(PruningMode::from_string("last_1000").unwrap(), PruningMode::KeepLastNBlocks(1000));
-        assert_eq!(PruningMode::from_string("interval_100").unwrap(), PruningMode::KeepInterval(100));
-        assert_eq!(PruningMode::from_string("specific").unwrap(), PruningMode::KeepSpecificHeights);
+        assert_eq!(
+            PruningMode::from_string("archive").unwrap(),
+            PruningMode::Archive
+        );
+        assert_eq!(
+            PruningMode::from_string("last_1000").unwrap(),
+            PruningMode::KeepLastNBlocks(1000)
+        );
+        assert_eq!(
+            PruningMode::from_string("interval_100").unwrap(),
+            PruningMode::KeepInterval(100)
+        );
+        assert_eq!(
+            PruningMode::from_string("specific").unwrap(),
+            PruningMode::KeepSpecificHeights
+        );
 
         assert!(PruningMode::from_string("invalid").is_err());
         assert!(PruningMode::from_string("last_0").is_err());

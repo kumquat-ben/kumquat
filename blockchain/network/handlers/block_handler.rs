@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use log::{debug, error, info, warn};
+use std::sync::Arc;
 
-use crate::storage::block_store::{Block, BlockStore};
 use crate::consensus::engine::ConsensusEngine;
-use crate::consensus::validation::block_validator::{BlockValidator, BlockValidationResult};
-use crate::network::types::message::NetMessage;
+use crate::consensus::validation::block_validator::{BlockValidationResult, BlockValidator};
+use crate::mempool::Mempool;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
-use crate::mempool::Mempool;
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::{Block, BlockStore};
 
 /// Error types for block handler
 #[derive(Debug, thiserror::Error)]
@@ -99,7 +99,10 @@ impl BlockHandler {
 
     /// Handle a block message
     pub async fn handle(&self, block: Block, source_peer: &str) -> Result<(), HandlerError> {
-        info!("Handling block from peer {}: height={}", source_peer, block.height);
+        info!(
+            "Handling block from peer {}: height={}",
+            source_peer, block.height
+        );
 
         // If we have a consensus engine, let it handle the block
         if let Some(consensus) = &self.consensus {
@@ -107,7 +110,10 @@ impl BlockHandler {
             let block_rx = consensus.block_channel();
             if let Err(e) = block_rx.send(block.clone()).await {
                 error!("Failed to send block to consensus engine: {:?}", e);
-                return Err(HandlerError::ConsensusError(format!("Failed to send block: {}", e)));
+                return Err(HandlerError::ConsensusError(format!(
+                    "Failed to send block: {}",
+                    e
+                )));
             }
             return Ok(());
         }
@@ -118,15 +124,15 @@ impl BlockHandler {
                 match validator.validate_block(&block, &Default::default()) {
                     BlockValidationResult::Valid => {
                         debug!("Block is valid");
-                    },
+                    }
                     BlockValidationResult::AlreadyKnown => {
                         debug!("Block already known: height={}", block.height);
                         return Err(HandlerError::DuplicateBlock);
-                    },
+                    }
                     BlockValidationResult::UnknownParent => {
                         warn!("Block has unknown parent: height={}", block.height);
                         return Err(HandlerError::UnknownParent);
-                    },
+                    }
                     BlockValidationResult::Invalid(reason) => {
                         warn!("Invalid block from peer {}: {}", source_peer, reason);
 
@@ -143,7 +149,12 @@ impl BlockHandler {
                     return Err(HandlerError::DuplicateBlock);
                 }
 
-                if block.height > 0 && matches!(self.block_store.get_block_by_hash(&block.prev_hash), Ok(None) | Err(_)) {
+                if block.height > 0
+                    && matches!(
+                        self.block_store.get_block_by_hash(&block.prev_hash),
+                        Ok(None) | Err(_)
+                    )
+                {
                     warn!("Block has unknown parent: height={}", block.height);
                     return Err(HandlerError::UnknownParent);
                 }
@@ -170,14 +181,18 @@ impl BlockHandler {
 
     /// Broadcast a block to other peers
     async fn broadcast_block(&self, block: Block, source_peer: &str) -> Result<(), HandlerError> {
-        match self.broadcaster.broadcast_except(
-            NetMessage::NewBlock(block),
-            source_peer,
-        ).await {
+        match self
+            .broadcaster
+            .broadcast_except(NetMessage::NewBlock(block), source_peer)
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!("Failed to broadcast block: {:?}", e);
-                Err(HandlerError::NetworkError(format!("Broadcast failed: {}", e)))
+                Err(HandlerError::NetworkError(format!(
+                    "Broadcast failed: {}",
+                    e
+                )))
             }
         }
     }
@@ -185,7 +200,9 @@ impl BlockHandler {
     /// Update mempool to remove transactions included in the block
     async fn update_mempool(&self, block: &Block, mempool: &Mempool) {
         // Mark transactions as included in a block
-        mempool.mark_included(&block.transactions, block.height).await;
+        mempool
+            .mark_included(&block.transactions, block.height)
+            .await;
     }
 
     /// Update peer reputation based on block validity
@@ -216,11 +233,8 @@ mod tests {
         let peer_registry = Arc::new(PeerRegistry::new());
 
         // Create handler
-        let handler = BlockHandler::new(
-            block_store.clone(),
-            broadcaster,
-            peer_registry,
-        ).with_validation(false); // Disable validation for testing
+        let handler = BlockHandler::new(block_store.clone(), broadcaster, peer_registry)
+            .with_validation(false); // Disable validation for testing
 
         // Create a genesis block
         let genesis = Block {

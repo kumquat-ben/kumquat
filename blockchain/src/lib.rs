@@ -1,16 +1,16 @@
 // Kumquat - A next-generation blockchain combining Proof-of-Work with Solana-style Proof of History
 
 // Export modules
-pub mod storage;
-pub mod crypto;
-pub mod network;
-pub mod consensus;
-pub mod mempool;
-pub mod config;
-pub mod tools;
-pub mod node_runtime;
 pub mod api;
+pub mod config;
+pub mod consensus;
+pub mod crypto;
+pub mod mempool;
+pub mod network;
+pub mod node_runtime;
 pub mod rewards;
+pub mod storage;
+pub mod tools;
 
 // Initialize logging
 pub fn init_logger() {

@@ -1,5 +1,3 @@
-
-
 /// Nibble is a 4-bit value (0-15)
 pub type Nibble = u8;
 

@@ -4,11 +4,11 @@
 //! including creating, retrieving, updating, and querying objects.
 
 use log::{debug, info};
-use thiserror::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
-use crate::storage::object::{Object, ObjectId, Ownership, ObjectError, ObjectResult};
+use crate::storage::object::{Object, ObjectError, ObjectId, ObjectResult, Ownership};
 
 /// Error type for ObjectStore operations
 #[derive(Debug, Error)]
@@ -70,9 +70,10 @@ impl<'a> ObjectStore<'a> {
         if let Some(existing) = self.get_object(&object.id)? {
             // Ensure version is incremented correctly
             if object.version != existing.version + 1 && object.version != existing.version {
-                return Err(ObjectStoreError::ObjectError(
-                    ObjectError::VersionMismatch(existing.version + 1, object.version)
-                ));
+                return Err(ObjectStoreError::ObjectError(ObjectError::VersionMismatch(
+                    existing.version + 1,
+                    object.version,
+                )));
             }
         }
 
@@ -86,7 +87,10 @@ impl<'a> ObjectStore<'a> {
         // Create secondary indices
         self.create_indices(object)?;
 
-        debug!("Stored object {} (version {})", object_id_hex, object.version);
+        debug!(
+            "Stored object {} (version {})",
+            object_id_hex, object.version
+        );
         Ok(())
     }
 
@@ -100,7 +104,7 @@ impl<'a> ObjectStore<'a> {
                 let object = bincode::deserialize(&value)
                     .map_err(|e| ObjectStoreError::DeserializationError(e.to_string()))?;
                 Ok(Some(object))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -148,7 +152,10 @@ impl<'a> ObjectStore<'a> {
         // Store the updated object
         self.put_object(&object)?;
 
-        debug!("Updated object {} (version {})", object_id_hex, object.version);
+        debug!(
+            "Updated object {} (version {})",
+            object_id_hex, object.version
+        );
         Ok(object)
     }
 
@@ -167,18 +174,18 @@ impl<'a> ObjectStore<'a> {
 
         // Create the object
         let object = Object::new(
-            owner,
-            type_tag,
-            contents,
-            metadata,
-            timestamp,
+            owner, type_tag, contents, metadata, timestamp,
             0, // Block height will be updated when included in a block
         );
 
         // Store the object
         self.put_object(&object)?;
 
-        info!("Created new object {} (type: {})", object.id_hex(), object.type_tag);
+        info!(
+            "Created new object {} (type: {})",
+            object.id_hex(),
+            object.type_tag
+        );
         Ok(object)
     }
 
@@ -247,7 +254,11 @@ impl<'a> ObjectStore<'a> {
         }
 
         // Index by type
-        let key = format!("objects_by_type:{}:{}", object.type_tag, hex::encode(&object.id));
+        let key = format!(
+            "objects_by_type:{}:{}",
+            object.type_tag,
+            hex::encode(&object.id)
+        );
         let value = bincode::serialize(&object.id)
             .map_err(|e| ObjectStoreError::SerializationError(e.to_string()))?;
 
@@ -277,7 +288,11 @@ impl<'a> ObjectStore<'a> {
         }
 
         // Remove type index
-        let key = format!("objects_by_type:{}:{}", object.type_tag, hex::encode(&object.id));
+        let key = format!(
+            "objects_by_type:{}:{}",
+            object.type_tag,
+            hex::encode(&object.id)
+        );
 
         batch.push(WriteBatchOperation::Delete {
             key: key.as_bytes().to_vec(),
@@ -311,8 +326,8 @@ impl<'a> ObjectStore<'a> {
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
-    use tempfile::tempdir;
     use std::collections::HashMap;
+    use tempfile::tempdir;
 
     fn create_test_object_store() -> (tempfile::TempDir, ObjectStore<'static>) {
         let temp_dir = tempdir().unwrap();
@@ -329,12 +344,9 @@ mod tests {
 
         // Create a test object
         let owner = Ownership::Address([1; 32]);
-        let object = object_store.create_object(
-            owner,
-            "TestCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(owner, "TestCoin".to_string(), vec![1, 2, 3, 4], None)
+            .unwrap();
 
         // Retrieve the object
         let retrieved = object_store.get_object(&object.id).unwrap().unwrap();
@@ -347,9 +359,11 @@ mod tests {
         assert!(!object_store.object_exists(&[0; 32]).unwrap());
 
         // Update the object
-        let updated = object_store.update_object(&object.id, |obj| {
-            obj.update_contents(vec![5, 6, 7, 8], obj.updated_at + 1, 1)
-        }).unwrap();
+        let updated = object_store
+            .update_object(&object.id, |obj| {
+                obj.update_contents(vec![5, 6, 7, 8], obj.updated_at + 1, 1)
+            })
+            .unwrap();
 
         assert_eq!(updated.version, 1);
         assert_eq!(updated.contents, vec![5, 6, 7, 8]);
@@ -367,26 +381,32 @@ mod tests {
         let owner2 = [2; 32];
 
         // Create multiple objects
-        let coin1 = object_store.create_object(
-            Ownership::Address(owner1),
-            "Coin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let coin1 = object_store
+            .create_object(
+                Ownership::Address(owner1),
+                "Coin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
-        let coin2 = object_store.create_object(
-            Ownership::Address(owner1),
-            "Coin".to_string(),
-            vec![5, 6, 7, 8],
-            None,
-        ).unwrap();
+        let coin2 = object_store
+            .create_object(
+                Ownership::Address(owner1),
+                "Coin".to_string(),
+                vec![5, 6, 7, 8],
+                None,
+            )
+            .unwrap();
 
-        let nft = object_store.create_object(
-            Ownership::Address(owner2),
-            "NFT".to_string(),
-            vec![9, 10, 11, 12],
-            None,
-        ).unwrap();
+        let nft = object_store
+            .create_object(
+                Ownership::Address(owner2),
+                "NFT".to_string(),
+                vec![9, 10, 11, 12],
+                None,
+            )
+            .unwrap();
 
         // Query by owner
         let owner1_objects = object_store.get_objects_by_owner(&owner1).unwrap();
@@ -419,17 +439,21 @@ mod tests {
         let owner2 = [2; 32];
 
         // Create an owned object
-        let object = object_store.create_object(
-            Ownership::Address(owner1),
-            "Coin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address(owner1),
+                "Coin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Transfer ownership
-        let updated = object_store.update_object(&object.id, |obj| {
-            obj.transfer_ownership(Ownership::Address(owner2), obj.updated_at + 1, 1)
-        }).unwrap();
+        let updated = object_store
+            .update_object(&object.id, |obj| {
+                obj.transfer_ownership(Ownership::Address(owner2), obj.updated_at + 1, 1)
+            })
+            .unwrap();
 
         assert_eq!(updated.version, 1);
         match updated.owner {
@@ -451,12 +475,14 @@ mod tests {
         let (_temp_dir, object_store) = create_test_object_store();
 
         // Create an immutable object
-        let object = object_store.create_object(
-            Ownership::Immutable,
-            "ImmutableCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Immutable,
+                "ImmutableCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Try to update it (should fail)
         let result = object_store.update_object(&object.id, |obj| {
@@ -465,7 +491,7 @@ mod tests {
 
         assert!(result.is_err());
         match result {
-            Err(ObjectStoreError::ObjectError(ObjectError::ImmutableObjectModification(_))) => {},
+            Err(ObjectStoreError::ObjectError(ObjectError::ImmutableObjectModification(_))) => {}
             _ => panic!("Expected ImmutableObjectModification error"),
         }
     }
@@ -479,30 +505,37 @@ mod tests {
         metadata.insert("name".to_string(), "Test Coin".to_string());
         metadata.insert("symbol".to_string(), "TST".to_string());
 
-        let object = object_store.create_object(
-            Ownership::Address([1; 32]),
-            "Coin".to_string(),
-            vec![1, 2, 3, 4],
-            Some(metadata),
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address([1; 32]),
+                "Coin".to_string(),
+                vec![1, 2, 3, 4],
+                Some(metadata),
+            )
+            .unwrap();
 
         // Check metadata
         assert_eq!(object.metadata.get("name"), Some(&"Test Coin".to_string()));
         assert_eq!(object.metadata.get("symbol"), Some(&"TST".to_string()));
 
         // Update metadata
-        let updated = object_store.update_object(&object.id, |obj| {
-            obj.set_metadata(
-                "description".to_string(),
-                "A test coin".to_string(),
-                obj.updated_at + 1,
-                1
-            )
-        }).unwrap();
+        let updated = object_store
+            .update_object(&object.id, |obj| {
+                obj.set_metadata(
+                    "description".to_string(),
+                    "A test coin".to_string(),
+                    obj.updated_at + 1,
+                    1,
+                )
+            })
+            .unwrap();
 
         assert_eq!(updated.version, 1);
         assert_eq!(updated.metadata.get("name"), Some(&"Test Coin".to_string()));
         assert_eq!(updated.metadata.get("symbol"), Some(&"TST".to_string()));
-        assert_eq!(updated.metadata.get("description"), Some(&"A test coin".to_string()));
+        assert_eq!(
+            updated.metadata.get("description"),
+            Some(&"A test coin".to_string())
+        );
     }
 }

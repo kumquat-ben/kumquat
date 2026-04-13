@@ -2,13 +2,13 @@
 extern crate test;
 
 use std::sync::Arc;
-use test::Bencher;
 use tempfile::tempdir;
+use test::Bencher;
 
 use kumquat::storage::{
-    RocksDBStore, BlockStore, TxStore, StateStore, StateManager, BatchOperationManager,
-    Block, TransactionRecord, TransactionStatus, AccountState, AccountType, Schema,
-    RocksDBManager, DatabaseStats,
+    AccountState, AccountType, BatchOperationManager, Block, BlockStore, DatabaseStats,
+    RocksDBManager, RocksDBStore, Schema, StateManager, StateStore, TransactionRecord,
+    TransactionStatus, TxStore,
 };
 
 /// Benchmark for storing a block
@@ -96,8 +96,8 @@ fn bench_store_transaction(b: &mut Bencher) {
         tx_id: [1; 32],
         sender: [2; 32],
         recipient: [3; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+        transfer_token_ids: vec![],
+        fee_token_id: None,
         value: 100,
         gas_price: 1,
         gas_limit: 21000,
@@ -132,8 +132,8 @@ fn bench_get_transaction(b: &mut Bencher) {
         tx_id: [1; 32],
         sender: [2; 32],
         recipient: [3; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+        transfer_token_ids: vec![],
+        fee_token_id: None,
         value: 100,
         gas_price: 1,
         gas_limit: 21000,
@@ -164,7 +164,9 @@ fn bench_update_account_state(b: &mut Bencher) {
 
     // Create a test account
     let address = [1; 32];
-    state_store.create_account(&address, 1000, AccountType::User).unwrap();
+    state_store
+        .create_account(&address, 1000, AccountType::User)
+        .unwrap();
 
     // Benchmark updating the account balance
     b.iter(|| {
@@ -185,7 +187,9 @@ fn bench_calculate_state_root(b: &mut Bencher) {
     for i in 0..100 {
         let mut address = [0; 32];
         address[0] = i;
-        state_store.create_account(&address, i as u64 * 100, AccountType::User).unwrap();
+        state_store
+            .create_account(&address, i as u64 * 100, AccountType::User)
+            .unwrap();
     }
 
     // Benchmark calculating the state root
@@ -206,7 +210,9 @@ fn bench_state_manager_get_account(b: &mut Bencher) {
 
     // Create a test account
     let address = [1; 32];
-    state_manager.create_account(&address, 1000, AccountType::User).unwrap();
+    state_manager
+        .create_account(&address, 1000, AccountType::User)
+        .unwrap();
 
     // Benchmark getting the account state
     b.iter(|| {
@@ -225,13 +231,17 @@ fn bench_state_manager_set_storage(b: &mut Bencher) {
 
     // Create a test account
     let address = [1; 32];
-    state_manager.create_account(&address, 1000, AccountType::Contract).unwrap();
+    state_manager
+        .create_account(&address, 1000, AccountType::Contract)
+        .unwrap();
 
     // Benchmark setting a storage value
     b.iter(|| {
         let key = test::black_box([2; 32]);
         let value = test::black_box(vec![3; 32]);
-        state_manager.set_storage_value(&address, &key, value).unwrap();
+        state_manager
+            .set_storage_value(&address, &key, value)
+            .unwrap();
     });
 }
 
@@ -247,7 +257,9 @@ fn bench_state_manager_apply_block(b: &mut Bencher) {
     let sender = [1; 32];
     let recipient = [2; 32];
 
-    state_manager.create_account(&sender, 1000, AccountType::User).unwrap();
+    state_manager
+        .create_account(&sender, 1000, AccountType::User)
+        .unwrap();
 
     // Create a transaction
     let tx = TransactionRecord {
@@ -339,8 +351,8 @@ fn bench_commit_block(b: &mut Bencher) {
         tx_id: [2; 32],
         sender: [10; 32],
         recipient: [11; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+        transfer_token_ids: vec![],
+        fee_token_id: None,
         value: 100,
         gas_price: 1,
         gas_limit: 21000,
@@ -356,8 +368,8 @@ fn bench_commit_block(b: &mut Bencher) {
         tx_id: [3; 32],
         sender: [12; 32],
         recipient: [13; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+        transfer_token_ids: vec![],
+        fee_token_id: None,
         value: 200,
         gas_price: 1,
         gas_limit: 21000,
@@ -382,10 +394,7 @@ fn bench_commit_block(b: &mut Bencher) {
         account_type: AccountType::User,
     };
 
-    let state_changes = vec![
-        ([10; 32], state1),
-        ([11; 32], state2),
-    ];
+    let state_changes = vec![([10; 32], state1), ([11; 32], state2)];
 
     // Benchmark committing a block with transactions and state changes
     b.iter(|| {
@@ -403,7 +412,9 @@ fn bench_commit_block(b: &mut Bencher) {
         new_tx2.tx_id[0] = test::black_box(new_tx2.tx_id[0].wrapping_add(1));
         new_tx2.block_height = new_block.height;
 
-        batch_manager.commit_block(&new_block, &[new_tx1, new_tx2], &state_changes).unwrap();
+        batch_manager
+            .commit_block(&new_block, &[new_tx1, new_tx2], &state_changes)
+            .unwrap();
     });
 }
 
@@ -416,10 +427,18 @@ fn bench_rocksdb_manager_get_stats(b: &mut Bencher) {
     let manager = RocksDBManager::new(&store);
 
     // Add some data
-    store.put(Schema::block_by_height_key(1).as_bytes(), &[1]).unwrap();
-    store.put(Schema::block_by_height_key(2).as_bytes(), &[2]).unwrap();
-    store.put(Schema::tx_by_hash_key(&[1u8; 32]).as_bytes(), &[3]).unwrap();
-    store.put(Schema::account_state_key(&[2u8; 32]).as_bytes(), &[4]).unwrap();
+    store
+        .put(Schema::block_by_height_key(1).as_bytes(), &[1])
+        .unwrap();
+    store
+        .put(Schema::block_by_height_key(2).as_bytes(), &[2])
+        .unwrap();
+    store
+        .put(Schema::tx_by_hash_key(&[1u8; 32]).as_bytes(), &[3])
+        .unwrap();
+    store
+        .put(Schema::account_state_key(&[2u8; 32]).as_bytes(), &[4])
+        .unwrap();
 
     // Benchmark getting database stats
     b.iter(|| {

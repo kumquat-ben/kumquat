@@ -1,47 +1,47 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
     /// Listen address
     pub listen_addr: String,
-    
+
     /// Listen port
     pub listen_port: u16,
-    
+
     /// External address (for NAT traversal)
     pub external_addr: Option<String>,
-    
+
     /// External port (for NAT traversal)
     pub external_port: Option<u16>,
-    
+
     /// Bootstrap nodes
     pub bootstrap_nodes: Vec<String>,
-    
+
     /// Maximum number of peers
     pub max_peers: usize,
-    
+
     /// Minimum number of peers
     pub min_peers: usize,
-    
+
     /// Peer discovery interval in seconds
     pub discovery_interval: u64,
-    
+
     /// Connection timeout in seconds
     pub connection_timeout: u64,
-    
+
     /// Handshake timeout in seconds
     pub handshake_timeout: u64,
-    
+
     /// Enable UPnP
     pub enable_upnp: bool,
-    
+
     /// Enable NAT-PMP
     pub enable_natpmp: bool,
-    
+
     /// Enable DHT
     pub enable_dht: bool,
-    
+
     /// DHT bootstrap nodes
     pub dht_bootstrap_nodes: Vec<String>,
 }

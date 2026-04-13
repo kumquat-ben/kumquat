@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use sha2::{Sha256, Digest};
 use array_init::array_init;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::storage::block_store::Hash;
 
@@ -48,7 +48,10 @@ impl Node {
 
     /// Create a new extension node
     pub fn extension(key: Vec<u8>, child: Node) -> Self {
-        Node::Extension { key, child: Box::new(child) }
+        Node::Extension {
+            key,
+            child: Box::new(child),
+        }
     }
 
     /// Create a new branch node
@@ -77,7 +80,7 @@ impl Node {
                 let mut hasher = Sha256::new();
                 hasher.update(b"empty");
                 hasher.finalize().into()
-            },
+            }
             Node::Leaf { key, value } => {
                 let mut hasher = Sha256::new();
                 hasher.update(b"leaf");
@@ -86,7 +89,7 @@ impl Node {
                 hasher.update(&[value.len() as u8]);
                 hasher.update(value);
                 hasher.finalize().into()
-            },
+            }
             Node::Extension { key, child } => {
                 let mut hasher = Sha256::new();
                 hasher.update(b"extension");
@@ -94,7 +97,7 @@ impl Node {
                 hasher.update(key);
                 hasher.update(&child.hash());
                 hasher.finalize().into()
-            },
+            }
             Node::Branch { children, value } => {
                 let mut hasher = Sha256::new();
                 hasher.update(b"branch");
@@ -117,7 +120,7 @@ impl Node {
                 }
 
                 hasher.finalize().into()
-            },
+            }
         }
     }
 
@@ -151,9 +154,7 @@ impl Node {
     /// Get a child of a branch node
     pub fn branch_child(&self, index: usize) -> Option<&Node> {
         match self {
-            Node::Branch { children, .. } if index < 16 => {
-                children[index].as_ref().map(|c| &**c)
-            },
+            Node::Branch { children, .. } if index < 16 => children[index].as_ref().map(|c| &**c),
             _ => None,
         }
     }

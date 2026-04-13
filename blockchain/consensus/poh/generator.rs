@@ -1,12 +1,12 @@
+use log::{error, info, trace};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time;
-use log::{error, info, trace};
 
+use crate::consensus::config::ConsensusConfig;
 use crate::crypto::hash::sha256;
 use crate::storage::poh_store::{PoHEntry, PoHStore};
-use crate::consensus::config::ConsensusConfig;
 
 /// Generator for Proof of History sequence
 pub struct PoHGenerator {
@@ -180,12 +180,12 @@ impl PoHGenerator {
             if let Err(e) = tx.try_send(entry.clone()) {
                 match e {
                     tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                    // Channel is full, this is not critical
-                    trace!("PoH entry channel is full, dropping entry");
-                    },
+                        // Channel is full, this is not critical
+                        trace!("PoH entry channel is full, dropping entry");
+                    }
                     tokio::sync::mpsc::error::TrySendError::Closed(_) => {
-                    // Channel is closed, this is more serious
-                    error!("Failed to send PoH entry: {}", e);
+                        // Channel is closed, this is more serious
+                        error!("Failed to send PoH entry: {}", e);
                     }
                 }
             }
@@ -198,21 +198,19 @@ impl PoHGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
     use std::time::Duration;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_poh_generator() {
         // Create a config with a low tick rate for testing
-        let config = ConsensusConfig::default()
-            .with_poh_tick_rate(10); // 10 Hz
+        let config = ConsensusConfig::default().with_poh_tick_rate(10); // 10 Hz
 
         // Create a channel for PoH entries
         let (tx, mut rx) = mpsc::channel(100);
 
         // Create a PoH generator
-        let mut generator = PoHGenerator::new(&config)
-            .with_channel(tx);
+        let mut generator = PoHGenerator::new(&config).with_channel(tx);
 
         // Start the generator
         generator.start().await;
@@ -233,7 +231,7 @@ mod tests {
 
         // Check that the sequence numbers are increasing
         for i in 1..entries.len() {
-            assert!(entries[i].sequence > entries[i-1].sequence);
+            assert!(entries[i].sequence > entries[i - 1].sequence);
         }
     }
 

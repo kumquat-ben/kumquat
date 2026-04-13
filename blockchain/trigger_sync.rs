@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use std::path::Path;
 use kumquat::network::peer::broadcaster::PeerBroadcaster;
 use kumquat::network::peer::registry::PeerRegistry;
 use kumquat::network::sync::sync_service::SyncService;
-use kumquat::storage::RocksDBStore;
 use kumquat::storage::block_store::BlockStore;
+use kumquat::storage::RocksDBStore;
+use std::path::Path;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -20,17 +20,15 @@ async fn main() {
     let broadcaster = Arc::new(PeerBroadcaster::new());
 
     // Create a RocksDB store with 'static lifetime
-    let kv_store = Box::leak(Box::new(RocksDBStore::new(Path::new("./data/kumquat/db")).expect("Failed to open RocksDB")));
+    let kv_store = Box::leak(Box::new(
+        RocksDBStore::new(Path::new("./data/kumquat/db")).expect("Failed to open RocksDB"),
+    ));
 
     // Create a block store
     let block_store = Arc::new(BlockStore::new(kv_store));
 
     // Create a sync service
-    let sync_service = SyncService::new(
-        block_store,
-        peer_registry.clone(),
-        broadcaster.clone(),
-    );
+    let sync_service = SyncService::new(block_store, peer_registry.clone(), broadcaster.clone());
 
     // Start the sync service
     match sync_service.start().await {

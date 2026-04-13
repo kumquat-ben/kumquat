@@ -1,14 +1,14 @@
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use log::{debug, error, info, warn};
 
+use crate::crypto::signer::VibeSignature;
 use crate::mempool::{Mempool, MempoolError};
-use crate::storage::tx_store::TransactionRecord;
-use crate::network::types::message::NetMessage;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::reputation::{ReputationSystem, ReputationEvent};
-use crate::crypto::signer::VibeSignature;
+use crate::network::peer::reputation::{ReputationEvent, ReputationSystem};
+use crate::network::types::message::NetMessage;
+use crate::storage::tx_store::TransactionRecord;
 
 /// Integration between the network module and the mempool
 pub struct MempoolIntegration {
@@ -64,8 +64,15 @@ impl MempoolIntegration {
     }
 
     /// Handle a transaction from the network
-    pub async fn handle_transaction(&self, tx: crate::storage::tx_store::TransactionRecord, source_peer: &str) -> Result<(), MempoolError> {
-        debug!("Handling transaction from peer {}: {:?}", source_peer, tx.tx_id);
+    pub async fn handle_transaction(
+        &self,
+        tx: crate::storage::tx_store::TransactionRecord,
+        source_peer: &str,
+    ) -> Result<(), MempoolError> {
+        debug!(
+            "Handling transaction from peer {}: {:?}",
+            source_peer, tx.tx_id
+        );
 
         // Convert to mempool transaction record
         let mempool_tx = crate::mempool::types::TransactionRecord {
@@ -97,9 +104,12 @@ impl MempoolIntegration {
                 self.broadcast_transaction(tx, source_peer).await;
 
                 Ok(())
-            },
+            }
             Err(e @ MempoolError::DuplicateTransaction) => {
-                debug!("Duplicate transaction from peer {}: {:?}", source_peer, tx.tx_id);
+                debug!(
+                    "Duplicate transaction from peer {}: {:?}",
+                    source_peer, tx.tx_id
+                );
 
                 // Update peer reputation (duplicate data)
                 if let Some(reputation) = &self.reputation {
@@ -107,7 +117,7 @@ impl MempoolIntegration {
                 }
 
                 Err(e)
-            },
+            }
             Err(e) => {
                 warn!("Failed to add transaction to mempool: {:?}", e);
 
@@ -122,14 +132,19 @@ impl MempoolIntegration {
     }
 
     /// Broadcast a transaction to other peers
-    async fn broadcast_transaction(&self, tx: crate::storage::tx_store::TransactionRecord, source_peer: &str) {
-        match self.broadcaster.broadcast_except(
-            NetMessage::NewTransaction(tx),
-            source_peer,
-        ).await {
+    async fn broadcast_transaction(
+        &self,
+        tx: crate::storage::tx_store::TransactionRecord,
+        source_peer: &str,
+    ) {
+        match self
+            .broadcaster
+            .broadcast_except(NetMessage::NewTransaction(tx), source_peer)
+            .await
+        {
             Ok(_) => {
                 debug!("Transaction broadcast to peers");
-            },
+            }
             Err(e) => {
                 error!("Failed to broadcast transaction: {:?}", e);
             }
@@ -140,7 +155,7 @@ impl MempoolIntegration {
     pub async fn start_mempool_listener(&mut self) -> Result<(), String> {
         // Check if we have a subscription channel
         match &self.tx_subscription {
-            Some(_) => {},
+            Some(_) => {}
             None => return Err("No transaction subscription channel".to_string()),
         };
 
@@ -207,7 +222,7 @@ impl MempoolIntegration {
                     // Broadcast to all peers
                     broadcaster.broadcast(NetMessage::NewTransaction(tx)).await;
                     debug!("Transaction broadcast to peers");
-                },
+                }
                 None => {
                     warn!("Transaction subscription channel closed");
                     break;
@@ -238,11 +253,7 @@ mod tests {
         let peer_registry = Arc::new(PeerRegistry::new());
 
         // Create integration
-        let integration = MempoolIntegration::new(
-            mempool.clone(),
-            broadcaster,
-            peer_registry,
-        );
+        let integration = MempoolIntegration::new(mempool.clone(), broadcaster, peer_registry);
 
         // Create a transaction
         let tx = TransactionRecord {

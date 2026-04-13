@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use log::error;
+use std::sync::Arc;
 
-use crate::storage::tx_store::{TransactionRecord, TxStore};
-use crate::storage::state_store::StateStore;
 use crate::crypto::keys::VibePublicKey;
 use crate::crypto::signer::VibeSignature;
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::{TransactionRecord, TxStore};
 // use crate::mempool::types::TransactionRecord as MempoolTransactionRecord;
 
 /// Result of transaction validation
@@ -31,10 +31,7 @@ pub struct TransactionValidator<'a> {
 
 impl<'a> TransactionValidator<'a> {
     /// Create a new transaction validator
-    pub fn new(
-        tx_store: Arc<TxStore<'a>>,
-        state_store: Arc<StateStore<'a>>,
-    ) -> Self {
+    pub fn new(tx_store: Arc<TxStore<'a>>, state_store: Arc<StateStore<'a>>) -> Self {
         Self {
             tx_store,
             state_store,
@@ -115,7 +112,7 @@ impl<'a> TransactionValidator<'a> {
             Ok(pubkey) => {
                 // Verify the signature using the crypto module
                 crate::crypto::signer::verify_signature(&tx_data, signature, &pubkey)
-            },
+            }
             Err(e) => {
                 error!("Failed to convert public key: {:?}", e);
                 false
@@ -143,7 +140,11 @@ impl<'a> TransactionValidator<'a> {
         }
 
         if let Some(fee_token_id) = tx.fee_token_id {
-            if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+            if tx
+                .transfer_token_ids
+                .iter()
+                .any(|token_id| *token_id == fee_token_id)
+            {
                 return false;
             }
 
@@ -178,9 +179,9 @@ impl<'a> TransactionValidator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::keys::VibeKeypair;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::{AccountType, TransactionStatus};
-    use crate::crypto::keys::VibeKeypair;
     use tempfile::tempdir;
 
     #[test]
@@ -194,10 +195,7 @@ mod tests {
         let state_store = Arc::new(StateStore::new(&kv_store));
 
         // Create a validator
-        let validator = TransactionValidator::new(
-            tx_store.clone(),
-            state_store.clone(),
-        );
+        let validator = TransactionValidator::new(tx_store.clone(), state_store.clone());
 
         // Create a keypair
         let keypair = VibeKeypair::generate();
@@ -205,7 +203,9 @@ mod tests {
 
         // Create an account with some balance
         let address = keypair.address();
-        state_store.create_account(&address, 1000, AccountType::User).unwrap();
+        state_store
+            .create_account(&address, 1000, AccountType::User)
+            .unwrap();
 
         // Create a transaction
         let tx = TransactionRecord {

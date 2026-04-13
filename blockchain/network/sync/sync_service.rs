@@ -1,17 +1,17 @@
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
-use log::{debug, error, info, warn};
 
-use crate::storage::block_store::{Block, BlockStore};
-use crate::network::types::message::NetMessage;
-use crate::network::peer::broadcaster::PeerBroadcaster;
-use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
-use crate::network::peer::reputation::{ReputationSystem, ReputationEvent};
 use crate::network::events::event_bus::EventBus;
 use crate::network::events::event_types::{NetworkEvent, SyncResult};
+use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
+use crate::network::peer::broadcaster::PeerBroadcaster;
+use crate::network::peer::registry::PeerRegistry;
+use crate::network::peer::reputation::{ReputationEvent, ReputationSystem};
 use crate::network::service::advanced_router::SyncRequest;
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::{Block, BlockStore};
 
 /// Sync error
 #[derive(Debug, thiserror::Error)]
@@ -240,7 +240,9 @@ impl SyncService {
                     reputation.clone(),
                     advanced_registry.clone(),
                     &config,
-                ).await {
+                )
+                .await
+                {
                     warn!("Sync failed: {}", e);
                 }
             }
@@ -270,7 +272,9 @@ impl SyncService {
                         reputation.clone(),
                         advanced_registry.clone(),
                         &config,
-                    ).await {
+                    )
+                    .await
+                    {
                         warn!("Sync failed: {}", e);
                     }
                 }
@@ -301,7 +305,10 @@ impl SyncService {
                 } {
                     match block_rx.recv().await {
                         Some((block, peer_id)) => {
-                            debug!("Received block from peer {}: height={}", peer_id, block.height);
+                            debug!(
+                                "Received block from peer {}: height={}",
+                                peer_id, block.height
+                            );
 
                             // Store the block
                             let _ = block_store.put_block(&block);
@@ -330,7 +337,9 @@ impl SyncService {
                                                 error: None,
                                             };
 
-                                            event_bus.publish(NetworkEvent::SyncCompleted(result)).await;
+                                            event_bus
+                                                .publish(NetworkEvent::SyncCompleted(result))
+                                                .await;
                                         }
                                     }
                                 }
@@ -340,7 +349,7 @@ impl SyncService {
                             if let Some(reputation) = &reputation {
                                 reputation.update_score(&peer_id, ReputationEvent::GoodBlock);
                             }
-                        },
+                        }
                         None => {
                             warn!("Block response channel closed");
                             break;
@@ -408,7 +417,9 @@ impl SyncService {
                                                     error: None,
                                                 };
 
-                                                event_bus.publish(NetworkEvent::SyncCompleted(result)).await;
+                                                event_bus
+                                                    .publish(NetworkEvent::SyncCompleted(result))
+                                                    .await;
                                             }
                                         }
                                     }
@@ -419,7 +430,7 @@ impl SyncService {
                             if let Some(reputation) = &reputation {
                                 reputation.update_score(&peer_id, ReputationEvent::GoodBlock);
                             }
-                        },
+                        }
                         None => {
                             warn!("Block range response channel closed");
                             break;
@@ -474,10 +485,13 @@ impl SyncService {
         };
 
         // Request the latest block from the peer
-        match broadcaster.send_to_peer(
-            &sync_peer,
-            NetMessage::RequestBlock(u64::MAX), // Special value to request the latest block
-        ).await {
+        match broadcaster
+            .send_to_peer(
+                &sync_peer,
+                NetMessage::RequestBlock(u64::MAX), // Special value to request the latest block
+            )
+            .await
+        {
             Ok(true) => {
                 debug!("Requested latest block from peer {}", sync_peer);
 
@@ -495,10 +509,12 @@ impl SyncService {
 
                 // Publish sync requested event
                 if let Some(event_bus) = &event_bus {
-                    event_bus.publish(NetworkEvent::SyncRequested(
-                        SyncRequest::GetLatestBlock,
-                        sync_peer.clone(),
-                    )).await;
+                    event_bus
+                        .publish(NetworkEvent::SyncRequested(
+                            SyncRequest::GetLatestBlock,
+                            sync_peer.clone(),
+                        ))
+                        .await;
                 }
 
                 Ok(())
@@ -533,7 +549,10 @@ impl SyncService {
 
         // Check if we're already at or beyond the target height
         if current_height >= target_height {
-            debug!("Already at or beyond target height: {} >= {}", current_height, target_height);
+            debug!(
+                "Already at or beyond target height: {} >= {}",
+                current_height, target_height
+            );
             return Ok(());
         }
 
@@ -560,12 +579,22 @@ impl SyncService {
         let start_height = current_height + 1;
         let end_height = target_height;
 
-        match self.broadcaster.send_to_peer(
-            &sync_peer,
-            NetMessage::RequestBlockRange { start_height, end_height },
-        ).await? {
+        match self
+            .broadcaster
+            .send_to_peer(
+                &sync_peer,
+                NetMessage::RequestBlockRange {
+                    start_height,
+                    end_height,
+                },
+            )
+            .await?
+        {
             true => {
-                info!("Requested blocks {}..{} from peer {}", start_height, end_height, sync_peer);
+                info!(
+                    "Requested blocks {}..{} from peer {}",
+                    start_height, end_height, sync_peer
+                );
 
                 // Update sync state
                 {
@@ -581,10 +610,12 @@ impl SyncService {
 
                 // Publish sync requested event
                 if let Some(event_bus) = &self.event_bus {
-                    event_bus.publish(NetworkEvent::SyncRequested(
-                        SyncRequest::GetBlocks(start_height, end_height),
-                        sync_peer.clone(),
-                    )).await;
+                    event_bus
+                        .publish(NetworkEvent::SyncRequested(
+                            SyncRequest::GetBlocks(start_height, end_height),
+                            sync_peer.clone(),
+                        ))
+                        .await;
                 }
 
                 Ok(())
@@ -599,7 +630,6 @@ impl SyncService {
 
                 Err(format!("Failed to send request to peer {}", sync_peer))
             }
-
         }
     }
 

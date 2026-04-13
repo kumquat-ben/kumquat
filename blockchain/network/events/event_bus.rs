@@ -1,7 +1,7 @@
+use log::error;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use log::error;
 
 use crate::network::events::event_types::{EventType, NetworkEvent};
 
@@ -57,7 +57,10 @@ impl EventBus {
         // Add the subscriber
         {
             let mut subscribers = self.subscribers.write().await;
-            subscribers.entry(event_type).or_insert_with(Vec::new).push(tx);
+            subscribers
+                .entry(event_type)
+                .or_insert_with(Vec::new)
+                .push(tx);
         }
 
         rx
@@ -132,7 +135,7 @@ mod tests {
             NetworkEvent::BlockReceived(block, peer_id) => {
                 assert_eq!(block.height, 1);
                 assert_eq!(peer_id, "peer1");
-            },
+            }
             _ => panic!("Expected BlockReceived event"),
         }
 
@@ -140,7 +143,7 @@ mod tests {
             NetworkEvent::BlockReceived(block, peer_id) => {
                 assert_eq!(block.height, 1);
                 assert_eq!(peer_id, "peer1");
-            },
+            }
             _ => panic!("Expected BlockReceived event"),
         }
     }

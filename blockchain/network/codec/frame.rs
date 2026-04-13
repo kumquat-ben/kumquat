@@ -1,8 +1,8 @@
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::io;
 use std::marker::Unpin;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 /// Maximum message size in bytes
 const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024; // 10 MB
@@ -73,15 +73,21 @@ impl<W: AsyncWrite + Unpin> FramedWriter<W> {
         }
 
         // Write the message length
-        self.writer.write_u32(data.len() as u32).await
+        self.writer
+            .write_u32(data.len() as u32)
+            .await
             .map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
 
         // Write the message data
-        self.writer.write_all(&data).await
+        self.writer
+            .write_all(&data)
+            .await
             .map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
 
         // Flush the writer
-        self.writer.flush().await
+        self.writer
+            .flush()
+            .await
             .map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
 
         Ok(())
@@ -91,7 +97,7 @@ impl<W: AsyncWrite + Unpin> FramedWriter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
     use tokio::io::duplex;
 
     #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -136,9 +142,18 @@ mod tests {
 
         // Create test messages
         let messages = vec![
-            TestMessage { id: 1, data: "First".to_string() },
-            TestMessage { id: 2, data: "Second".to_string() },
-            TestMessage { id: 3, data: "Third".to_string() },
+            TestMessage {
+                id: 1,
+                data: "First".to_string(),
+            },
+            TestMessage {
+                id: 2,
+                data: "Second".to_string(),
+            },
+            TestMessage {
+                id: 3,
+                data: "Third".to_string(),
+            },
         ];
 
         // Write the messages

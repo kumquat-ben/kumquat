@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, RwLock};
 use log::{debug, error, info, warn};
+use tokio::sync::{mpsc, RwLock};
 
-use crate::storage::block_store::BlockStore;
-use crate::network::types::message::NetMessage;
+use crate::network::events::event_bus::EventBus;
+use crate::network::events::event_types::{EventType, NetworkEvent};
+use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
-use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
 use crate::network::peer::reputation::ReputationSystem;
-use crate::network::events::event_bus::EventBus;
-use crate::network::events::event_types::{NetworkEvent, EventType};
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::BlockStore;
 
 use crate::network::sync::sync_service::{SyncService, SyncState};
 
@@ -145,13 +145,8 @@ impl SyncManager {
             let checkpoints = self.checkpoints.clone();
 
             tokio::spawn(async move {
-                Self::handle_sync_events(
-                    sync_rx,
-                    running,
-                    sync_service,
-                    strategy,
-                    checkpoints,
-                ).await;
+                Self::handle_sync_events(sync_rx, running, sync_service, strategy, checkpoints)
+                    .await;
             });
         }
 
@@ -159,13 +154,13 @@ impl SyncManager {
         match self.strategy {
             SyncStrategy::FullSync => {
                 self.start_full_sync().await?;
-            },
+            }
             SyncStrategy::FastSync => {
                 self.start_fast_sync().await?;
-            },
+            }
             SyncStrategy::IncrementalSync => {
                 // Incremental sync is handled by the sync service
-            },
+            }
         }
 
         Ok(())
@@ -239,21 +234,28 @@ impl SyncManager {
         };
 
         // Request the latest block from the peer
-        match self.broadcaster.send_to_peer(
-            &sync_peer,
-            NetMessage::RequestBlock(u64::MAX), // Special value to request the latest block
-        ).await {
+        match self
+            .broadcaster
+            .send_to_peer(
+                &sync_peer,
+                NetMessage::RequestBlock(u64::MAX), // Special value to request the latest block
+            )
+            .await
+        {
             Ok(true) => {
                 debug!("Requested latest block from peer {}", sync_peer);
 
                 // In a real implementation, we would wait for the response
                 // For now, just return a placeholder value
                 Ok(1000)
-            },
+            }
             Ok(false) => {
                 error!("Failed to request latest block from peer {}", sync_peer);
-                Err(format!("Failed to request latest block from peer {}", sync_peer))
-            },
+                Err(format!(
+                    "Failed to request latest block from peer {}",
+                    sync_peer
+                ))
+            }
             Err(e) => {
                 error!("Error sending request to peer {}: {}", sync_peer, e);
                 Err(e.to_string())
@@ -280,24 +282,26 @@ impl SyncManager {
                     match event {
                         NetworkEvent::SyncRequested(request, peer_id) => {
                             debug!("Sync requested: {:?} from peer {}", request, peer_id);
-                        },
+                        }
                         NetworkEvent::SyncCompleted(result) => {
                             info!("Sync completed: {:?}", result);
 
                             // If we're doing a full or fast sync, we might need to continue
-                            if strategy == SyncStrategy::FullSync || strategy == SyncStrategy::FastSync {
+                            if strategy == SyncStrategy::FullSync
+                                || strategy == SyncStrategy::FastSync
+                            {
                                 if result.success {
                                     // Check if we've reached the target height
                                     // In a real implementation, we would check if we've reached
                                     // the latest network height
                                 }
                             }
-                        },
+                        }
                         _ => {
                             // Ignore other events
                         }
                     }
-                },
+                }
                 None => {
                     warn!("Sync event channel closed");
                     break;

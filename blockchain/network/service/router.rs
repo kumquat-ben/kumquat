@@ -1,7 +1,7 @@
+use log::{debug, error};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use log::{debug, error};
 
 use crate::network::types::message::NetMessage;
 
@@ -92,7 +92,8 @@ impl MessageRouter {
                     false
                 }
             }
-        }).await;
+        })
+        .await;
 
         rx
     }
@@ -112,14 +113,16 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(10);
 
         // Register a handler
-        router.register_handler("handshake", move |node_id, message| {
-            if let NetMessage::Handshake(info) = message {
-                let _ = tx.try_send((node_id, info));
-                true
-            } else {
-                false
-            }
-        }).await;
+        router
+            .register_handler("handshake", move |node_id, message| {
+                if let NetMessage::Handshake(info) = message {
+                    let _ = tx.try_send((node_id, info));
+                    true
+                } else {
+                    false
+                }
+            })
+            .await;
 
         // Create a test message
         let node_info = NodeInfo::new(
@@ -131,7 +134,9 @@ mod tests {
         let message = NetMessage::Handshake(node_info.clone());
 
         // Route the message
-        router.route_message("sender-node".to_string(), message).await;
+        router
+            .route_message("sender-node".to_string(), message)
+            .await;
 
         // Check that the handler was called
         let (received_node_id, received_info) = rx.try_recv().unwrap();
@@ -157,7 +162,9 @@ mod tests {
         let message = NetMessage::Handshake(node_info);
 
         // Route the message
-        router.route_message("sender-node".to_string(), message.clone()).await;
+        router
+            .route_message("sender-node".to_string(), message.clone())
+            .await;
 
         // Check that we received the message
         let received = rx.try_recv().unwrap();

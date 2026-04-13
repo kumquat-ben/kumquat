@@ -4,10 +4,10 @@
 //! including account states, global state, and state transitions. It provides a clear
 //! abstraction layer for representing and manipulating blockchain state.
 
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use serde::{Serialize, Deserialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Error type for state operations
@@ -282,7 +282,13 @@ impl AccountState {
             metadata: HashMap::new(),
             tokens: Vec::new(),
         };
-        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
+            .remint_tokens_from_balance(
+                [0; 32],
+                block_height,
+                TokenMintSource::LegacyBalanceBootstrap,
+            )
+            .expect("balance decomposition should always succeed");
         account
     }
 
@@ -300,7 +306,13 @@ impl AccountState {
             metadata: HashMap::new(),
             tokens: Vec::new(),
         };
-        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
+            .remint_tokens_from_balance(
+                [0; 32],
+                block_height,
+                TokenMintSource::LegacyBalanceBootstrap,
+            )
+            .expect("balance decomposition should always succeed");
         account
     }
 
@@ -318,7 +330,13 @@ impl AccountState {
             metadata: HashMap::new(),
             tokens: Vec::new(),
         };
-        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
+            .remint_tokens_from_balance(
+                [0; 32],
+                block_height,
+                TokenMintSource::LegacyBalanceBootstrap,
+            )
+            .expect("balance decomposition should always succeed");
         account
     }
 
@@ -336,7 +354,13 @@ impl AccountState {
             metadata: HashMap::new(),
             tokens: Vec::new(),
         };
-        account.remint_tokens_from_balance([0; 32], block_height, TokenMintSource::LegacyBalanceBootstrap).expect("balance decomposition should always succeed");
+        account
+            .remint_tokens_from_balance(
+                [0; 32],
+                block_height,
+                TokenMintSource::LegacyBalanceBootstrap,
+            )
+            .expect("balance decomposition should always succeed");
         account
     }
 
@@ -379,20 +403,33 @@ impl AccountState {
 
     /// Add balance to the account
     pub fn add_balance(&mut self, amount: u64) -> StateResult<()> {
-        let new_total = self.total_token_value().checked_add(amount)
+        let new_total = self
+            .total_token_value()
+            .checked_add(amount)
             .ok_or_else(|| StateError::Other("Balance overflow".to_string()))?;
         self.balance = new_total;
-        self.remint_tokens_from_balance(self.current_owner(), self.last_updated, TokenMintSource::TransferChange)
+        self.remint_tokens_from_balance(
+            self.current_owner(),
+            self.last_updated,
+            TokenMintSource::TransferChange,
+        )
     }
 
     /// Subtract balance from the account
     pub fn subtract_balance(&mut self, amount: u64) -> StateResult<()> {
         if !self.has_sufficient_balance(amount) {
-            return Err(StateError::InsufficientBalance(amount, self.total_token_value()));
+            return Err(StateError::InsufficientBalance(
+                amount,
+                self.total_token_value(),
+            ));
         }
         let new_total = self.total_token_value() - amount;
         self.balance = new_total;
-        self.remint_tokens_from_balance(self.current_owner(), self.last_updated, TokenMintSource::TransferChange)
+        self.remint_tokens_from_balance(
+            self.current_owner(),
+            self.last_updated,
+            TokenMintSource::TransferChange,
+        )
     }
 
     pub fn total_token_value(&self) -> AmountCents {
@@ -404,7 +441,10 @@ impl AccountState {
     }
 
     pub fn current_owner(&self) -> [u8; 32] {
-        self.tokens.first().map(|token| token.owner).unwrap_or([0; 32])
+        self.tokens
+            .first()
+            .map(|token| token.owner)
+            .unwrap_or([0; 32])
     }
 
     pub fn assign_token_owner(&mut self, owner: [u8; 32]) {
@@ -451,7 +491,9 @@ impl AccountState {
     ) -> StateResult<Vec<DenominationToken>> {
         let requested_ids: HashSet<[u8; 32]> = token_ids.iter().copied().collect();
         if requested_ids.len() != token_ids.len() {
-            return Err(StateError::Other("duplicate token ids in request".to_string()));
+            return Err(StateError::Other(
+                "duplicate token ids in request".to_string(),
+            ));
         }
 
         let mut retained = Vec::with_capacity(self.tokens.len());
@@ -466,7 +508,9 @@ impl AccountState {
         }
 
         if removed.len() != token_ids.len() {
-            return Err(StateError::Other("account does not own all requested token ids".to_string()));
+            return Err(StateError::Other(
+                "account does not own all requested token ids".to_string(),
+            ));
         }
 
         self.tokens = retained;
@@ -531,14 +575,16 @@ impl AccountState {
     /// Add a delegation (for validator accounts)
     pub fn add_delegation(&mut self, delegator: [u8; 32], amount: u64) -> StateResult<()> {
         if self.account_type != AccountType::Validator {
-            return Err(StateError::InvalidAccount(
-                format!("Cannot add delegation to non-validator account: {}", self.account_type)
-            ));
+            return Err(StateError::InvalidAccount(format!(
+                "Cannot add delegation to non-validator account: {}",
+                self.account_type
+            )));
         }
 
         let delegations = self.delegations.get_or_insert_with(HashMap::new);
         let current_amount = delegations.get(&delegator).copied().unwrap_or(0);
-        let new_amount = current_amount.checked_add(amount)
+        let new_amount = current_amount
+            .checked_add(amount)
             .ok_or_else(|| StateError::Other("Delegation amount overflow".to_string()))?;
 
         delegations.insert(delegator, new_amount);
@@ -548,9 +594,10 @@ impl AccountState {
     /// Remove a delegation (for validator accounts)
     pub fn remove_delegation(&mut self, delegator: &[u8; 32], amount: u64) -> StateResult<()> {
         if self.account_type != AccountType::Validator {
-            return Err(StateError::InvalidAccount(
-                format!("Cannot remove delegation from non-validator account: {}", self.account_type)
-            ));
+            return Err(StateError::InvalidAccount(format!(
+                "Cannot remove delegation from non-validator account: {}",
+                self.account_type
+            )));
         }
 
         let delegations = match &mut self.delegations {
@@ -560,7 +607,12 @@ impl AccountState {
 
         let current_amount = match delegations.get(delegator) {
             Some(a) => *a,
-            None => return Err(StateError::Other(format!("No delegation found for {:?}", delegator))),
+            None => {
+                return Err(StateError::Other(format!(
+                    "No delegation found for {:?}",
+                    delegator
+                )))
+            }
         };
 
         if current_amount < amount {
@@ -779,7 +831,7 @@ impl Default for ChainParameters {
             staking_reward_rate: 0.05, // 5% annual
             min_stake_amount: 1000,
             max_validators: 100,
-            block_time_target: 10, // 10 seconds
+            block_time_target: 10,              // 10 seconds
             difficulty_adjustment_period: 2016, // ~2 weeks with 10-second blocks
         }
     }
@@ -978,7 +1030,10 @@ mod tests {
         assert_eq!(state_root.root_hash, root_hash);
         assert_eq!(state_root.block_height, 100);
         assert_eq!(state_root.timestamp, 12345);
-        assert_eq!(state_root.root_hash_hex(), "0101010101010101010101010101010101010101010101010101010101010101");
+        assert_eq!(
+            state_root.root_hash_hex(),
+            "0101010101010101010101010101010101010101010101010101010101010101"
+        );
     }
 
     #[test]
@@ -1012,8 +1067,14 @@ mod tests {
 
         // Test getter methods
         assert_eq!(global_state.get_block_reward(), chain_params.block_reward);
-        assert_eq!(global_state.get_transaction_fee(), chain_params.transaction_fee);
-        assert_eq!(global_state.get_staking_reward_rate(), chain_params.staking_reward_rate);
+        assert_eq!(
+            global_state.get_transaction_fee(),
+            chain_params.transaction_fee
+        );
+        assert_eq!(
+            global_state.get_staking_reward_rate(),
+            chain_params.staking_reward_rate
+        );
     }
 
     #[test]

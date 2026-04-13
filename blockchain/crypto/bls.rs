@@ -1,10 +1,10 @@
-use blst::min_pk::{SecretKey, PublicKey, Signature};
-use blst::{BLST_ERROR, Pairing};
+use blst::min_pk::{PublicKey, SecretKey, Signature};
+use blst::{Pairing, BLST_ERROR};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Serialize, Deserialize};
-use std::fmt;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+use std::fmt;
 
 /// BLS keypair for signing and verification
 pub struct BlsKeypair {
@@ -238,7 +238,8 @@ mod tests {
             keypair1.public.clone(),
             keypair2.public.clone(),
             keypair3.public.clone(),
-        ]).unwrap();
+        ])
+        .unwrap();
 
         // Verify the aggregate signature with the aggregate public key
         assert!(agg_sig.verify(message, &agg_pk));

@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use log::{debug, error, info, warn};
+use std::sync::Arc;
 
-use crate::storage::tx_store::{TransactionRecord, TxStore};
 use crate::mempool::{Mempool, MempoolError};
-use crate::network::types::message::NetMessage;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
+use crate::network::types::message::NetMessage;
+use crate::storage::tx_store::{TransactionRecord, TxStore};
 
 /// Error types for transaction handler
 #[derive(Debug, thiserror::Error)]
@@ -73,8 +73,15 @@ impl TransactionHandler {
     }
 
     /// Handle a transaction message
-    pub async fn handle(&self, tx: TransactionRecord, source_peer: &str) -> Result<(), HandlerError> {
-        debug!("Handling transaction from peer {}: {:?}", source_peer, tx.tx_id);
+    pub async fn handle(
+        &self,
+        tx: TransactionRecord,
+        source_peer: &str,
+    ) -> Result<(), HandlerError> {
+        debug!(
+            "Handling transaction from peer {}: {:?}",
+            source_peer, tx.tx_id
+        );
 
         // Check if transaction already exists in the store
         if let Some(tx_store) = &self.tx_store {
@@ -112,11 +119,11 @@ impl TransactionHandler {
                 self.update_peer_reputation(source_peer, true).await;
 
                 Ok(())
-            },
+            }
             Err(MempoolError::DuplicateTransaction) => {
                 debug!("Duplicate transaction: {:?}", tx.tx_id);
                 Err(HandlerError::DuplicateTransaction)
-            },
+            }
             Err(e) => {
                 warn!("Failed to add transaction to mempool: {:?}", e);
 
@@ -129,15 +136,23 @@ impl TransactionHandler {
     }
 
     /// Broadcast a transaction to other peers
-    async fn broadcast_transaction(&self, tx: TransactionRecord, source_peer: &str) -> Result<(), HandlerError> {
-        match self.broadcaster.broadcast_except(
-            NetMessage::NewTransaction(tx),
-            source_peer,
-        ).await {
+    async fn broadcast_transaction(
+        &self,
+        tx: TransactionRecord,
+        source_peer: &str,
+    ) -> Result<(), HandlerError> {
+        match self
+            .broadcaster
+            .broadcast_except(NetMessage::NewTransaction(tx), source_peer)
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 error!("Failed to broadcast transaction: {:?}", e);
-                Err(HandlerError::NetworkError(format!("Broadcast failed: {}", e)))
+                Err(HandlerError::NetworkError(format!(
+                    "Broadcast failed: {}",
+                    e
+                )))
             }
         }
     }
@@ -167,11 +182,7 @@ mod tests {
         let peer_registry = Arc::new(PeerRegistry::new());
 
         // Create handler
-        let handler = TransactionHandler::new(
-            mempool.clone(),
-            broadcaster,
-            peer_registry,
-        );
+        let handler = TransactionHandler::new(mempool.clone(), broadcaster, peer_registry);
 
         // Create a transaction
         let tx = TransactionRecord {

@@ -3,14 +3,13 @@
 //! This module provides functionality for validating state transitions,
 //! ensuring that all changes to the blockchain state follow the protocol rules.
 
+use log::error;
 use std::collections::HashMap;
 use thiserror::Error;
-use log::error;
 
 use crate::storage::state::{
-    AccountState, AccountType, StateError,
-    StateTransition, AccountChange, AccountChangeType,
-    ChainParameters,
+    AccountChange, AccountChangeType, AccountState, AccountType, ChainParameters, StateError,
+    StateTransition,
 };
 
 /// Error type for state validation operations
@@ -96,7 +95,9 @@ impl StateValidator {
     fn validate_transition_basics(&self, transition: &StateTransition) -> ValidationResult<()> {
         // Ensure block height is valid
         if transition.block_height == 0 {
-            return Err(ValidationError::Other("Block height cannot be zero".to_string()));
+            return Err(ValidationError::Other(
+                "Block height cannot be zero".to_string(),
+            ));
         }
 
         // Ensure timestamp is valid
@@ -262,12 +263,10 @@ impl StateValidator {
 
         // Validate last_updated
         if new_state.last_updated <= prev_state.last_updated {
-            return Err(ValidationError::InvalidAccountChange(
-                format!(
-                    "New last_updated ({}) must be greater than previous ({})",
-                    new_state.last_updated, prev_state.last_updated
-                ),
-            ));
+            return Err(ValidationError::InvalidAccountChange(format!(
+                "New last_updated ({}) must be greater than previous ({})",
+                new_state.last_updated, prev_state.last_updated
+            )));
         }
 
         Ok(())
@@ -429,7 +428,11 @@ mod tests {
         }
     }
 
-    fn create_test_account_state(account_type: AccountType, balance: u64, block_height: u64) -> AccountState {
+    fn create_test_account_state(
+        account_type: AccountType,
+        balance: u64,
+        block_height: u64,
+    ) -> AccountState {
         match account_type {
             AccountType::User => AccountState::new_user(balance, block_height),
             AccountType::Contract => {
@@ -730,12 +733,8 @@ mod tests {
             change_type: AccountChangeType::Created,
         };
 
-        let transition = create_test_state_transition(
-            prev_root,
-            new_root,
-            block_height,
-            vec![account_change],
-        );
+        let transition =
+            create_test_state_transition(prev_root, new_root, block_height, vec![account_change]);
 
         // Validate the transition
         assert!(validator.validate_transition(&transition).is_ok());
@@ -759,16 +758,13 @@ mod tests {
         assert!(validator.validate_transition(&invalid_transition).is_err());
 
         // Invalid transition (future timestamp)
-        let mut invalid_transition = create_test_state_transition(
-            prev_root,
-            new_root,
-            block_height,
-            vec![],
-        );
+        let mut invalid_transition =
+            create_test_state_transition(prev_root, new_root, block_height, vec![]);
         invalid_transition.timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_secs() + 3600; // 1 hour in the future
+            .as_secs()
+            + 3600; // 1 hour in the future
         assert!(validator.validate_transition(&invalid_transition).is_err());
     }
 }

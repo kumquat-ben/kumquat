@@ -1,17 +1,17 @@
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
-use log::{debug, error, info, warn};
 
 use crate::network::codec::frame::{FramedReader, FramedWriter};
-use crate::network::types::message::{NetMessage, DisconnectReason};
-use crate::network::types::node_info::NodeInfo;
-use crate::network::peer::state::ConnectionState;
-use crate::network::peer::registry::PeerRegistry;
 use crate::network::peer::broadcaster::PeerBroadcaster;
+use crate::network::peer::registry::PeerRegistry;
+use crate::network::peer::state::ConnectionState;
 use crate::network::service::router::MessageRouter;
+use crate::network::types::message::{DisconnectReason, NetMessage};
+use crate::network::types::node_info::NodeInfo;
 
 /// Timeout for handshake in seconds
 const HANDSHAKE_TIMEOUT: u64 = 10;
@@ -158,7 +158,9 @@ impl PeerHandler {
 
         // Send the message
         debug!("Sending message to peer {}: {:?}", self.peer_addr, message);
-        writer.write_message(&message).await
+        writer
+            .write_message(&message)
+            .await
             .map_err(|e| PeerHandlerError::SerializationError(e))?;
 
         // Update last activity
@@ -194,8 +196,9 @@ impl PeerHandler {
             // Read a message with timeout
             let result = timeout(
                 Duration::from_secs(MESSAGE_TIMEOUT),
-                reader.read_message::<NetMessage>()
-            ).await;
+                reader.read_message::<NetMessage>(),
+            )
+            .await;
 
             match result {
                 Ok(Ok(Some(message))) => {
@@ -208,7 +211,7 @@ impl PeerHandler {
                         NetMessage::Disconnect(reason) => {
                             info!("Peer {} disconnected: {:?}", self.peer_addr, reason);
                             return Err(PeerHandlerError::PeerDisconnected(reason.clone()));
-                        },
+                        }
                         NetMessage::Ping(nonce) => {
                             // Automatically respond to pings
                             let nonce_copy = *nonce;
@@ -219,25 +222,31 @@ impl PeerHandler {
 
                             // Return the ping message so the caller knows we received something
                             return Ok(Some(message));
-                        },
+                        }
                         NetMessage::Pong(_) => {
                             // Ignore pongs in recv() - they're handled by the main loop
                             continue;
-                        },
+                        }
                         _ => {
-                            debug!("Received message from peer {}: {:?}", self.peer_addr, message);
+                            debug!(
+                                "Received message from peer {}: {:?}",
+                                self.peer_addr, message
+                            );
                             return Ok(Some(message));
                         }
                     }
-                },
+                }
                 Ok(Ok(None)) => {
                     info!("Peer {} closed the connection", self.peer_addr);
                     return Ok(None);
-                },
+                }
                 Ok(Err(e)) => {
-                    error!("Error reading message from peer {}: {:?}", self.peer_addr, e);
+                    error!(
+                        "Error reading message from peer {}: {:?}",
+                        self.peer_addr, e
+                    );
                     return Err(PeerHandlerError::SerializationError(e));
-                },
+                }
                 Err(_) => {
                     warn!("Timeout waiting for message from peer {}", self.peer_addr);
                     return Err(PeerHandlerError::Timeout);
@@ -247,7 +256,10 @@ impl PeerHandler {
     }
 
     /// Send a request and wait for a specific response
-    pub async fn send_request(&mut self, request: NetMessage) -> Result<NetMessage, PeerHandlerError> {
+    pub async fn send_request(
+        &mut self,
+        request: NetMessage,
+    ) -> Result<NetMessage, PeerHandlerError> {
         // Send the request
         self.send(request.clone()).await?;
 
@@ -259,31 +271,40 @@ impl PeerHandler {
                     match self.recv().await? {
                         Some(response @ NetMessage::ResponseBlock(_)) => return Ok(response),
                         Some(_) => continue, // Ignore other messages
-                        None => return Err(PeerHandlerError::Other("Connection closed".to_string())),
+                        None => {
+                            return Err(PeerHandlerError::Other("Connection closed".to_string()))
+                        }
                     }
                 }
-            },
+            }
             NetMessage::RequestBlockRange { .. } => {
                 // Wait for ResponseBlockRange
                 loop {
                     match self.recv().await? {
                         Some(response @ NetMessage::ResponseBlockRange(_)) => return Ok(response),
                         Some(_) => continue, // Ignore other messages
-                        None => return Err(PeerHandlerError::Other("Connection closed".to_string())),
+                        None => {
+                            return Err(PeerHandlerError::Other("Connection closed".to_string()))
+                        }
                     }
                 }
-            },
+            }
             _ => return Err(PeerHandlerError::Other("Not a request message".to_string())),
         }
     }
 
     /// Handle the peer connection
     pub async fn handle(mut self) {
-        info!("Handling connection with peer {} ({})", self.peer_id, self.peer_addr);
+        info!(
+            "Handling connection with peer {} ({})",
+            self.peer_id, self.peer_addr
+        );
 
         // Register with the peer registry
-        self.peer_registry.register_peer(&self.peer_id, self.peer_addr, self.is_outbound);
-        self.peer_registry.update_peer_state(&self.peer_id, ConnectionState::Connected);
+        self.peer_registry
+            .register_peer(&self.peer_id, self.peer_addr, self.is_outbound);
+        self.peer_registry
+            .update_peer_state(&self.peer_id, ConnectionState::Connected);
 
         // Set up message channels
         let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
@@ -294,18 +315,22 @@ impl PeerHandler {
         self.response_tx = Some(response_tx);
 
         // Register with the broadcaster
-        self.broadcaster.register_peer(&self.peer_id, outgoing_tx).await;
+        self.broadcaster
+            .register_peer(&self.peer_id, outgoing_tx)
+            .await;
 
         // Perform handshake
         if !self.perform_handshake().await {
             // Clean up on handshake failure
-            self.peer_registry.update_peer_state(&self.peer_id, ConnectionState::Failed);
+            self.peer_registry
+                .update_peer_state(&self.peer_id, ConnectionState::Failed);
             self.broadcaster.unregister_peer(&self.peer_id).await;
             return;
         }
 
         // Update peer state to ready
-        self.peer_registry.update_peer_state(&self.peer_id, ConnectionState::Ready);
+        self.peer_registry
+            .update_peer_state(&self.peer_id, ConnectionState::Ready);
 
         // Main message loop
         loop {
@@ -373,7 +398,8 @@ impl PeerHandler {
         }
 
         // Clean up
-        self.peer_registry.update_peer_state(&self.peer_id, ConnectionState::Disconnected);
+        self.peer_registry
+            .update_peer_state(&self.peer_id, ConnectionState::Disconnected);
         self.broadcaster.unregister_peer(&self.peer_id).await;
         info!("Connection with peer {} closed", self.peer_addr);
     }
@@ -387,31 +413,40 @@ impl PeerHandler {
             // Send our handshake
             let handshake = NetMessage::Handshake(self.local_node_info.clone());
             if let Err(e) = self.send(handshake).await {
-                error!("Failed to send handshake to peer {}: {:?}", self.peer_addr, e);
+                error!(
+                    "Failed to send handshake to peer {}: {:?}",
+                    self.peer_addr, e
+                );
                 return false;
             }
         }
 
         // Wait for handshake from peer
         debug!("Waiting for handshake from peer {}", self.peer_addr);
-        let handshake_result = timeout(
-            Duration::from_secs(HANDSHAKE_TIMEOUT),
-            self.recv(),
-        ).await;
+        let handshake_result = timeout(Duration::from_secs(HANDSHAKE_TIMEOUT), self.recv()).await;
 
         match handshake_result {
             Ok(Ok(Some(NetMessage::Handshake(node_info)))) => {
-                debug!("Received handshake from peer {}: {:?}", self.peer_addr, node_info);
+                debug!(
+                    "Received handshake from peer {}: {:?}",
+                    self.peer_addr, node_info
+                );
 
                 // Check version compatibility
                 if !self.local_node_info.is_compatible(&node_info) {
-                    warn!("Incompatible version with peer {}: {:?}", self.peer_addr, node_info);
-                    let _ = self.send_disconnect(DisconnectReason::IncompatibleVersion).await;
+                    warn!(
+                        "Incompatible version with peer {}: {:?}",
+                        self.peer_addr, node_info
+                    );
+                    let _ = self
+                        .send_disconnect(DisconnectReason::IncompatibleVersion)
+                        .await;
                     return false;
                 }
 
                 // Update peer info in registry
-                self.peer_registry.update_peer_info(&self.peer_id, node_info.clone());
+                self.peer_registry
+                    .update_peer_info(&self.peer_id, node_info.clone());
 
                 // If this is an inbound connection, send our handshake
                 if !self.is_outbound {
@@ -420,7 +455,10 @@ impl PeerHandler {
                     // Send our handshake
                     let handshake = NetMessage::Handshake(self.local_node_info.clone());
                     if let Err(e) = self.send(handshake).await {
-                        error!("Failed to send handshake to peer {}: {:?}", self.peer_addr, e);
+                        error!(
+                            "Failed to send handshake to peer {}: {:?}",
+                            self.peer_addr, e
+                        );
                         return false;
                     }
                 }
@@ -429,14 +467,22 @@ impl PeerHandler {
                 return true;
             }
             Ok(Ok(Some(other))) => {
-                warn!("Expected handshake from peer {}, got {:?}", self.peer_addr, other);
-                let _ = self.send_disconnect(DisconnectReason::ProtocolViolation).await;
+                warn!(
+                    "Expected handshake from peer {}, got {:?}",
+                    self.peer_addr, other
+                );
+                let _ = self
+                    .send_disconnect(DisconnectReason::ProtocolViolation)
+                    .await;
             }
             Ok(Ok(None)) => {
                 warn!("Peer {} closed connection during handshake", self.peer_addr);
             }
             Ok(Err(e)) => {
-                error!("Error reading handshake from peer {}: {:?}", self.peer_addr, e);
+                error!(
+                    "Error reading handshake from peer {}: {:?}",
+                    self.peer_addr, e
+                );
             }
             Err(_) => {
                 warn!("Handshake with peer {} timed out", self.peer_addr);
@@ -453,7 +499,8 @@ impl PeerHandler {
         let result = self.send(message).await;
 
         // Update peer state regardless of whether the message was sent
-        self.peer_registry.update_peer_state(&self.peer_id, ConnectionState::Disconnected);
+        self.peer_registry
+            .update_peer_state(&self.peer_id, ConnectionState::Disconnected);
 
         result
     }
@@ -532,7 +579,11 @@ mod tests {
         handler.send(message.clone()).await.unwrap();
 
         // Check that the message was received on the server side
-        let received = server_reader.read_message::<NetMessage>().await.unwrap().unwrap();
+        let received = server_reader
+            .read_message::<NetMessage>()
+            .await
+            .unwrap()
+            .unwrap();
         assert!(matches!(received, NetMessage::Ping(42)));
 
         // Test receiving a message
@@ -567,7 +618,7 @@ mod tests {
         match received {
             NetMessage::NewBlock(block) => {
                 assert_eq!(block.height, 1);
-            },
+            }
             _ => panic!("Expected NewBlock message"),
         }
     }
@@ -613,7 +664,11 @@ mod tests {
         // Spawn a task to handle the server side
         tokio::spawn(async move {
             // Read the request
-            let request = server_reader.read_message::<NetMessage>().await.unwrap().unwrap();
+            let request = server_reader
+                .read_message::<NetMessage>()
+                .await
+                .unwrap()
+                .unwrap();
 
             // Check that it's a block request
             match request {
@@ -643,7 +698,7 @@ mod tests {
                     // Send the response
                     let response = NetMessage::ResponseBlock(Some(block));
                     server_writer.write_message(&response).await.unwrap();
-                },
+                }
                 _ => panic!("Expected RequestBlock message"),
             }
         });
@@ -656,7 +711,7 @@ mod tests {
         match response {
             NetMessage::ResponseBlock(Some(block)) => {
                 assert_eq!(block.height, 1);
-            },
+            }
             _ => panic!("Expected ResponseBlock message"),
         }
     }

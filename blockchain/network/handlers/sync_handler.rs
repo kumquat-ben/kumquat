@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use log::{debug, error, warn};
+use std::sync::Arc;
 
-use crate::storage::block_store::BlockStore;
-use crate::network::types::message::NetMessage;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
 use crate::network::service::advanced_router::SyncRequest;
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::BlockStore;
 
 /// Error types for sync handler
 #[derive(Debug, thiserror::Error)]
@@ -63,63 +63,84 @@ impl SyncHandler {
     }
 
     /// Handle a sync request
-    pub async fn handle(&self, request: SyncRequest, source_peer: &str) -> Result<(), HandlerError> {
+    pub async fn handle(
+        &self,
+        request: SyncRequest,
+        source_peer: &str,
+    ) -> Result<(), HandlerError> {
         match request {
-            SyncRequest::GetBlock(height) => {
-                self.handle_get_block(height, source_peer).await
-            },
+            SyncRequest::GetBlock(height) => self.handle_get_block(height, source_peer).await,
             SyncRequest::GetBlocks(start_height, end_height) => {
-                self.handle_get_blocks(start_height, end_height, source_peer).await
-            },
-            SyncRequest::GetLatestBlock => {
-                self.handle_get_latest_block(source_peer).await
-            },
-            SyncRequest::GetChainState => {
-                self.handle_get_chain_state(source_peer).await
-            },
+                self.handle_get_blocks(start_height, end_height, source_peer)
+                    .await
+            }
+            SyncRequest::GetLatestBlock => self.handle_get_latest_block(source_peer).await,
+            SyncRequest::GetChainState => self.handle_get_chain_state(source_peer).await,
             SyncRequest::Legacy { .. } => {
                 // Legacy request not supported
-                warn!("Legacy sync request not supported from peer {}", source_peer);
+                warn!(
+                    "Legacy sync request not supported from peer {}",
+                    source_peer
+                );
                 Err(HandlerError::UnsupportedRequest)
-            },
+            }
         }
     }
 
     /// Handle a request for a single block
     async fn handle_get_block(&self, height: u64, source_peer: &str) -> Result<(), HandlerError> {
-        debug!("Handling GetBlock request from peer {}: height={}", source_peer, height);
+        debug!(
+            "Handling GetBlock request from peer {}: height={}",
+            source_peer, height
+        );
 
         // Get the block from the store
         let block = self.block_store.get_block_by_height(height);
 
         // Send the response
-        match self.broadcaster.send_to_peer(
-            source_peer,
-            NetMessage::ResponseBlock(block.ok().flatten()),
-        ).await {
+        match self
+            .broadcaster
+            .send_to_peer(source_peer, NetMessage::ResponseBlock(block.ok().flatten()))
+            .await
+        {
             Ok(true) => Ok(()),
             Ok(false) => {
                 error!("Failed to send block response to peer {}", source_peer);
                 Err(HandlerError::NetworkError(format!("Send failed")))
-            },
+            }
             Err(e) => {
-                error!("Error sending block response to peer {}: {}", source_peer, e);
+                error!(
+                    "Error sending block response to peer {}: {}",
+                    source_peer, e
+                );
                 Err(HandlerError::NetworkError(format!("Send error: {}", e)))
             }
         }
     }
 
     /// Handle a request for a range of blocks
-    async fn handle_get_blocks(&self, start_height: u64, end_height: u64, source_peer: &str) -> Result<(), HandlerError> {
-        debug!("Handling GetBlocks request from peer {}: {}..{}", source_peer, start_height, end_height);
+    async fn handle_get_blocks(
+        &self,
+        start_height: u64,
+        end_height: u64,
+        source_peer: &str,
+    ) -> Result<(), HandlerError> {
+        debug!(
+            "Handling GetBlocks request from peer {}: {}..{}",
+            source_peer, start_height, end_height
+        );
 
         // Validate the range
         if start_height > end_height {
-            return Err(HandlerError::InvalidRange(format!("Start height {} is greater than end height {}", start_height, end_height)));
+            return Err(HandlerError::InvalidRange(format!(
+                "Start height {} is greater than end height {}",
+                start_height, end_height
+            )));
         }
 
         // Limit the range to avoid excessive responses
-        let limited_end = start_height + (end_height - start_height).min(self.max_blocks_per_request);
+        let limited_end =
+            start_height + (end_height - start_height).min(self.max_blocks_per_request);
 
         // Get the blocks from the store
         let mut blocks = Vec::new();
@@ -130,17 +151,24 @@ impl SyncHandler {
         }
 
         // Send the response
-        match self.broadcaster.send_to_peer(
-            source_peer,
-            NetMessage::ResponseBlockRange(blocks),
-        ).await {
+        match self
+            .broadcaster
+            .send_to_peer(source_peer, NetMessage::ResponseBlockRange(blocks))
+            .await
+        {
             Ok(true) => Ok(()),
             Ok(false) => {
-                error!("Failed to send block range response to peer {}", source_peer);
+                error!(
+                    "Failed to send block range response to peer {}",
+                    source_peer
+                );
                 Err(HandlerError::NetworkError(format!("Send failed")))
-            },
+            }
             Err(e) => {
-                error!("Error sending block range response to peer {}: {}", source_peer, e);
+                error!(
+                    "Error sending block range response to peer {}: {}",
+                    source_peer, e
+                );
                 Err(HandlerError::NetworkError(format!("Send error: {}", e)))
             }
         }
@@ -157,17 +185,24 @@ impl SyncHandler {
         let block = self.block_store.get_block_by_height(latest_height);
 
         // Send the response
-        match self.broadcaster.send_to_peer(
-            source_peer,
-            NetMessage::ResponseBlock(block.ok().flatten()),
-        ).await {
+        match self
+            .broadcaster
+            .send_to_peer(source_peer, NetMessage::ResponseBlock(block.ok().flatten()))
+            .await
+        {
             Ok(true) => Ok(()),
             Ok(false) => {
-                error!("Failed to send latest block response to peer {}", source_peer);
+                error!(
+                    "Failed to send latest block response to peer {}",
+                    source_peer
+                );
                 Err(HandlerError::NetworkError(format!("Send failed")))
-            },
+            }
             Err(e) => {
-                error!("Error sending latest block response to peer {}: {}", source_peer, e);
+                error!(
+                    "Error sending latest block response to peer {}: {}",
+                    source_peer, e
+                );
                 Err(HandlerError::NetworkError(format!("Send error: {}", e)))
             }
         }
@@ -185,17 +220,24 @@ impl SyncHandler {
         let block = self.block_store.get_block_by_height(latest_height);
 
         // Send the response
-        match self.broadcaster.send_to_peer(
-            source_peer,
-            NetMessage::ResponseBlock(block.ok().flatten()),
-        ).await {
+        match self
+            .broadcaster
+            .send_to_peer(source_peer, NetMessage::ResponseBlock(block.ok().flatten()))
+            .await
+        {
             Ok(true) => Ok(()),
             Ok(false) => {
-                error!("Failed to send chain state response to peer {}", source_peer);
+                error!(
+                    "Failed to send chain state response to peer {}",
+                    source_peer
+                );
                 Err(HandlerError::NetworkError(format!("Send failed")))
-            },
+            }
             Err(e) => {
-                error!("Error sending chain state response to peer {}: {}", source_peer, e);
+                error!(
+                    "Error sending chain state response to peer {}: {}",
+                    source_peer, e
+                );
                 Err(HandlerError::NetworkError(format!("Send error: {}", e)))
             }
         }
@@ -205,8 +247,8 @@ impl SyncHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::Block;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::Block;
     use tempfile::tempdir;
 
     #[cfg(feature = "legacy-test-compat")]
@@ -220,11 +262,7 @@ mod tests {
         let peer_registry = Arc::new(PeerRegistry::new());
 
         // Create handler
-        let handler = SyncHandler::new(
-            block_store.clone(),
-            broadcaster,
-            peer_registry,
-        );
+        let handler = SyncHandler::new(block_store.clone(), broadcaster, peer_registry);
 
         // Create some blocks
         let genesis = Block {

@@ -1,13 +1,15 @@
-use std::collections::HashMap;
-use log::{debug, error, info, warn};
 use hex;
+use log::{debug, error, info, warn};
+use std::collections::HashMap;
 
-use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt};
-use crate::storage::block_store::{Hash, Block};
-use crate::storage::tx_store::{TxStore, TransactionStatus, TransactionError};
+use crate::storage::block_store::{Block, Hash};
+use crate::storage::kv_store::{
+    KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
+};
+use crate::storage::state::{AccountState, AccountType, StateResult, StateRoot};
 use crate::storage::trie::mpt::MerklePatriciaTrie;
-use crate::storage::state::{AccountState, AccountType, StateRoot, StateResult};
 use crate::storage::tx_store::TransactionRecord;
+use crate::storage::tx_store::{TransactionError, TransactionStatus, TxStore};
 
 // Note: AccountState, AccountType, and StateRoot are now imported from the state module
 
@@ -111,13 +113,16 @@ impl<'a> StateStore<'a> {
                         // Add to cache
                         self.add_to_cache(addr_str, state.clone());
                         Some(state)
-                    },
+                    }
                     Err(e) => {
-                        error!("Failed to deserialize account state for {}: {}", addr_str, e);
+                        error!(
+                            "Failed to deserialize account state for {}: {}",
+                            addr_str, e
+                        );
                         None
                     }
                 }
-            },
+            }
             Ok(None) => None,
             Err(e) => {
                 error!("Failed to get account state for {}: {}", addr_str, e);
@@ -127,7 +132,11 @@ impl<'a> StateStore<'a> {
     }
 
     /// Set the state of an account
-    pub fn set_account_state(&self, address: &Hash, state: &AccountState) -> Result<(), StateStoreError> {
+    pub fn set_account_state(
+        &self,
+        address: &Hash,
+        state: &AccountState,
+    ) -> Result<(), StateStoreError> {
         let addr_str = hex::encode(address);
         let key = format!("state:account:{}", addr_str);
 
@@ -148,12 +157,21 @@ impl<'a> StateStore<'a> {
     }
 
     /// Update account state (alias for set_account_state for compatibility)
-    pub fn update_account(&self, address: &Hash, state: &AccountState) -> Result<(), StateStoreError> {
+    pub fn update_account(
+        &self,
+        address: &Hash,
+        state: &AccountState,
+    ) -> Result<(), StateStoreError> {
         self.set_account_state(address, state)
     }
 
     /// Put an account at a specific block height
-    pub fn put_account(&self, address: &[u8], account: &AccountState, height: u64) -> Result<StateResult<()>, StateStoreError> {
+    pub fn put_account(
+        &self,
+        address: &[u8],
+        account: &AccountState,
+        height: u64,
+    ) -> Result<StateResult<()>, StateStoreError> {
         let addr_str = hex::encode(address);
         let key = format!("state:account:{}:{}", addr_str, height);
 
@@ -187,23 +205,28 @@ impl<'a> StateStore<'a> {
     }
 
     /// Get an account at a specific block height
-    pub fn get_account(&self, address: &[u8], height: u64) -> Result<Option<AccountState>, StateStoreError> {
+    pub fn get_account(
+        &self,
+        address: &[u8],
+        height: u64,
+    ) -> Result<Option<AccountState>, StateStoreError> {
         let addr_str = hex::encode(address);
         let key = format!("state:account:{}:{}", addr_str, height);
 
         match self.store.get(key.as_bytes())? {
-            Some(value) => {
-                match bincode::deserialize(&value) {
-                    Ok(state) => Ok(Some(state)),
-                    Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
-                }
+            Some(value) => match bincode::deserialize(&value) {
+                Ok(state) => Ok(Some(state)),
+                Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
             },
             None => Ok(None),
         }
     }
 
     /// Get the latest account state
-    pub fn get_latest_account(&self, address: &[u8]) -> Result<Option<AccountState>, StateStoreError> {
+    pub fn get_latest_account(
+        &self,
+        address: &[u8],
+    ) -> Result<Option<AccountState>, StateStoreError> {
         let addr_str = hex::encode(address);
 
         // First check the cache
@@ -245,10 +268,10 @@ impl<'a> StateStore<'a> {
                         let state_clone = state.clone();
                         self.add_to_cache(addr_str, state_clone);
                         Ok(Some(state))
-                    },
+                    }
                     Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
                 }
-            },
+            }
             None => Ok(None),
         }
     }
@@ -260,7 +283,12 @@ impl<'a> StateStore<'a> {
         if let Some(mut state) = self.get_account_state(address) {
             state.balance = new_balance;
             state.last_updated = self.get_current_block_height().unwrap_or(0);
-            state.remint_tokens_from_balance(*address, state.last_updated, crate::storage::TokenMintSource::TransferChange)
+            state
+                .remint_tokens_from_balance(
+                    *address,
+                    state.last_updated,
+                    crate::storage::TokenMintSource::TransferChange,
+                )
                 .map_err(|e| StateStoreError::Other(e.to_string()))?;
             self.set_account_state(address, &state)?;
             debug!("Updated balance for account {}: {}", addr_str, new_balance);
@@ -282,7 +310,8 @@ impl<'a> StateStore<'a> {
         let to_str = hex::encode(to);
 
         // Get sender account
-        let mut sender = self.get_account_state(from)
+        let mut sender = self
+            .get_account_state(from)
             .ok_or_else(|| StateStoreError::AccountNotFound(from_str.clone()))?;
 
         // Check balance
@@ -291,20 +320,29 @@ impl<'a> StateStore<'a> {
         }
 
         // Get recipient account
-        let mut recipient = self.get_account_state(to)
-            .unwrap_or_else(|| {
-                // Create new account if it doesn't exist
-                AccountState::new_user(0, block_height)
-            });
+        let mut recipient = self.get_account_state(to).unwrap_or_else(|| {
+            // Create new account if it doesn't exist
+            AccountState::new_user(0, block_height)
+        });
 
         // Update balances
         sender.balance -= amount;
         recipient.balance += amount;
         sender.last_updated = block_height;
         recipient.last_updated = block_height;
-        sender.remint_tokens_from_balance(*from, block_height, crate::storage::TokenMintSource::TransferChange)
+        sender
+            .remint_tokens_from_balance(
+                *from,
+                block_height,
+                crate::storage::TokenMintSource::TransferChange,
+            )
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
-        recipient.remint_tokens_from_balance(*to, block_height, crate::storage::TokenMintSource::TransferChange)
+        recipient
+            .remint_tokens_from_balance(
+                *to,
+                block_height,
+                crate::storage::TokenMintSource::TransferChange,
+            )
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
         // Create a batch operation
@@ -346,7 +384,10 @@ impl<'a> StateStore<'a> {
             state.nonce += 1;
             state.last_updated = self.get_current_block_height().unwrap_or(0);
             self.set_account_state(address, &state)?;
-            debug!("Incremented nonce for account {}: {}", addr_str, state.nonce);
+            debug!(
+                "Incremented nonce for account {}: {}",
+                addr_str, state.nonce
+            );
             Ok(state.nonce)
         } else {
             Err(StateStoreError::AccountNotFound(addr_str))
@@ -371,14 +412,19 @@ impl<'a> StateStore<'a> {
         let block_height = self.get_current_block_height().unwrap_or(0);
         let mut state = match account_type {
             AccountType::User => AccountState::new_user(initial_balance, block_height),
-            AccountType::Contract => AccountState::new_contract(initial_balance, Vec::new(), block_height),
+            AccountType::Contract => {
+                AccountState::new_contract(initial_balance, Vec::new(), block_height)
+            }
             AccountType::System => AccountState::new_system(initial_balance, block_height),
             AccountType::Validator => AccountState::new_validator(initial_balance, 0, block_height),
         };
         state.assign_token_owner(*address);
 
         self.set_account_state(address, &state)?;
-        info!("Created new account {} with balance {}", addr_str, initial_balance);
+        info!(
+            "Created new account {} with balance {}",
+            addr_str, initial_balance
+        );
         Ok(())
     }
 
@@ -416,7 +462,11 @@ impl<'a> StateStore<'a> {
             state.storage.insert(key.to_vec(), value);
             state.last_updated = self.get_current_block_height().unwrap_or(0);
             self.set_account_state(address, &state)?;
-            debug!("Set storage value for account {} key {}", addr_str, hex::encode(key));
+            debug!(
+                "Set storage value for account {} key {}",
+                addr_str,
+                hex::encode(key)
+            );
             Ok(())
         } else {
             Err(StateStoreError::AccountNotFound(addr_str))
@@ -439,7 +489,11 @@ impl<'a> StateStore<'a> {
             }
             state.last_updated = self.get_current_block_height().unwrap_or(0);
             self.set_account_state(address, &state)?;
-            debug!("Deleted storage value for account {} key {}", addr_str, hex::encode(key));
+            debug!(
+                "Deleted storage value for account {} key {}",
+                addr_str,
+                hex::encode(key)
+            );
             Ok(())
         } else {
             Err(StateStoreError::AccountNotFound(addr_str))
@@ -451,7 +505,8 @@ impl<'a> StateStore<'a> {
         let prefix = b"state:account:";
         match self.store.scan_prefix(prefix) {
             Ok(entries) => {
-                entries.iter()
+                entries
+                    .iter()
                     .filter_map(|(key, value)| {
                         // Extract address from key
                         let key_str = std::str::from_utf8(key).ok()?;
@@ -476,7 +531,7 @@ impl<'a> StateStore<'a> {
                         }
                     })
                     .collect()
-            },
+            }
             Err(e) => {
                 error!("Failed to scan accounts: {}", e);
                 Vec::new()
@@ -500,7 +555,11 @@ impl<'a> StateStore<'a> {
     }
 
     /// Calculate the state root hash using a Merkle Patricia Trie
-    pub fn calculate_state_root(&self, block_height: u64, timestamp: u64) -> Result<StateRoot, StateStoreError> {
+    pub fn calculate_state_root(
+        &self,
+        block_height: u64,
+        timestamp: u64,
+    ) -> Result<StateRoot, StateStoreError> {
         // Check if we already have a cached state root
         {
             let state_root = self.state_root.read().unwrap();
@@ -553,15 +612,16 @@ impl<'a> StateStore<'a> {
     }
 
     /// Get the state root at a specific height
-    pub fn get_state_root_at_height(&self, height: u64) -> Result<Option<StateRoot>, StateStoreError> {
+    pub fn get_state_root_at_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<StateRoot>, StateStoreError> {
         let key = format!("state:root:{}", height);
 
         match self.store.get(key.as_bytes())? {
-            Some(value) => {
-                match bincode::deserialize(&value) {
-                    Ok(root) => Ok(Some(root)),
-                    Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
-                }
+            Some(value) => match bincode::deserialize(&value) {
+                Ok(root) => Ok(Some(root)),
+                Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
             },
             None => Ok(None),
         }
@@ -593,7 +653,10 @@ impl<'a> StateStore<'a> {
     ///
     /// This method generates a proof that can be used by light clients to verify
     /// the state of an account without having to download the entire state trie.
-    pub fn generate_account_proof(&self, address: &Hash) -> Result<crate::storage::trie::mpt::Proof, StateStoreError> {
+    pub fn generate_account_proof(
+        &self,
+        address: &Hash,
+    ) -> Result<crate::storage::trie::mpt::Proof, StateStoreError> {
         // Get all accounts
         let accounts = self.get_all_accounts();
 
@@ -625,7 +688,10 @@ impl<'a> StateStore<'a> {
     /// This method verifies a proof generated by `generate_account_proof`.
     /// It can be used by light clients to verify the state of an account
     /// without having to download the entire state trie.
-    pub fn verify_account_proof(proof: &crate::storage::trie::mpt::Proof, expected_root: &Hash) -> bool {
+    pub fn verify_account_proof(
+        proof: &crate::storage::trie::mpt::Proof,
+        expected_root: &Hash,
+    ) -> bool {
         // Check that the proof's root hash matches the expected root
         if proof.root_hash != *expected_root {
             return false;
@@ -665,11 +731,16 @@ impl<'a> StateStore<'a> {
         block_height: u64,
         block_hash: &Hash,
     ) -> Result<Vec<Hash>, StateStoreError> {
-        let mut miner_state = self.get_account_state(miner)
+        let mut miner_state = self
+            .get_account_state(miner)
             .unwrap_or_else(|| AccountState::new_user(0, block_height));
 
-        let minted_tokens = crate::storage::block_store::reward_outcome(*miner, block_height, block_hash);
-        let reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
+        let minted_tokens =
+            crate::storage::block_store::reward_outcome(*miner, block_height, block_hash);
+        let reward_token_ids = minted_tokens
+            .iter()
+            .map(|token| token.token_id)
+            .collect::<Vec<_>>();
 
         miner_state.tokens.extend(minted_tokens);
         miner_state.sync_balance_from_tokens();
@@ -720,8 +791,12 @@ impl<'a> StateStore<'a> {
         fee_recipient: &Hash,
         block_height: u64,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
-        let fee_token_id = tx.fee_token_id
-            .ok_or_else(|| StateStoreError::Other(format!("transaction {} missing fee token", hex::encode(tx.tx_id))))?;
+        let fee_token_id = tx.fee_token_id.ok_or_else(|| {
+            StateStoreError::Other(format!(
+                "transaction {} missing fee token",
+                hex::encode(tx.tx_id)
+            ))
+        })?;
 
         if tx.transfer_token_ids.is_empty() {
             return Err(StateStoreError::Other(format!(
@@ -730,33 +805,45 @@ impl<'a> StateStore<'a> {
             )));
         }
 
-        if tx.transfer_token_ids.iter().any(|token_id| *token_id == fee_token_id) {
+        if tx
+            .transfer_token_ids
+            .iter()
+            .any(|token_id| *token_id == fee_token_id)
+        {
             return Err(StateStoreError::Other(format!(
                 "transaction {} reuses fee token as payment token",
                 hex::encode(tx.tx_id)
             )));
         }
 
-        let mut sender = self.get_account_state(&tx.sender)
+        let mut sender = self
+            .get_account_state(&tx.sender)
             .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
 
-        let payment_total = tx.transfer_token_ids.iter().try_fold(0u64, |acc, token_id| {
-            sender
-                .token_value(token_id)
-                .map(|value| acc + value)
-                .ok_or_else(|| StateStoreError::Other(format!(
-                    "sender does not own transfer token {}",
-                    hex::encode(token_id)
-                )))
-        })?;
+        let payment_total = tx
+            .transfer_token_ids
+            .iter()
+            .try_fold(0u64, |acc, token_id| {
+                sender
+                    .token_value(token_id)
+                    .map(|value| acc + value)
+                    .ok_or_else(|| {
+                        StateStoreError::Other(format!(
+                            "sender does not own transfer token {}",
+                            hex::encode(token_id)
+                        ))
+                    })
+            })?;
 
-        let fee_value = sender.token_value(&fee_token_id)
-            .ok_or_else(|| StateStoreError::Other(format!(
+        let fee_value = sender.token_value(&fee_token_id).ok_or_else(|| {
+            StateStoreError::Other(format!(
                 "sender does not own fee token {}",
                 hex::encode(fee_token_id)
-            )))?;
+            ))
+        })?;
 
-        let mut recipient = self.get_account_state(&tx.recipient)
+        let mut recipient = self
+            .get_account_state(&tx.recipient)
             .unwrap_or_else(|| AccountState::new_user(0, block_height));
         let mut fee_account = if *fee_recipient == tx.recipient {
             recipient.clone()
@@ -765,9 +852,11 @@ impl<'a> StateStore<'a> {
                 .unwrap_or_else(|| AccountState::new_user(0, block_height))
         };
 
-        let moved_tokens = sender.remove_tokens_by_id(&tx.transfer_token_ids)
+        let moved_tokens = sender
+            .remove_tokens_by_id(&tx.transfer_token_ids)
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
-        let fee_tokens = sender.remove_tokens_by_id(&[fee_token_id])
+        let fee_tokens = sender
+            .remove_tokens_by_id(&[fee_token_id])
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
         sender.nonce += 1;
@@ -822,7 +911,11 @@ impl<'a> StateStore<'a> {
     ///
     /// * `Result<(), StateStoreError>` - Success or error
     pub fn apply_block(&self, block: &Block, tx_store: &TxStore) -> Result<(), StateStoreError> {
-        info!("Applying block {} with {} transactions", block.height, block.transactions.len());
+        info!(
+            "Applying block {} with {} transactions",
+            block.height,
+            block.transactions.len()
+        );
 
         // Create a batch operation for all state changes
         let mut batch = WriteBatchOperation::new();
@@ -837,31 +930,43 @@ impl<'a> StateStore<'a> {
                 Some(tx) => tx,
                 None => {
                     error!("Transaction {} not found in tx_store", hex::encode(tx_hash));
-                    return Err(StateStoreError::Other(format!("Transaction {} not found", hex::encode(tx_hash))));
+                    return Err(StateStoreError::Other(format!(
+                        "Transaction {} not found",
+                        hex::encode(tx_hash)
+                    )));
                 }
             };
 
             // Verify transaction block height matches current block
             if tx.block_height != block.height {
-                warn!("Transaction {} has mismatched block height: {} vs {}",
-                      hex::encode(&tx.tx_id), tx.block_height, block.height);
+                warn!(
+                    "Transaction {} has mismatched block height: {} vs {}",
+                    hex::encode(&tx.tx_id),
+                    tx.block_height,
+                    block.height
+                );
             }
 
             let sender_state = match modified_accounts.get(&tx.sender) {
                 Some(state) => state.clone(),
-                None => self.get_account_state(&tx.sender)
+                None => self
+                    .get_account_state(&tx.sender)
                     .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?,
             };
 
             // Verify nonce
             if tx.nonce != sender_state.nonce {
-                error!("Invalid nonce for tx {}: expected {}, got {}",
-                       hex::encode(&tx.tx_id), sender_state.nonce, tx.nonce);
+                error!(
+                    "Invalid nonce for tx {}: expected {}, got {}",
+                    hex::encode(&tx.tx_id),
+                    sender_state.nonce,
+                    tx.nonce
+                );
 
                 // Update transaction status to failed
                 tx_store.update_transaction_status(
                     &tx.tx_id,
-                    TransactionStatus::Failed(TransactionError::InvalidNonce)
+                    TransactionStatus::Failed(TransactionError::InvalidNonce),
                 )?;
 
                 continue; // Skip this transaction and move to the next
@@ -874,10 +979,14 @@ impl<'a> StateStore<'a> {
                     }
                 }
                 Err(e) => {
-                    error!("Failed to apply token transaction {}: {}", hex::encode(&tx.tx_id), e);
+                    error!(
+                        "Failed to apply token transaction {}: {}",
+                        hex::encode(&tx.tx_id),
+                        e
+                    );
                     tx_store.update_transaction_status(
                         &tx.tx_id,
-                        TransactionStatus::Failed(TransactionError::ExecutionError)
+                        TransactionStatus::Failed(TransactionError::ExecutionError),
                     )?;
                     continue;
                 }
@@ -890,11 +999,19 @@ impl<'a> StateStore<'a> {
         if block.height > 0 {
             let mut miner = match modified_accounts.get(&block.miner) {
                 Some(state) => state.clone(),
-                None => self.get_account_state(&block.miner).unwrap_or_else(|| AccountState::new_user(0, block.height)),
+                None => self
+                    .get_account_state(&block.miner)
+                    .unwrap_or_else(|| AccountState::new_user(0, block.height)),
             };
-            let minted_tokens = crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash);
-            let expected_reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
-            if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
+            let minted_tokens =
+                crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash);
+            let expected_reward_token_ids = minted_tokens
+                .iter()
+                .map(|token| token.token_id)
+                .collect::<Vec<_>>();
+            if !block.reward_token_ids.is_empty()
+                && block.reward_token_ids != expected_reward_token_ids
+            {
                 return Err(StateStoreError::Other(format!(
                     "reward token ids mismatch for block {}",
                     block.height
@@ -934,11 +1051,18 @@ impl<'a> StateStore<'a> {
 
         // Verify that the calculated state root matches the block's state root
         if new_root.root_hash != block.state_root {
-            warn!("Calculated state root {} does not match block's state root {}",
-                  hex::encode(&new_root.root_hash), hex::encode(&block.state_root));
+            warn!(
+                "Calculated state root {} does not match block's state root {}",
+                hex::encode(&new_root.root_hash),
+                hex::encode(&block.state_root)
+            );
         }
 
-        info!("Successfully applied block {} with {} transactions", block.height, block.transactions.len());
+        info!(
+            "Successfully applied block {} with {} transactions",
+            block.height,
+            block.transactions.len()
+        );
         Ok(())
     }
 }
@@ -947,8 +1071,8 @@ impl<'a> StateStore<'a> {
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use sha2::{Digest, Sha256};
     use tempfile::tempdir;
-    use sha2::{Sha256, Digest};
 
     #[test]
     fn test_state_store() {
@@ -959,7 +1083,9 @@ mod tests {
         let address = [1; 32];
 
         // Create a new account
-        state_store.create_account(&address, 1000, AccountType::User).unwrap();
+        state_store
+            .create_account(&address, 1000, AccountType::User)
+            .unwrap();
 
         // Get the account state
         let state = state_store.get_account_state(&address).unwrap();
@@ -981,7 +1107,9 @@ mod tests {
 
         // Set contract code
         let contract_code = vec![1, 2, 3, 4];
-        state_store.set_contract_code(&address, contract_code.clone()).unwrap();
+        state_store
+            .set_contract_code(&address, contract_code.clone())
+            .unwrap();
         let state = state_store.get_account_state(&address).unwrap();
         assert_eq!(state.code, Some(contract_code));
         assert_eq!(state.account_type, AccountType::Contract);
@@ -989,14 +1117,22 @@ mod tests {
         // Test contract storage
         let storage_key = b"test_key";
         let storage_value = b"test_value".to_vec();
-        state_store.set_storage_value(&address, storage_key, storage_value.clone()).unwrap();
+        state_store
+            .set_storage_value(&address, storage_key, storage_value.clone())
+            .unwrap();
 
-        let retrieved_value = state_store.get_storage_value(&address, storage_key).unwrap();
+        let retrieved_value = state_store
+            .get_storage_value(&address, storage_key)
+            .unwrap();
         assert_eq!(retrieved_value, storage_value);
 
         // Test delete storage value
-        state_store.delete_storage_value(&address, storage_key).unwrap();
-        assert!(state_store.get_storage_value(&address, storage_key).is_none());
+        state_store
+            .delete_storage_value(&address, storage_key)
+            .unwrap();
+        assert!(state_store
+            .get_storage_value(&address, storage_key)
+            .is_none());
 
         // Test flush
         state_store.flush().unwrap();
@@ -1012,11 +1148,17 @@ mod tests {
         let recipient = [2; 32];
 
         // Create accounts
-        state_store.create_account(&sender, 1000, AccountType::User).unwrap();
-        state_store.create_account(&recipient, 500, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&recipient, 500, AccountType::User)
+            .unwrap();
 
         // Transfer balance
-        state_store.transfer_balance(&sender, &recipient, 300, 1).unwrap();
+        state_store
+            .transfer_balance(&sender, &recipient, 300, 1)
+            .unwrap();
 
         // Check balances
         let sender_state = state_store.get_account_state(&sender).unwrap();
@@ -1027,7 +1169,10 @@ mod tests {
 
         // Test insufficient balance
         let result = state_store.transfer_balance(&sender, &recipient, 1000, 2);
-        assert!(matches!(result, Err(StateStoreError::InsufficientBalance(1000, 700))));
+        assert!(matches!(
+            result,
+            Err(StateStoreError::InsufficientBalance(1000, 700))
+        ));
     }
 
     #[test]
@@ -1040,8 +1185,12 @@ mod tests {
         let addr1 = [1; 32];
         let addr2 = [2; 32];
 
-        state_store.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store.create_account(&addr2, 2000, AccountType::User).unwrap();
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
 
         // Calculate state root
         let state_root = state_store.calculate_state_root(1, 12345).unwrap();
@@ -1074,9 +1223,15 @@ mod tests {
         let addr2 = [2; 32];
         let addr3 = [3; 32];
 
-        state_store.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store.create_account(&addr2, 2000, AccountType::User).unwrap();
-        state_store.create_account(&addr3, 3000, AccountType::Contract).unwrap();
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr3, 3000, AccountType::Contract)
+            .unwrap();
 
         // Get all accounts
         let accounts = state_store.get_all_accounts();
@@ -1115,15 +1270,21 @@ mod tests {
         let addr2 = [2; 32];
         let addr3 = [3; 32];
 
-        state_store.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store.create_account(&addr2, 2000, AccountType::User).unwrap();
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
 
         // Access accounts to populate cache
         state_store.get_account_state(&addr1);
         state_store.get_account_state(&addr2);
 
         // Add a third account, which should evict one from the cache
-        state_store.create_account(&addr3, 3000, AccountType::User).unwrap();
+        state_store
+            .create_account(&addr3, 3000, AccountType::User)
+            .unwrap();
         state_store.get_account_state(&addr3);
 
         // Clear cache
@@ -1144,8 +1305,12 @@ mod tests {
         let sender = [1; 32];
         let recipient = [2; 32];
 
-        state_store.create_account(&sender, 1000, AccountType::User).unwrap();
-        state_store.create_account(&recipient, 500, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&recipient, 500, AccountType::User)
+            .unwrap();
 
         // Create a transaction
         let tx = TransactionRecord {
@@ -1213,8 +1378,12 @@ mod tests {
         let sender = [1; 32];
         let recipient = [2; 32];
 
-        state_store.create_account(&sender, 100, AccountType::User).unwrap(); // Only 100 balance
-        state_store.create_account(&recipient, 500, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 100, AccountType::User)
+            .unwrap(); // Only 100 balance
+        state_store
+            .create_account(&recipient, 500, AccountType::User)
+            .unwrap();
 
         // Create a transaction with insufficient balance
         let tx1 = TransactionRecord {
@@ -1283,13 +1452,13 @@ mod tests {
         // Transaction statuses should be updated to Failed
         let updated_tx1 = tx_store.get_transaction(&tx1.tx_id).unwrap();
         match updated_tx1.status {
-            TransactionStatus::Failed(TransactionError::InsufficientBalance) => {}, // Expected
+            TransactionStatus::Failed(TransactionError::InsufficientBalance) => {} // Expected
             _ => panic!("Expected InsufficientBalance error"),
         }
 
         let updated_tx2 = tx_store.get_transaction(&tx2.tx_id).unwrap();
         match updated_tx2.status {
-            TransactionStatus::Failed(TransactionError::InvalidNonce) => {}, // Expected
+            TransactionStatus::Failed(TransactionError::InvalidNonce) => {} // Expected
             _ => panic!("Expected InvalidNonce error"),
         }
     }
@@ -1305,9 +1474,15 @@ mod tests {
         let addr2 = [2; 32];
         let addr3 = [3; 32];
 
-        state_store.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store.create_account(&addr2, 2000, AccountType::User).unwrap();
-        state_store.create_account(&addr3, 3000, AccountType::User).unwrap();
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr3, 3000, AccountType::User)
+            .unwrap();
 
         // Calculate the state root
         let state_root = state_store.calculate_state_root(1, 12345).unwrap();
@@ -1319,9 +1494,15 @@ mod tests {
         let state_store2 = StateStore::new(&kv_store);
 
         // Create the same accounts
-        state_store2.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store2.create_account(&addr2, 2000, AccountType::User).unwrap();
-        state_store2.create_account(&addr3, 3000, AccountType::User).unwrap();
+        state_store2
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store2
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_store2
+            .create_account(&addr3, 3000, AccountType::User)
+            .unwrap();
 
         // Calculate the state root again
         let state_root2 = state_store2.calculate_state_root(1, 12345).unwrap();
@@ -1350,9 +1531,15 @@ mod tests {
         let addr2 = [2; 32];
         let addr3 = [3; 32];
 
-        state_store.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_store.create_account(&addr2, 2000, AccountType::User).unwrap();
-        state_store.create_account(&addr3, 3000, AccountType::User).unwrap();
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&addr3, 3000, AccountType::User)
+            .unwrap();
 
         // Calculate the state root
         let state_root = state_store.calculate_state_root(1, 12345).unwrap();
@@ -1361,7 +1548,10 @@ mod tests {
         let proof = state_store.generate_account_proof(&addr2).unwrap();
 
         // Verify the proof
-        assert!(StateStore::verify_account_proof(&proof, &state_root.root_hash));
+        assert!(StateStore::verify_account_proof(
+            &proof,
+            &state_root.root_hash
+        ));
 
         // The proof should contain the account state
         assert!(proof.value.is_some());
@@ -1378,7 +1568,10 @@ mod tests {
         let proof = state_store.generate_account_proof(&non_existent).unwrap();
 
         // Verify the proof
-        assert!(StateStore::verify_account_proof(&proof, &state_root.root_hash));
+        assert!(StateStore::verify_account_proof(
+            &proof,
+            &state_root.root_hash
+        ));
 
         // The proof should not contain an account state
         assert!(proof.value.is_none());
@@ -1393,6 +1586,9 @@ mod tests {
         }
 
         // Verify the tampered proof (should fail)
-        assert!(!StateStore::verify_account_proof(&tampered_proof, &state_root.root_hash));
+        assert!(!StateStore::verify_account_proof(
+            &tampered_proof,
+            &state_root.root_hash
+        ));
     }
 }

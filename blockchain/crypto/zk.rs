@@ -1,13 +1,13 @@
-use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use merlin::Transcript;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use rand_chacha::ChaChaRng;
 use rand_core::SeedableRng;
-use serde::{Serialize, Deserialize};
-use sha2::{Sha512, Digest};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha512};
 
 use crate::crypto::keys;
 use crate::crypto::signer;
@@ -43,10 +43,7 @@ impl PedersenCommitment {
         let (g, h) = get_generators();
 
         // Compute the commitment: C = v*G + r*H
-        let commitment_point = RistrettoPoint::multiscalar_mul(
-            &[value_scalar, blinding],
-            &[g, h],
-        );
+        let commitment_point = RistrettoPoint::multiscalar_mul(&[value_scalar, blinding], &[g, h]);
 
         Self {
             commitment: commitment_point.compress(),
@@ -63,10 +60,7 @@ impl PedersenCommitment {
         let (g, h) = get_generators();
 
         // Compute the expected commitment: C = v*G + r*H
-        let expected_point = RistrettoPoint::multiscalar_mul(
-            &[value_scalar, *blinding],
-            &[g, h],
-        );
+        let expected_point = RistrettoPoint::multiscalar_mul(&[value_scalar, *blinding], &[g, h]);
         let expected_commitment = expected_point.compress();
 
         // Check if the commitments match
@@ -82,10 +76,7 @@ impl PedersenCommitment {
         let (g, h) = get_generators();
 
         // Compute the commitment: C = v*G + r*H
-        let commitment_point = RistrettoPoint::multiscalar_mul(
-            &[value_scalar, *blinding],
-            &[g, h],
-        );
+        let commitment_point = RistrettoPoint::multiscalar_mul(&[value_scalar, *blinding], &[g, h]);
 
         Self {
             commitment: commitment_point.compress(),
@@ -301,12 +292,7 @@ mod tests {
         let recipient = [2u8; 32];
         let amount = 100u64;
 
-        let tx = ConfidentialTransaction::new(
-            sender,
-            recipient,
-            amount,
-            &sender_keypair,
-        );
+        let tx = ConfidentialTransaction::new(sender, recipient, amount, &sender_keypair);
 
         // Verify the transaction
         assert!(tx.verify(&sender_pubkey));

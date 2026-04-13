@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use log::{debug, error};
 use hex;
+use log::{debug, error};
+use serde::{Deserialize, Serialize};
 
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::state::DenominationToken;
@@ -43,11 +43,7 @@ pub fn pow_hash(header: &CanonicalBlockHeader) -> Hash {
     crate::crypto::hash::sha256(&preimage)
 }
 
-pub fn result_commitment(
-    block_hash: &Hash,
-    state_root: &Hash,
-    reward_token_ids: &[Hash],
-) -> Hash {
+pub fn result_commitment(block_hash: &Hash, state_root: &Hash, reward_token_ids: &[Hash]) -> Hash {
     let mut preimage = Vec::with_capacity(32 + 32 + 8 + (reward_token_ids.len() * 32));
     preimage.extend_from_slice(block_hash);
     preimage.extend_from_slice(state_root);
@@ -193,7 +189,11 @@ impl<'a> BlockStore<'a> {
         // Execute the batch
         self.store.write_batch(batch)?;
 
-        debug!("Stored block at height {}: {:?}", block.height, hex::encode(&block.hash));
+        debug!(
+            "Stored block at height {}: {:?}",
+            block.height,
+            hex::encode(&block.hash)
+        );
         Ok(())
     }
 
@@ -201,15 +201,14 @@ impl<'a> BlockStore<'a> {
     pub fn get_block_by_height(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
         let key = format!("block:{}", height);
         match self.store.get(key.as_bytes()) {
-            Ok(Some(bytes)) => {
-                match bincode::deserialize(&bytes) {
-                    Ok(block) => Ok(Some(block)),
-                    Err(e) => {
-                        error!("Failed to deserialize block at height {}: {}", height, e);
-                        Err(BlockStoreError::SerializationError(format!(
-                            "Failed to deserialize block at height {}: {}", height, e
-                        )))
-                    }
+            Ok(Some(bytes)) => match bincode::deserialize(&bytes) {
+                Ok(block) => Ok(Some(block)),
+                Err(e) => {
+                    error!("Failed to deserialize block at height {}: {}", height, e);
+                    Err(BlockStoreError::SerializationError(format!(
+                        "Failed to deserialize block at height {}: {}",
+                        height, e
+                    )))
                 }
             },
             Ok(None) => Ok(None),
@@ -229,7 +228,11 @@ impl<'a> BlockStore<'a> {
             Ok(Some(bytes)) => bytes,
             Ok(None) => return Ok(None),
             Err(e) => {
-                error!("Failed to get block height for hash {}: {}", hex::encode(hash), e);
+                error!(
+                    "Failed to get block height for hash {}: {}",
+                    hex::encode(hash),
+                    e
+                );
                 return Err(BlockStoreError::KVStoreError(e));
             }
         };
@@ -242,7 +245,8 @@ impl<'a> BlockStore<'a> {
         } else {
             error!("Invalid height bytes for hash {}", hex::encode(hash));
             return Err(BlockStoreError::InvalidBlockData(format!(
-                "Invalid height bytes for hash {}", hex::encode(hash)
+                "Invalid height bytes for hash {}",
+                hex::encode(hash)
             )));
         };
 
@@ -276,10 +280,10 @@ impl<'a> BlockStore<'a> {
                 } else {
                     error!("Invalid latest block height format");
                     Err(BlockStoreError::InvalidBlockData(
-                        "Invalid latest block height format".to_string()
+                        "Invalid latest block height format".to_string(),
                     ))
                 }
-            },
+            }
             Ok(None) => Ok(None),
             Err(e) => {
                 error!("Failed to get latest block height: {}", e);
@@ -302,7 +306,8 @@ impl<'a> BlockStore<'a> {
         let prefix = b"block:height:";
         match self.store.scan_prefix(prefix) {
             Ok(entries) => {
-                let height = entries.iter()
+                let height = entries
+                    .iter()
                     .filter_map(|(key, _)| {
                         let key_str = std::str::from_utf8(key).ok()?;
                         let height_str = key_str.strip_prefix("block:height:")?;
@@ -317,7 +322,7 @@ impl<'a> BlockStore<'a> {
                 }
 
                 height
-            },
+            }
             Err(e) => {
                 error!("Failed to scan for latest height: {}", e);
                 None
@@ -328,7 +333,11 @@ impl<'a> BlockStore<'a> {
     // This method is already defined above
 
     /// Get a range of blocks by height
-    pub fn get_blocks_by_height_range(&self, start: u64, end: u64) -> Result<Vec<Block>, BlockStoreError> {
+    pub fn get_blocks_by_height_range(
+        &self,
+        start: u64,
+        end: u64,
+    ) -> Result<Vec<Block>, BlockStoreError> {
         let mut blocks = Vec::new();
         for height in start..=end {
             if let Ok(Some(block)) = self.get_block_by_height(height) {
@@ -399,7 +408,11 @@ mod tests {
         Block {
             height,
             hash: [height as u8; 32],
-            prev_hash: if height == 0 { [0; 32] } else { [(height - 1) as u8; 32] },
+            prev_hash: if height == 0 {
+                [0; 32]
+            } else {
+                [(height - 1) as u8; 32]
+            },
             timestamp: 12345 + height,
             transactions: vec![[height as u8 + 1; 32]],
             miner: [0u8; 32],

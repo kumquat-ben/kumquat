@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
 
 use crate::network::types::node_info::NodeInfo;
 
@@ -187,11 +187,7 @@ mod tests {
         assert!(peer.node_id().is_none());
 
         // Set node info
-        let node_info = NodeInfo::new(
-            "1.0.0".to_string(),
-            "test-node".to_string(),
-            addr,
-        );
+        let node_info = NodeInfo::new("1.0.0".to_string(), "test-node".to_string(), addr);
         peer.set_node_info(node_info);
 
         // Now we have node info

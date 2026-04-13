@@ -1,12 +1,12 @@
-use std::sync::RwLock;
-use log::{error, info, warn};
 use dashmap::DashMap;
+use log::{error, info, warn};
+use std::sync::RwLock;
 
+use crate::storage::block_store::{Block, Hash};
 use crate::storage::kv_store::{KVStore, WriteBatchOperation};
+use crate::storage::rocksdb_schema::Schema;
 use crate::storage::state::{AccountState, AccountType, StateRoot};
 use crate::storage::state_store::StateStoreError;
-use crate::storage::block_store::{Block, Hash};
-use crate::storage::rocksdb_schema::Schema;
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 
 /// State manager for efficient state management
@@ -65,7 +65,10 @@ impl<'a> StateManager<'a> {
     }
 
     /// Get the state of an account
-    pub fn get_account_state(&self, address: &Hash) -> Result<Option<AccountState>, StateStoreError> {
+    pub fn get_account_state(
+        &self,
+        address: &Hash,
+    ) -> Result<Option<AccountState>, StateStoreError> {
         let addr_str = hex::encode(address);
 
         // Check the cache first
@@ -82,13 +85,16 @@ impl<'a> StateManager<'a> {
                         // Add to cache
                         self.add_to_account_cache(addr_str, state.clone());
                         Ok(Some(state))
-                    },
+                    }
                     Err(e) => {
-                        error!("Failed to deserialize account state for {}: {}", addr_str, e);
+                        error!(
+                            "Failed to deserialize account state for {}: {}",
+                            addr_str, e
+                        );
                         Err(StateStoreError::SerializationError(e.to_string()))
                     }
                 }
-            },
+            }
             Ok(None) => Ok(None),
             Err(e) => {
                 error!("Failed to get account state for {}: {}", addr_str, e);
@@ -98,7 +104,11 @@ impl<'a> StateManager<'a> {
     }
 
     /// Set the state of an account
-    pub fn set_account_state(&self, address: &Hash, state: &AccountState) -> Result<(), StateStoreError> {
+    pub fn set_account_state(
+        &self,
+        address: &Hash,
+        state: &AccountState,
+    ) -> Result<(), StateStoreError> {
         let addr_str = hex::encode(address);
         let key = Schema::account_state_key(address);
 
@@ -106,7 +116,8 @@ impl<'a> StateManager<'a> {
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
         // Update the store
-        self.store.put(key.as_bytes(), &value)
+        self.store
+            .put(key.as_bytes(), &value)
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Update the cache
@@ -142,9 +153,13 @@ impl<'a> StateManager<'a> {
         // Create a new account state based on account type
         let state = match account_type {
             AccountType::User => AccountState::new_user(initial_balance, current_height),
-            AccountType::Contract => AccountState::new_contract(initial_balance, Vec::new(), current_height),
+            AccountType::Contract => {
+                AccountState::new_contract(initial_balance, Vec::new(), current_height)
+            }
             AccountType::System => AccountState::new_system(initial_balance, current_height),
-            AccountType::Validator => AccountState::new_validator(initial_balance, 0, current_height),
+            AccountType::Validator => {
+                AccountState::new_validator(initial_balance, 0, current_height)
+            }
         };
 
         // Set the account state
@@ -208,10 +223,13 @@ impl<'a> StateManager<'a> {
                 // Add to cache
                 self.add_to_storage_cache(addr_str, key_str, bytes.clone());
                 Ok(Some(bytes))
-            },
+            }
             Ok(None) => Ok(None),
             Err(e) => {
-                error!("Failed to get storage value for {}:{}: {}", addr_str, key_str, e);
+                error!(
+                    "Failed to get storage value for {}:{}: {}",
+                    addr_str, key_str, e
+                );
                 Err(StateStoreError::KVStoreError(e))
             }
         }
@@ -234,7 +252,8 @@ impl<'a> StateManager<'a> {
 
         // Set the storage value
         let storage_key = Schema::contract_storage_key(address, key);
-        self.store.put(storage_key.as_bytes(), &value)
+        self.store
+            .put(storage_key.as_bytes(), &value)
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Update the cache
@@ -251,11 +270,7 @@ impl<'a> StateManager<'a> {
     }
 
     /// Delete a storage value for a contract
-    pub fn delete_storage_value(
-        &self,
-        address: &Hash,
-        key: &[u8],
-    ) -> Result<(), StateStoreError> {
+    pub fn delete_storage_value(&self, address: &Hash, key: &[u8]) -> Result<(), StateStoreError> {
         let addr_str = hex::encode(address);
         let key_str = hex::encode(key);
 
@@ -266,7 +281,8 @@ impl<'a> StateManager<'a> {
 
         // Delete the storage value
         let storage_key = Schema::contract_storage_key(address, key);
-        self.store.delete(storage_key.as_bytes())
+        self.store
+            .delete(storage_key.as_bytes())
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Remove from cache
@@ -290,7 +306,9 @@ impl<'a> StateManager<'a> {
 
         // Scan all account keys
         let prefix = "state:".as_bytes();
-        let entries = self.store.scan_prefix(prefix)
+        let entries = self
+            .store
+            .scan_prefix(prefix)
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         for (key, value) in entries {
@@ -301,7 +319,7 @@ impl<'a> StateManager<'a> {
                 match bincode::deserialize(&value) {
                     Ok(state) => {
                         accounts.push((addr, state));
-                    },
+                    }
                     Err(e) => {
                         error!("Failed to deserialize account state: {}", e);
                         return Err(StateStoreError::SerializationError(e.to_string()));
@@ -370,10 +388,7 @@ impl<'a> StateManager<'a> {
     }
 
     /// Generate a proof for an account
-    pub fn generate_account_proof(
-        &self,
-        address: &Hash,
-    ) -> Result<Vec<u8>, StateStoreError> {
+    pub fn generate_account_proof(&self, address: &Hash) -> Result<Vec<u8>, StateStoreError> {
         // Ensure we have a trie
         self.ensure_trie()?;
 
@@ -385,8 +400,7 @@ impl<'a> StateManager<'a> {
         let proof = trie.generate_proof(address);
 
         // Serialize the proof
-        bincode::serialize(&proof)
-            .map_err(|e| StateStoreError::SerializationError(e.to_string()))
+        bincode::serialize(&proof).map_err(|e| StateStoreError::SerializationError(e.to_string()))
     }
 
     /// Verify an account proof
@@ -399,14 +413,18 @@ impl<'a> StateManager<'a> {
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
         // Verify the proof
-        Ok(MerklePatriciaTrie::verify_proof_with_root(&proof, root_hash))
+        Ok(MerklePatriciaTrie::verify_proof_with_root(
+            &proof, root_hash,
+        ))
     }
 
     /// Apply a block to the state
     pub fn apply_block(&self, block: &Block) -> Result<(), StateStoreError> {
         // Get the transactions for this block
         let tx_prefix = format!("tx_block:{}:", block.height);
-        let tx_entries = self.store.scan_prefix(tx_prefix.as_bytes())
+        let tx_entries = self
+            .store
+            .scan_prefix(tx_prefix.as_bytes())
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Count transactions for logging
@@ -424,7 +442,7 @@ impl<'a> StateManager<'a> {
                 Ok(None) => {
                     warn!("Transaction not found: {}", hex::encode(&tx_hash_bytes));
                     continue;
-                },
+                }
                 Err(e) => {
                     error!("Failed to get transaction: {}", e);
                     return Err(StateStoreError::KVStoreError(e));
@@ -432,8 +450,9 @@ impl<'a> StateManager<'a> {
             };
 
             // Deserialize the transaction
-            let tx: crate::storage::tx_store::TransactionRecord = bincode::deserialize(&tx_bytes)
-                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            let tx: crate::storage::tx_store::TransactionRecord =
+                bincode::deserialize(&tx_bytes)
+                    .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
             // Get sender account
             let sender_state = match self.get_account_state(&tx.sender)? {
@@ -471,8 +490,12 @@ impl<'a> StateManager<'a> {
             let fee = tx.gas_price * tx.gas_used;
 
             // Update sender balance and nonce
-            let new_sender_balance = sender_state.balance.checked_sub(tx.value + fee)
-                .ok_or_else(|| StateStoreError::InsufficientBalance(tx.value + fee, sender_state.balance))?;
+            let new_sender_balance = sender_state
+                .balance
+                .checked_sub(tx.value + fee)
+                .ok_or_else(|| {
+                    StateStoreError::InsufficientBalance(tx.value + fee, sender_state.balance)
+                })?;
 
             // Create a new sender state with updated balance and nonce
             let mut new_sender_state = sender_state.clone();
@@ -480,7 +503,9 @@ impl<'a> StateManager<'a> {
             new_sender_state.nonce += 1;
 
             // Update recipient balance
-            let new_recipient_balance = recipient_state.balance.checked_add(tx.value)
+            let new_recipient_balance = recipient_state
+                .balance
+                .checked_add(tx.value)
                 .ok_or_else(|| StateStoreError::BalanceOverflow(hex::encode(&tx.recipient)))?;
 
             // Create a new recipient state with updated balance
@@ -513,7 +538,8 @@ impl<'a> StateManager<'a> {
         }
 
         // Execute the batch
-        self.store.write_batch(batch)
+        self.store
+            .write_batch(batch)
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Invalidate the state root and trie
@@ -533,17 +559,23 @@ impl<'a> StateManager<'a> {
         let state_root_value = bincode::serialize(&new_root)
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
-        self.store.put(state_root_key.as_bytes(), &state_root_value)
+        self.store
+            .put(state_root_key.as_bytes(), &state_root_value)
             .map_err(|e| StateStoreError::KVStoreError(e))?;
 
         // Verify that the calculated state root matches the block's state root
         if new_root.root_hash != block.state_root {
-            warn!("Calculated state root {} does not match block's state root {}",
-                  hex::encode(&new_root.root_hash), hex::encode(&block.state_root));
+            warn!(
+                "Calculated state root {} does not match block's state root {}",
+                hex::encode(&new_root.root_hash),
+                hex::encode(&block.state_root)
+            );
         }
 
-        info!("Successfully applied block {} with {} transactions",
-              block.height, tx_count);
+        info!(
+            "Successfully applied block {} with {} transactions",
+            block.height, tx_count
+        );
 
         Ok(())
     }
@@ -576,7 +608,9 @@ impl<'a> StateManager<'a> {
     /// Add a storage value to the cache
     fn add_to_storage_cache(&self, address: String, key: String, value: Vec<u8>) {
         // Get or create the account storage cache
-        let account_storage = self.storage_cache.entry(address.clone())
+        let account_storage = self
+            .storage_cache
+            .entry(address.clone())
             .or_insert_with(|| DashMap::new());
 
         // If the cache is full, remove a random entry
@@ -620,7 +654,9 @@ mod tests {
 
         // Create an account
         let address = [1u8; 32];
-        state_manager.create_account(&address, 1000, AccountType::User).unwrap();
+        state_manager
+            .create_account(&address, 1000, AccountType::User)
+            .unwrap();
 
         // Get the account
         let state = state_manager.get_account_state(&address).unwrap().unwrap();
@@ -647,15 +683,22 @@ mod tests {
 
         // Create an account
         let address = [1u8; 32];
-        state_manager.create_account(&address, 1000, AccountType::Contract).unwrap();
+        state_manager
+            .create_account(&address, 1000, AccountType::Contract)
+            .unwrap();
 
         // Set a storage value
         let key = [2u8; 32];
         let value = vec![3u8; 32];
-        state_manager.set_storage_value(&address, &key, value.clone()).unwrap();
+        state_manager
+            .set_storage_value(&address, &key, value.clone())
+            .unwrap();
 
         // Get the storage value
-        let retrieved_value = state_manager.get_storage_value(&address, &key).unwrap().unwrap();
+        let retrieved_value = state_manager
+            .get_storage_value(&address, &key)
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved_value, value);
 
         // Delete the storage value
@@ -675,9 +718,15 @@ mod tests {
         let addr2 = [2u8; 32];
         let addr3 = [3u8; 32];
 
-        state_manager.create_account(&addr1, 1000, AccountType::User).unwrap();
-        state_manager.create_account(&addr2, 2000, AccountType::User).unwrap();
-        state_manager.create_account(&addr3, 3000, AccountType::User).unwrap();
+        state_manager
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        state_manager
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_manager
+            .create_account(&addr3, 3000, AccountType::User)
+            .unwrap();
 
         // Calculate the state root
         let state_root = state_manager.calculate_state_root(1, 12345).unwrap();
@@ -699,7 +748,9 @@ mod tests {
         let sender = [1u8; 32];
         let recipient = [2u8; 32];
 
-        state_manager.create_account(&sender, 1000, AccountType::User).unwrap();
+        state_manager
+            .create_account(&sender, 1000, AccountType::User)
+            .unwrap();
 
         // Create a transaction
         let tx = crate::storage::tx_store::TransactionRecord {
@@ -755,7 +806,10 @@ mod tests {
         assert_eq!(sender_state.nonce, 1);
 
         // Check the recipient's balance
-        let recipient_state = state_manager.get_account_state(&recipient).unwrap().unwrap();
+        let recipient_state = state_manager
+            .get_account_state(&recipient)
+            .unwrap()
+            .unwrap();
         assert_eq!(recipient_state.balance, 500);
         assert_eq!(recipient_state.nonce, 0);
     }

@@ -4,10 +4,10 @@
 //! storage model into a more object-centric architecture. It provides the core
 //! structures and functionality for creating, storing, and managing objects.
 
-use serde::{Serialize, Deserialize};
+use crate::crypto::hash::sha256;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
-use crate::crypto::hash::sha256;
 
 /// Type alias for ObjectId (32-byte hash)
 pub type ObjectId = [u8; 32];
@@ -170,9 +170,9 @@ impl Object {
         block_height: u64,
     ) -> ObjectResult<()> {
         if self.is_immutable() {
-            return Err(ObjectError::ImmutableObjectModification(
-                hex::encode(self.id)
-            ));
+            return Err(ObjectError::ImmutableObjectModification(hex::encode(
+                self.id,
+            )));
         }
 
         self.contents = new_contents;
@@ -191,15 +191,16 @@ impl Object {
         block_height: u64,
     ) -> ObjectResult<()> {
         if self.is_immutable() {
-            return Err(ObjectError::ImmutableObjectModification(
-                hex::encode(self.id)
-            ));
+            return Err(ObjectError::ImmutableObjectModification(hex::encode(
+                self.id,
+            )));
         }
 
         if self.is_shared() {
-            return Err(ObjectError::UnauthorizedAccess(
-                format!("Cannot transfer shared object: {}", hex::encode(self.id))
-            ));
+            return Err(ObjectError::UnauthorizedAccess(format!(
+                "Cannot transfer shared object: {}",
+                hex::encode(self.id)
+            )));
         }
 
         self.owner = new_owner;
@@ -219,9 +220,9 @@ impl Object {
         block_height: u64,
     ) -> ObjectResult<()> {
         if self.is_immutable() {
-            return Err(ObjectError::ImmutableObjectModification(
-                hex::encode(self.id)
-            ));
+            return Err(ObjectError::ImmutableObjectModification(hex::encode(
+                self.id,
+            )));
         }
 
         self.metadata.insert(key, value);
@@ -340,7 +341,9 @@ mod tests {
         let new_timestamp = timestamp + 100;
         let new_contents = vec![5, 6, 7, 8];
 
-        object.update_contents(new_contents.clone(), new_timestamp, 101).unwrap();
+        object
+            .update_contents(new_contents.clone(), new_timestamp, 101)
+            .unwrap();
 
         assert_eq!(object.version, 1);
         assert_eq!(object.contents, new_contents);
@@ -360,7 +363,7 @@ mod tests {
         let result = immutable_object.update_contents(vec![5, 6, 7, 8], new_timestamp, 101);
         assert!(result.is_err());
         match result {
-            Err(ObjectError::ImmutableObjectModification(_)) => {},
+            Err(ObjectError::ImmutableObjectModification(_)) => {}
             _ => panic!("Expected ImmutableObjectModification error"),
         }
     }
@@ -383,7 +386,9 @@ mod tests {
         let new_timestamp = timestamp + 100;
         let new_owner = Ownership::Address(address2);
 
-        object.transfer_ownership(new_owner.clone(), new_timestamp, 101).unwrap();
+        object
+            .transfer_ownership(new_owner.clone(), new_timestamp, 101)
+            .unwrap();
 
         assert_eq!(object.version, 1);
         assert_eq!(object.owner, new_owner);
@@ -402,11 +407,8 @@ mod tests {
             100,
         );
 
-        let result = immutable_object.transfer_ownership(
-            Ownership::Address(address1),
-            new_timestamp,
-            101
-        );
+        let result =
+            immutable_object.transfer_ownership(Ownership::Address(address1), new_timestamp, 101);
         assert!(result.is_err());
     }
 
@@ -426,12 +428,14 @@ mod tests {
 
         let new_timestamp = timestamp + 100;
 
-        object.set_metadata(
-            "name".to_string(),
-            "My Coin".to_string(),
-            new_timestamp,
-            101
-        ).unwrap();
+        object
+            .set_metadata(
+                "name".to_string(),
+                "My Coin".to_string(),
+                new_timestamp,
+                101,
+            )
+            .unwrap();
 
         assert_eq!(object.version, 1);
         assert_eq!(object.metadata.get("name"), Some(&"My Coin".to_string()));

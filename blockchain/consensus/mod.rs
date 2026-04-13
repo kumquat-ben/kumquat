@@ -3,30 +3,30 @@
 // This module implements the hybrid Proof-of-Work (PoW) and Proof-of-History (PoH)
 // consensus mechanism for the Kumquat blockchain.
 
-pub mod pow;
-pub mod poh;
-pub mod validation;
-pub mod mining;
-pub mod types;
+pub mod block_processor;
 pub mod config;
 pub mod engine;
-pub mod block_processor;
 pub mod engine_runner;
+pub mod mining;
+pub mod poh;
+pub mod pow;
 pub mod telemetry;
+pub mod types;
+pub mod validation;
 
+use log::info;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use log::info;
 
-use crate::storage::block_store::BlockStore;
-use crate::storage::tx_store::TxStore;
-use crate::storage::state_store::StateStore;
-use crate::storage::kv_store::KVStore;
-use crate::network::types::message::NetMessage;
 use crate::consensus::config::ConsensusConfig;
 use crate::consensus::engine::ConsensusEngine;
 use crate::consensus::engine_runner::ConsensusEngineRunner;
 use crate::consensus::telemetry::{new_consensus_telemetry, ConsensusTelemetry};
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::BlockStore;
+use crate::storage::kv_store::KVStore;
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::TxStore;
 
 /// Start the consensus engine
 pub async fn start_consensus<S: KVStore + 'static>(

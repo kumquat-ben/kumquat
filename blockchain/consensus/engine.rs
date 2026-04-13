@@ -1,16 +1,16 @@
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time;
-use log::{debug, error, info, warn};
 
-use crate::storage::block_store::{Block, BlockStore, result_commitment};
-use crate::storage::tx_store::{TransactionRecord, TxStore};
-use crate::storage::state_store::StateStore;
-use crate::storage::{BatchOperationManager, KVStore};
-use crate::network::types::message::NetMessage;
 use crate::consensus::config::ConsensusConfig;
 use crate::consensus::telemetry::{unix_timestamp_now, ConsensusTelemetry};
+use crate::network::types::message::NetMessage;
+use crate::storage::block_store::{result_commitment, Block, BlockStore};
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::{TransactionRecord, TxStore};
+use crate::storage::{BatchOperationManager, KVStore};
 
 /// Create a genesis block
 fn create_genesis_block(config: &ConsensusConfig) -> Block {
@@ -33,14 +33,14 @@ fn create_genesis_block(config: &ConsensusConfig) -> Block {
         total_difficulty: config.initial_difficulty as u128,
     }
 }
-use crate::consensus::types::ChainState;
-use crate::consensus::pow::difficulty::calculate_next_target;
+use crate::consensus::block_processor::{BlockProcessingResult, BlockProcessor};
+use crate::consensus::mining::block_producer::BlockProducer;
+use crate::consensus::mining::mempool::Mempool;
 use crate::consensus::poh::generator::PoHGenerator;
+use crate::consensus::pow::difficulty::calculate_next_target;
+use crate::consensus::types::ChainState;
 use crate::consensus::validation::block_validator::BlockValidator;
 use crate::consensus::validation::transaction_validator::TransactionValidator;
-use crate::consensus::mining::mempool::Mempool;
-use crate::consensus::mining::block_producer::BlockProducer;
-use crate::consensus::block_processor::{BlockProcessor, BlockProcessingResult};
 
 /// Main consensus engine
 pub struct ConsensusEngine {
@@ -155,10 +155,10 @@ impl ConsensusEngine {
             crate::storage::state::StateRoot::new(
                 latest_block.state_root,
                 latest_block.height,
-                latest_block.timestamp
+                latest_block.timestamp,
             ),
             latest_block.total_difficulty as u64,
-            0, // finalized_height
+            0,         // finalized_height
             [0u8; 32], // finalized_hash
         )));
 
@@ -183,7 +183,10 @@ impl ConsensusEngine {
         // Create the block producer
         let block_producer = Arc::new(Mutex::new(BlockProducer::new(
             // Get a clone of the chain state
-            chain_state.try_lock().expect("Failed to lock chain state").clone(),
+            chain_state
+                .try_lock()
+                .expect("Failed to lock chain state")
+                .clone(),
             block_store.clone(),
             tx_store.clone(),
             state_store.clone(),
@@ -254,23 +257,30 @@ impl ConsensusEngine {
                 let chain_state_guard = engine.chain_state.lock().await;
 
                 // Process the block
-                let result = engine.block_processor.process_block(&block, &chain_state_guard.current_target, &chain_state_guard).await;
+                let result = engine
+                    .block_processor
+                    .process_block(
+                        &block,
+                        &chain_state_guard.current_target,
+                        &chain_state_guard,
+                    )
+                    .await;
                 match result {
                     BlockProcessingResult::Success => {
                         debug!("Block processed: Success");
-                    },
+                    }
                     BlockProcessingResult::AlreadyKnown => {
                         debug!("Block processed: Already Known");
-                    },
+                    }
                     BlockProcessingResult::UnknownParent => {
                         debug!("Block processed: Unknown Parent");
-                    },
+                    }
                     BlockProcessingResult::Invalid(reason) => {
                         debug!("Block processed: Invalid - {}", reason);
-                    },
+                    }
                     BlockProcessingResult::Error(error) => {
                         debug!("Block processed: Error - {}", error);
-                    },
+                    }
                 }
             }
         });
@@ -287,14 +297,20 @@ impl ConsensusEngine {
     async fn main_loop(&mut self) {
         // Mining interval
         let mining_interval = self.config.target_block_time_duration();
-        info!("Setting mining interval to {} seconds", mining_interval.as_secs());
+        info!(
+            "Setting mining interval to {} seconds",
+            mining_interval.as_secs()
+        );
         let mut mining_timer = time::interval(mining_interval);
         // Make sure the first tick happens immediately
         mining_timer.tick().await;
 
         // Difficulty adjustment interval
         let difficulty_interval = Duration::from_secs(60);
-        info!("Setting difficulty adjustment interval to {} seconds", difficulty_interval.as_secs());
+        info!(
+            "Setting difficulty adjustment interval to {} seconds",
+            difficulty_interval.as_secs()
+        );
         let mut difficulty_timer = time::interval(difficulty_interval);
 
         loop {
@@ -333,7 +349,10 @@ impl ConsensusEngine {
         let chain_state = self.chain_state.lock().await.clone();
 
         // Process the block using the block processor
-        let result = self.block_processor.process_block(&block, &chain_state.current_target, &chain_state).await;
+        let result = self
+            .block_processor
+            .process_block(&block, &chain_state.current_target, &chain_state)
+            .await;
 
         match result {
             BlockProcessingResult::Success => {
@@ -341,20 +360,23 @@ impl ConsensusEngine {
                 self.update_chain_state(&block).await;
 
                 info!("Block processed successfully at height {}", block.height);
-            },
+            }
             BlockProcessingResult::AlreadyKnown => {
                 debug!("Block already known at height {}", block.height);
-            },
+            }
             BlockProcessingResult::UnknownParent => {
                 warn!("Block with unknown parent at height {}", block.height);
 
                 // TODO: Request the parent block from the network
-            },
+            }
             BlockProcessingResult::Invalid(reason) => {
                 warn!("Invalid block at height {}: {}", block.height, reason);
-            },
+            }
             BlockProcessingResult::Error(error) => {
-                error!("Error processing block at height {}: {}", block.height, error);
+                error!(
+                    "Error processing block at height {}: {}",
+                    block.height, error
+                );
             }
         }
     }
@@ -365,9 +387,13 @@ impl ConsensusEngine {
         let updated_chain_state = {
             // Update the chain state
             let mut chain_state = self.chain_state.lock().await;
-            info!("Updating chain state: height {} -> {}, hash {} -> {}",
-                  chain_state.height, block.height,
-                  hex::encode(&chain_state.tip_hash), hex::encode(&block.hash));
+            info!(
+                "Updating chain state: height {} -> {}, hash {} -> {}",
+                chain_state.height,
+                block.height,
+                hex::encode(&chain_state.tip_hash),
+                hex::encode(&block.hash)
+            );
             chain_state.height = block.height;
             chain_state.tip_hash = block.hash;
             chain_state.latest_hash = block.hash;
@@ -375,8 +401,12 @@ impl ConsensusEngine {
             chain_state.total_difficulty += 1; // Increment difficulty
 
             // Log the updated chain state
-            info!("Chain state updated: height={}, tip_hash={}, total_difficulty={}",
-                  chain_state.height, hex::encode(&chain_state.tip_hash), chain_state.total_difficulty);
+            info!(
+                "Chain state updated: height={}, tip_hash={}, total_difficulty={}",
+                chain_state.height,
+                hex::encode(&chain_state.tip_hash),
+                chain_state.total_difficulty
+            );
 
             // Clone the chain state before releasing the lock
             chain_state.clone()
@@ -392,15 +422,21 @@ impl ConsensusEngine {
             let mut block_producer = block_producer_clone.lock().await;
             let producer_height_before = block_producer.get_chain_state_height();
             let producer_hash_before = block_producer.get_chain_state_tip_hash();
-            info!("Block producer chain state before update: height={}, tip_hash={}",
-                  producer_height_before, hex::encode(&producer_hash_before));
+            info!(
+                "Block producer chain state before update: height={}, tip_hash={}",
+                producer_height_before,
+                hex::encode(&producer_hash_before)
+            );
 
             block_producer.update_chain_state(updated_chain_state_clone);
 
             let producer_height_after = block_producer.get_chain_state_height();
             let producer_hash_after = block_producer.get_chain_state_tip_hash();
-            info!("Block producer chain state after update: height={}, tip_hash={}",
-                  producer_height_after, hex::encode(&producer_hash_after));
+            info!(
+                "Block producer chain state after update: height={}, tip_hash={}",
+                producer_height_after,
+                hex::encode(&producer_hash_after)
+            );
         });
     }
 
@@ -432,8 +468,11 @@ impl ConsensusEngine {
             (chain_state.height, chain_state.tip_hash)
         };
 
-        info!("Mining block at height {} on top of block {}",
-              current_height + 1, hex::encode(&current_hash));
+        info!(
+            "Mining block at height {} on top of block {}",
+            current_height + 1,
+            hex::encode(&current_hash)
+        );
 
         // Get the block producer
         let block_producer = self.block_producer.lock().await;
@@ -441,8 +480,11 @@ impl ConsensusEngine {
         // Check the block producer's chain state
         let producer_height = block_producer.get_chain_state_height();
         let producer_hash = block_producer.get_chain_state_tip_hash();
-        info!("Block producer chain state: height={}, tip_hash={}",
-              producer_height, hex::encode(&producer_hash));
+        info!(
+            "Block producer chain state: height={}, tip_hash={}",
+            producer_height,
+            hex::encode(&producer_hash)
+        );
 
         // Mine a block
         if let Some(block) = block_producer.mine_block().await {
@@ -471,11 +513,8 @@ impl ConsensusEngine {
         let mut chain_state = self.chain_state.lock().await;
 
         // Calculate the next target
-        let next_target = calculate_next_target(
-            &self.config,
-            &self.block_store,
-            chain_state.height,
-        );
+        let next_target =
+            calculate_next_target(&self.config, &self.block_store, chain_state.height);
 
         // Update the chain state
         chain_state.current_target = next_target;
@@ -498,7 +537,8 @@ mod tests {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
         let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
-        let manager_store: Arc<dyn KVStore> = Arc::new(RocksDBStore::new(&temp_dir.path().join("manager")).unwrap());
+        let manager_store: Arc<dyn KVStore> =
+            Arc::new(RocksDBStore::new(&temp_dir.path().join("manager")).unwrap());
 
         // Create the stores
         let block_store = Arc::new(BlockStore::new(shared_store));

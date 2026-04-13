@@ -1,15 +1,14 @@
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use log::{debug, warn};
 use dashmap::DashMap;
+use log::{debug, warn};
 
-use crate::network::types::node_info::NodeInfo;
-use crate::network::peer::state::ConnectionState;
 use crate::network::peer::performance::PeerPerformance;
-use crate::network::peer::reputation::{ReputationSystem, ReputationEvent};
+use crate::network::peer::reputation::{ReputationEvent, ReputationSystem};
+use crate::network::peer::state::ConnectionState;
+use crate::network::types::node_info::NodeInfo;
 
 /// Type alias for peer ID
 pub type PeerId = String;
@@ -69,7 +68,11 @@ impl EnhancedPeerMetadata {
             node_id,
             addr,
             node_info: None,
-            state: if is_outbound { ConnectionState::Disconnected } else { ConnectionState::Connected },
+            state: if is_outbound {
+                ConnectionState::Disconnected
+            } else {
+                ConnectionState::Connected
+            },
             is_outbound,
             first_seen: now,
             last_seen: now,
@@ -242,21 +245,31 @@ impl AdvancedPeerRegistry {
         }
 
         // Check connection limits
-        let outbound_count = self.peers.iter()
+        let outbound_count = self
+            .peers
+            .iter()
             .filter(|entry| entry.is_outbound && entry.is_active())
             .count();
 
-        let inbound_count = self.peers.iter()
+        let inbound_count = self
+            .peers
+            .iter()
             .filter(|entry| !entry.is_outbound && entry.is_active())
             .count();
 
         if is_outbound && outbound_count >= self.config.max_outbound {
-            warn!("Maximum outbound connections reached: {}", self.config.max_outbound);
+            warn!(
+                "Maximum outbound connections reached: {}",
+                self.config.max_outbound
+            );
             return false;
         }
 
         if !is_outbound && inbound_count >= self.config.max_inbound {
-            warn!("Maximum inbound connections reached: {}", self.config.max_inbound);
+            warn!(
+                "Maximum inbound connections reached: {}",
+                self.config.max_inbound
+            );
             return false;
         }
 
@@ -298,12 +311,18 @@ impl AdvancedPeerRegistry {
             entry.update_state(state);
 
             // If the peer has too many failed attempts, ban it
-            if state == ConnectionState::Failed && entry.connection_attempts >= self.config.max_failed_attempts {
+            if state == ConnectionState::Failed
+                && entry.connection_attempts >= self.config.max_failed_attempts
+            {
                 entry.update_state(ConnectionState::Banned);
-                warn!("Banned peer {} after {} failed attempts", node_id, entry.connection_attempts);
+                warn!(
+                    "Banned peer {} after {} failed attempts",
+                    node_id, entry.connection_attempts
+                );
 
                 // Update reputation
-                self.reputation.update_score(node_id, ReputationEvent::ConnectionFailure);
+                self.reputation
+                    .update_score(node_id, ReputationEvent::ConnectionFailure);
             }
 
             true
@@ -380,21 +399,25 @@ impl AdvancedPeerRegistry {
 
     /// Check if a peer is active
     pub fn is_peer_active(&self, node_id: &str) -> bool {
-        self.peers.get(node_id)
+        self.peers
+            .get(node_id)
             .map(|entry| entry.is_active())
             .unwrap_or(false)
     }
 
     /// Check if a peer is banned
     pub fn is_peer_banned(&self, node_id: &str) -> bool {
-        self.peers.get(node_id)
+        self.peers
+            .get(node_id)
             .map(|entry| entry.is_banned())
-            .unwrap_or(false) || self.reputation.is_banned(node_id)
+            .unwrap_or(false)
+            || self.reputation.is_banned(node_id)
     }
 
     /// Get all active peers
     pub fn get_active_peers(&self) -> Vec<EnhancedPeerMetadata> {
-        self.peers.iter()
+        self.peers
+            .iter()
             .filter(|entry| entry.is_active())
             .map(|entry| entry.clone())
             .collect()
@@ -402,16 +425,12 @@ impl AdvancedPeerRegistry {
 
     /// Get all peers
     pub fn get_all_peers(&self) -> Vec<EnhancedPeerMetadata> {
-        self.peers.iter()
-            .map(|entry| entry.clone())
-            .collect()
+        self.peers.iter().map(|entry| entry.clone()).collect()
     }
 
     /// Get the number of active peers
     pub fn active_peer_count(&self) -> usize {
-        self.peers.iter()
-            .filter(|entry| entry.is_active())
-            .count()
+        self.peers.iter().filter(|entry| entry.is_active()).count()
     }
 
     /// Get the total number of peers
@@ -421,21 +440,19 @@ impl AdvancedPeerRegistry {
 
     /// Get the number of outbound peers
     pub fn outbound_peer_count(&self) -> usize {
-        self.peers.iter()
-            .filter(|entry| entry.is_outbound)
-            .count()
+        self.peers.iter().filter(|entry| entry.is_outbound).count()
     }
 
     /// Get the number of inbound peers
     pub fn inbound_peer_count(&self) -> usize {
-        self.peers.iter()
-            .filter(|entry| !entry.is_outbound)
-            .count()
+        self.peers.iter().filter(|entry| !entry.is_outbound).count()
     }
 
     /// Clean up inactive peers
     pub fn cleanup_inactive_peers(&self) -> usize {
-        let inactive_peers: Vec<PeerId> = self.peers.iter()
+        let inactive_peers: Vec<PeerId> = self
+            .peers
+            .iter()
             .filter(|entry| entry.is_inactive(self.config.inactivity_timeout))
             .map(|entry| entry.node_id.clone())
             .collect();
@@ -511,7 +528,8 @@ impl AdvancedPeerRegistry {
         });
 
         // Take the requested number of peers
-        candidates.iter()
+        candidates
+            .iter()
             .take(count)
             .map(|(addr, _, _)| *addr)
             .collect()
@@ -545,7 +563,8 @@ impl AdvancedPeerRegistry {
         candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Take the requested number of peers
-        candidates.iter()
+        candidates
+            .iter()
             .take(count)
             .map(|(node_id, _)| node_id.clone())
             .collect()

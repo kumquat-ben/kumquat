@@ -1,6 +1,6 @@
+use log::debug;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use log::debug;
 
 use crate::network::peer::advanced_registry::PeerId;
 
@@ -125,7 +125,10 @@ impl ReputationSystem {
 
         // Check if the peer should be banned
         if *score <= self.thresholds.ban_threshold {
-            debug!("Peer {} banned due to low reputation score: {}", peer_id, *score);
+            debug!(
+                "Peer {} banned due to low reputation score: {}",
+                peer_id, *score
+            );
             let mut banned = self.banned.write().unwrap();
             banned.insert(peer_id.to_string(), true);
         }
@@ -194,7 +197,8 @@ impl ReputationSystem {
     /// Get all banned peers
     pub fn get_banned_peers(&self) -> Vec<PeerId> {
         let banned = self.banned.read().unwrap();
-        banned.iter()
+        banned
+            .iter()
             .filter(|(_, &is_banned)| is_banned)
             .map(|(peer_id, _)| peer_id.clone())
             .collect()
@@ -203,11 +207,12 @@ impl ReputationSystem {
     /// Get all peers on probation
     pub fn get_probation_peers(&self) -> Vec<(PeerId, i32)> {
         let scores = self.scores.read().unwrap();
-        scores.iter()
+        scores
+            .iter()
             .filter(|(peer_id, &score)| {
-                score <= self.thresholds.probation_threshold &&
-                score > self.thresholds.ban_threshold &&
-                !self.is_banned(peer_id)
+                score <= self.thresholds.probation_threshold
+                    && score > self.thresholds.ban_threshold
+                    && !self.is_banned(peer_id)
             })
             .map(|(peer_id, &score)| (peer_id.clone(), score))
             .collect()
@@ -216,7 +221,8 @@ impl ReputationSystem {
     /// Get all preferred peers
     pub fn get_preferred_peers(&self) -> Vec<(PeerId, i32)> {
         let scores = self.scores.read().unwrap();
-        scores.iter()
+        scores
+            .iter()
             .filter(|(_, &score)| score >= self.thresholds.preferred_threshold)
             .map(|(peer_id, &score)| (peer_id.clone(), score))
             .collect()
@@ -242,11 +248,12 @@ impl ReputationSystem {
     /// Get the number of peers on probation
     pub fn probation_count(&self) -> usize {
         let scores = self.scores.read().unwrap();
-        scores.iter()
+        scores
+            .iter()
             .filter(|(peer_id, &score)| {
-                score <= self.thresholds.probation_threshold &&
-                score > self.thresholds.ban_threshold &&
-                !self.is_banned(peer_id)
+                score <= self.thresholds.probation_threshold
+                    && score > self.thresholds.ban_threshold
+                    && !self.is_banned(peer_id)
             })
             .count()
     }
@@ -254,7 +261,8 @@ impl ReputationSystem {
     /// Get the number of preferred peers
     pub fn preferred_count(&self) -> usize {
         let scores = self.scores.read().unwrap();
-        scores.iter()
+        scores
+            .iter()
             .filter(|(_, &score)| score >= self.thresholds.preferred_threshold)
             .count()
     }
@@ -297,7 +305,10 @@ mod tests {
         assert!(!system.is_banned("peer2"));
 
         // Check that the score was reset to probation level
-        assert_eq!(system.get_score("peer2"), system.thresholds.probation_threshold);
+        assert_eq!(
+            system.get_score("peer2"),
+            system.thresholds.probation_threshold
+        );
 
         // Test manual banning
         system.ban_peer("peer3");

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
 use array_init::array_init;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::storage::block_store::Hash;
+use crate::storage::trie::encode::{
+    bytes_to_nibbles, compact_decode, compact_encode, nibbles_to_bytes,
+};
 use crate::storage::trie::node::Node;
-use crate::storage::trie::encode::{bytes_to_nibbles, nibbles_to_bytes, compact_encode, compact_decode};
 
 /// Proof item for Merkle Patricia Trie verification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,7 +95,7 @@ impl MerklePatriciaTrie {
                 } else {
                     None
                 }
-            },
+            }
 
             Node::Extension { key, child } => {
                 // Check if the key prefix matches
@@ -112,7 +114,7 @@ impl MerklePatriciaTrie {
 
                 // Continue with the next node
                 self.get_at(child, nibbles, depth + prefix_len)
-            },
+            }
 
             Node::Branch { children, value: _ } => {
                 let nibble = nibbles[depth] as usize;
@@ -124,7 +126,7 @@ impl MerklePatriciaTrie {
                     // No child at this nibble
                     None
                 }
-            },
+            }
         }
     }
 
@@ -144,20 +146,20 @@ impl MerklePatriciaTrie {
                 Node::Empty => {
                     // Create a leaf node with an empty key
                     Node::leaf(compact_encode(&[], true), value_clone)
-                },
+                }
                 Node::Leaf { key, .. } => {
                     // Replace the value in the leaf node
                     Node::leaf(key, value_clone)
-                },
+                }
                 Node::Extension { key: _, child: _ } => {
                     // Convert to a branch with a value
                     let children = array_init(|_| None);
                     Node::branch(children, Some(value_clone))
-                },
+                }
                 Node::Branch { children, .. } => {
                     // Update the value in the branch node
                     Node::branch(children, Some(value_clone))
-                },
+                }
             }
         } else {
             match node {
@@ -165,21 +167,27 @@ impl MerklePatriciaTrie {
                     // Create a leaf node with the remaining key
                     let remaining = &nibbles[depth..];
                     Node::leaf(compact_encode(remaining, true), value_clone)
-                },
+                }
 
-                Node::Leaf { key, value: old_value } => {
+                Node::Leaf {
+                    key,
+                    value: old_value,
+                } => {
                     // Split the leaf node
                     let (decoded_key, _) = compact_decode(&key);
 
                     // Find the common prefix
                     let mut common_prefix_len = 0;
-                    while common_prefix_len < decoded_key.len() &&
-                          depth + common_prefix_len < nibbles.len() &&
-                          decoded_key[common_prefix_len] == nibbles[depth + common_prefix_len] {
+                    while common_prefix_len < decoded_key.len()
+                        && depth + common_prefix_len < nibbles.len()
+                        && decoded_key[common_prefix_len] == nibbles[depth + common_prefix_len]
+                    {
                         common_prefix_len += 1;
                     }
 
-                    if common_prefix_len == decoded_key.len() && common_prefix_len == nibbles.len() - depth {
+                    if common_prefix_len == decoded_key.len()
+                        && common_prefix_len == nibbles.len() - depth
+                    {
                         // The keys are identical, just update the value
                         return Node::leaf(key, value);
                     }
@@ -193,7 +201,10 @@ impl MerklePatriciaTrie {
                             let child_node = if decoded_key.len() == 1 {
                                 Node::leaf(compact_encode(&[], true), old_value.clone())
                             } else {
-                                Node::leaf(compact_encode(&decoded_key[1..], true), old_value.clone())
+                                Node::leaf(
+                                    compact_encode(&decoded_key[1..], true),
+                                    old_value.clone(),
+                                )
                             };
                             children[child_nibble] = Some(Box::new(child_node));
                         }
@@ -204,7 +215,7 @@ impl MerklePatriciaTrie {
                             Node::leaf(compact_encode(&[], true), value)
                         } else {
                             // Create a leaf with the remaining key
-                            Node::leaf(compact_encode(&nibbles[depth+1..], true), value)
+                            Node::leaf(compact_encode(&nibbles[depth + 1..], true), value)
                         };
                         children[nibble] = Some(Box::new(new_node));
 
@@ -224,9 +235,13 @@ impl MerklePatriciaTrie {
 
                     if common_prefix_len == decoded_key.len() {
                         // The old leaf's key is a prefix of the new key
-                        children[nibbles[depth + common_prefix_len] as usize] = Some(Box::new(
-                            self.insert_at(Node::empty(), nibbles, depth + common_prefix_len + 1, value)
-                        ));
+                        children[nibbles[depth + common_prefix_len] as usize] =
+                            Some(Box::new(self.insert_at(
+                                Node::empty(),
+                                nibbles,
+                                depth + common_prefix_len + 1,
+                                value,
+                            )));
                         let branch = Node::branch(children, Some(old_value));
 
                         if common_prefix_len == 0 {
@@ -237,9 +252,10 @@ impl MerklePatriciaTrie {
                     } else if common_prefix_len == nibbles.len() - depth {
                         // The new key is a prefix of the old leaf's key
                         let remaining = &decoded_key[common_prefix_len..];
-                        children[remaining[0] as usize] = Some(Box::new(
-                            Node::leaf(compact_encode(&remaining[1..], true), old_value)
-                        ));
+                        children[remaining[0] as usize] = Some(Box::new(Node::leaf(
+                            compact_encode(&remaining[1..], true),
+                            old_value,
+                        )));
                         let branch = Node::branch(children, Some(value));
 
                         if common_prefix_len == 0 {
@@ -252,13 +268,15 @@ impl MerklePatriciaTrie {
                         let old_remaining = &decoded_key[common_prefix_len..];
                         let new_remaining = &nibbles[depth + common_prefix_len..];
 
-                        children[old_remaining[0] as usize] = Some(Box::new(
-                            Node::leaf(compact_encode(&old_remaining[1..], true), old_value)
-                        ));
+                        children[old_remaining[0] as usize] = Some(Box::new(Node::leaf(
+                            compact_encode(&old_remaining[1..], true),
+                            old_value,
+                        )));
 
-                        children[new_remaining[0] as usize] = Some(Box::new(
-                            Node::leaf(compact_encode(&new_remaining[1..], true), value)
-                        ));
+                        children[new_remaining[0] as usize] = Some(Box::new(Node::leaf(
+                            compact_encode(&new_remaining[1..], true),
+                            value,
+                        )));
 
                         let branch = Node::branch(children, None);
 
@@ -268,7 +286,7 @@ impl MerklePatriciaTrie {
                             return Node::extension(compact_encode(prefix, false), branch);
                         }
                     }
-                },
+                }
 
                 Node::Extension { key, child } => {
                     // Handle extension node
@@ -276,16 +294,18 @@ impl MerklePatriciaTrie {
 
                     // Find the common prefix
                     let mut common_prefix_len = 0;
-                    while common_prefix_len < decoded_key.len() &&
-                          depth + common_prefix_len < nibbles.len() &&
-                          decoded_key[common_prefix_len] == nibbles[depth + common_prefix_len] {
+                    while common_prefix_len < decoded_key.len()
+                        && depth + common_prefix_len < nibbles.len()
+                        && decoded_key[common_prefix_len] == nibbles[depth + common_prefix_len]
+                    {
                         common_prefix_len += 1;
                     }
 
                     if common_prefix_len == decoded_key.len() {
                         // The extension's key is a prefix of the new key
                         // Continue with the child node
-                        let new_child = self.insert_at(*child, nibbles, depth + common_prefix_len, value);
+                        let new_child =
+                            self.insert_at(*child, nibbles, depth + common_prefix_len, value);
                         return Node::extension(key, new_child);
                     }
 
@@ -313,12 +333,12 @@ impl MerklePatriciaTrie {
                     // Create a child for the new path
                     if new_remaining.is_empty() {
                         // The new key ends here, add a value to the branch
-                        children[new_remaining[0] as usize] = Some(Box::new(
-                            Node::leaf(compact_encode(&[], true), value)
-                        ));
+                        children[new_remaining[0] as usize] =
+                            Some(Box::new(Node::leaf(compact_encode(&[], true), value)));
                     } else {
                         // Continue with the remaining key
-                        let new_child = Node::leaf(compact_encode(&new_remaining[1..], true), value);
+                        let new_child =
+                            Node::leaf(compact_encode(&new_remaining[1..], true), value);
                         children[new_remaining[0] as usize] = Some(Box::new(new_child));
                     }
 
@@ -329,9 +349,12 @@ impl MerklePatriciaTrie {
                     } else {
                         return Node::extension(compact_encode(prefix, false), branch);
                     }
-                },
+                }
 
-                Node::Branch { mut children, value: mut _branch_value } => {
+                Node::Branch {
+                    mut children,
+                    value: mut _branch_value,
+                } => {
                     // Handle branch node
                     let nibble = nibbles[depth] as usize;
 
@@ -341,12 +364,13 @@ impl MerklePatriciaTrie {
                     } else {
                         // Continue with the child node
                         let child = children[nibble].take().unwrap_or(Box::new(Node::empty()));
-                        let new_child = self.insert_at(*child, nibbles, depth + 1, value_clone.clone());
+                        let new_child =
+                            self.insert_at(*child, nibbles, depth + 1, value_clone.clone());
                         children[nibble] = Some(Box::new(new_child));
                     }
 
                     Node::branch(children, Some(value_clone.clone()))
-                },
+                }
             }
         }
     }
@@ -360,7 +384,12 @@ impl MerklePatriciaTrie {
     }
 
     /// Helper function to delete a key from a node
-    fn delete_at(&mut self, mut node: Node, nibbles: &[u8], depth: usize) -> (Node, Option<Vec<u8>>) {
+    fn delete_at(
+        &mut self,
+        mut node: Node,
+        nibbles: &[u8],
+        depth: usize,
+    ) -> (Node, Option<Vec<u8>>) {
         if depth == nibbles.len() {
             // We've reached the end of the key
             match node {
@@ -376,7 +405,7 @@ impl MerklePatriciaTrie {
                         // This leaf has a non-empty key, it's not the one we're looking for
                         (node, None)
                     }
-                },
+                }
 
                 Node::Branch { children, value } => {
                     // Remove the value from the branch
@@ -385,12 +414,12 @@ impl MerklePatriciaTrie {
                     // Check if the branch can be simplified
                     let (simplified, _) = self.simplify_node(new_branch);
                     (simplified, value)
-                },
+                }
 
                 Node::Extension { .. } => {
                     // Extensions don't have values
                     (node, None)
-                },
+                }
             }
         } else {
             match node {
@@ -400,15 +429,16 @@ impl MerklePatriciaTrie {
                     // Check if this is the correct leaf
                     let (decoded_key, _) = compact_decode(&key);
 
-                    if decoded_key.len() == nibbles.len() - depth &&
-                       &decoded_key == &nibbles[depth..] {
+                    if decoded_key.len() == nibbles.len() - depth
+                        && &decoded_key == &nibbles[depth..]
+                    {
                         // This is the correct leaf, remove it
                         (Node::empty(), Some(value.clone()))
                     } else {
                         // This is not the leaf we're looking for
                         (node, None)
                     }
-                },
+                }
 
                 Node::Extension { ref key, ref child } => {
                     // Check if the key prefix matches
@@ -426,7 +456,8 @@ impl MerklePatriciaTrie {
                     }
 
                     // Continue with the child node
-                    let (new_child, value) = self.delete_at(child.as_ref().clone(), nibbles, depth + prefix_len);
+                    let (new_child, value) =
+                        self.delete_at(child.as_ref().clone(), nibbles, depth + prefix_len);
 
                     if new_child.is_empty() {
                         // Child was removed, remove this extension too
@@ -439,15 +470,19 @@ impl MerklePatriciaTrie {
                         let (simplified, _) = self.simplify_node(new_extension);
                         (simplified, value)
                     }
-                },
+                }
 
-                Node::Branch { ref mut children, ref value } => {
+                Node::Branch {
+                    ref mut children,
+                    ref value,
+                } => {
                     // Get the child for this nibble
                     let nibble = nibbles[depth] as usize;
 
                     if let Some(child) = &children[nibble] {
                         // Continue with the child node
-                        let (new_child, deleted_value) = self.delete_at(*child.clone(), nibbles, depth + 1);
+                        let (new_child, deleted_value) =
+                            self.delete_at(*child.clone(), nibbles, depth + 1);
 
                         if new_child.is_empty() {
                             // Child was removed
@@ -466,7 +501,7 @@ impl MerklePatriciaTrie {
                         // No child at this nibble
                         (node, None)
                     }
-                },
+                }
             }
         }
     }
@@ -474,7 +509,10 @@ impl MerklePatriciaTrie {
     /// Simplify a node if possible
     fn simplify_node(&self, node: Node) -> (Node, bool) {
         match node {
-            Node::Branch { ref children, ref value } => {
+            Node::Branch {
+                ref children,
+                ref value,
+            } => {
                 // Count non-empty children
                 let mut non_empty = 0;
                 let mut last_index = 0;
@@ -499,22 +537,34 @@ impl MerklePatriciaTrie {
                     // One child and no value, merge with the child
                     let last_child_clone = last_child.clone().unwrap();
                     match *last_child_clone {
-                        Node::Leaf { key, value: leaf_value } => {
+                        Node::Leaf {
+                            key,
+                            value: leaf_value,
+                        } => {
                             // Prepend the branch index to the leaf's key
                             let (decoded_key, is_leaf) = compact_decode(&key);
                             let mut new_key = vec![last_index as u8];
                             new_key.extend_from_slice(&decoded_key);
 
-                            (Node::leaf(compact_encode(&new_key, is_leaf), leaf_value), true)
-                        },
-                        Node::Extension { key, child: ext_child } => {
+                            (
+                                Node::leaf(compact_encode(&new_key, is_leaf), leaf_value),
+                                true,
+                            )
+                        }
+                        Node::Extension {
+                            key,
+                            child: ext_child,
+                        } => {
                             // Prepend the branch index to the extension's key
                             let (decoded_key, _) = compact_decode(&key);
                             let mut new_key = vec![last_index as u8];
                             new_key.extend_from_slice(&decoded_key);
 
-                            (Node::extension(compact_encode(&new_key, false), *ext_child), true)
-                        },
+                            (
+                                Node::extension(compact_encode(&new_key, false), *ext_child),
+                                true,
+                            )
+                        }
                         _ => {
                             // Create an extension with just the branch index
                             let key = compact_encode(&[last_index as u8], false);
@@ -526,10 +576,13 @@ impl MerklePatriciaTrie {
                     // Multiple children or has value, keep as branch
                     (node, false)
                 }
-            },
+            }
             Node::Extension { ref key, ref child } => {
                 match child.as_ref() {
-                    Node::Extension { key: child_key, child: grandchild } => {
+                    Node::Extension {
+                        key: child_key,
+                        child: grandchild,
+                    } => {
                         // Merge with child extension
                         let (decoded_key, _) = compact_decode(&key);
                         let (decoded_child_key, _) = compact_decode(&child_key);
@@ -537,9 +590,18 @@ impl MerklePatriciaTrie {
                         let mut new_key = decoded_key.clone();
                         new_key.extend_from_slice(&decoded_child_key);
 
-                        (Node::extension(compact_encode(&new_key, false), (**grandchild).clone()), true)
-                    },
-                    Node::Leaf { key: child_key, value } => {
+                        (
+                            Node::extension(
+                                compact_encode(&new_key, false),
+                                (**grandchild).clone(),
+                            ),
+                            true,
+                        )
+                    }
+                    Node::Leaf {
+                        key: child_key,
+                        value,
+                    } => {
                         // Merge with child leaf
                         let (decoded_key, _) = compact_decode(&key);
                         let (decoded_child_key, is_leaf) = compact_decode(&child_key);
@@ -547,14 +609,17 @@ impl MerklePatriciaTrie {
                         let mut new_key = decoded_key.clone();
                         new_key.extend_from_slice(&decoded_child_key);
 
-                        (Node::leaf(compact_encode(&new_key, is_leaf), value.clone()), true)
-                    },
+                        (
+                            Node::leaf(compact_encode(&new_key, is_leaf), value.clone()),
+                            true,
+                        )
+                    }
                     _ => {
                         // Can't simplify
                         (node, false)
                     }
                 }
-            },
+            }
             _ => {
                 // Leaf and Empty nodes can't be simplified
                 (node, false)
@@ -604,7 +669,13 @@ impl MerklePatriciaTrie {
     }
 
     /// Helper function to get a value and generate a proof
-    fn get_proof_at(&self, node: &Node, nibbles: &[u8], depth: usize, items: &mut Vec<ProofItem>) -> Option<Vec<u8>> {
+    fn get_proof_at(
+        &self,
+        node: &Node,
+        nibbles: &[u8],
+        depth: usize,
+        items: &mut Vec<ProofItem>,
+    ) -> Option<Vec<u8>> {
         // Add this node to the proof
         items.push(ProofItem {
             key: nibbles_to_bytes(&nibbles[..depth]),
@@ -631,7 +702,7 @@ impl MerklePatriciaTrie {
                 } else {
                     None
                 }
-            },
+            }
 
             Node::Extension { key, child } => {
                 // Check if the key prefix matches
@@ -650,7 +721,7 @@ impl MerklePatriciaTrie {
 
                 // Continue with the next node
                 self.get_proof_at(child, nibbles, depth + prefix_len, items)
-            },
+            }
 
             Node::Branch { children, value: _ } => {
                 let nibble = nibbles[depth] as usize;
@@ -662,7 +733,7 @@ impl MerklePatriciaTrie {
                     // No child at this nibble
                     None
                 }
-            },
+            }
         }
     }
 
@@ -705,7 +776,7 @@ impl MerklePatriciaTrie {
                 Node::Empty => {
                     // Empty node means the key doesn't exist
                     return proof.value.is_none();
-                },
+                }
 
                 Node::Leaf { key, value } => {
                     // Check if the remaining key matches
@@ -719,7 +790,7 @@ impl MerklePatriciaTrie {
                         Some(v) => v == value,
                         None => false,
                     };
-                },
+                }
 
                 Node::Extension { key, child: _ } => {
                     // Check if the prefix matches
@@ -742,7 +813,7 @@ impl MerklePatriciaTrie {
                     } else {
                         return false; // Missing node in proof
                     }
-                },
+                }
 
                 Node::Branch { children, value } => {
                     // Check if we're at the end of the key
@@ -774,7 +845,7 @@ impl MerklePatriciaTrie {
                         // No child at this nibble, key doesn't exist
                         return proof.value.is_none();
                     }
-                },
+                }
             }
         }
 
@@ -783,7 +854,7 @@ impl MerklePatriciaTrie {
             Node::Empty => {
                 // Empty node means the key doesn't exist
                 proof.value.is_none()
-            },
+            }
 
             Node::Leaf { key: _, value } => {
                 // Check if the value matches
@@ -791,12 +862,12 @@ impl MerklePatriciaTrie {
                     Some(v) => v == value,
                     None => false,
                 }
-            },
+            }
 
             Node::Extension { key: _, child: _ } => {
                 // Extension node should not be at the end of the key
                 false
-            },
+            }
 
             Node::Branch { children: _, value } => {
                 // Branch node at the end of the key should have a value
@@ -995,7 +1066,9 @@ mod tests {
         // The light client only needs the proof and the root hash, not the full trie
         assert_eq!(proof.root_hash, root_hash);
         assert!(MerklePatriciaTrie::verify_proof(&proof));
-        assert!(MerklePatriciaTrie::verify_proof_with_root(&proof, &root_hash));
+        assert!(MerklePatriciaTrie::verify_proof_with_root(
+            &proof, &root_hash
+        ));
         assert_eq!(proof.value, Some(b"balance:200".to_vec()));
 
         // The light client can be sure that account2 has a balance of 200

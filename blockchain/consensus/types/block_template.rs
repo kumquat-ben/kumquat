@@ -2,9 +2,9 @@
 //!
 //! This module defines the block template used for mining.
 
+use crate::consensus::types::Target;
 use crate::storage::block_store::{Block, Hash};
 use crate::storage::tx_store::TransactionRecord;
-use crate::consensus::types::Target;
 
 /// Block template for mining
 #[derive(Debug, Clone)]
@@ -109,13 +109,21 @@ impl BlockTemplate {
             hash,
             prev_hash: self.prev_hash,
             timestamp: self.timestamp,
-            transactions: self.transactions.iter().map(|tx| tx.tx_id.clone()).collect(),
+            transactions: self
+                .transactions
+                .iter()
+                .map(|tx| tx.tx_id.clone())
+                .collect(),
             miner: self.miner,
             pre_reward_state_root: self.state_root,
-            reward_token_ids: crate::storage::block_store::reward_outcome(self.miner, self.height, &hash)
-                .into_iter()
-                .map(|token| token.token_id)
-                .collect(),
+            reward_token_ids: crate::storage::block_store::reward_outcome(
+                self.miner,
+                self.height,
+                &hash,
+            )
+            .into_iter()
+            .map(|token| token.token_id)
+            .collect(),
             result_commitment: [0u8; 32],
             state_root: self.state_root,
             tx_root: self.tx_root,

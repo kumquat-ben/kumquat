@@ -3,15 +3,15 @@
 //! This module provides functionality for sharding the blockchain state,
 //! enabling horizontal scalability and improved performance.
 
+use log::error;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use log::error;
 
+use crate::storage::block_store::{BlockStore, Hash};
 use crate::storage::kv_store::{KVStore, KVStoreError};
 use crate::storage::state::{AccountState, StateError};
 use crate::storage::state_store::{StateStore, StateStoreError};
-use crate::storage::block_store::{BlockStore, Hash};
 
 /// Error type for state sharding operations
 #[derive(Debug, Error)]
@@ -101,7 +101,14 @@ impl std::fmt::Debug for ShardConfig {
             .field("shard_count", &self.shard_count)
             .field("strategy", &self.strategy)
             .field("base_dir", &self.base_dir)
-            .field("custom_shard_fn", &if self.custom_shard_fn.is_some() { "<function>" } else { "None" })
+            .field(
+                "custom_shard_fn",
+                &if self.custom_shard_fn.is_some() {
+                    "<function>"
+                } else {
+                    "None"
+                },
+            )
             .finish()
     }
 }
@@ -210,7 +217,9 @@ impl<'a> StateShard<'a> {
     /// Count accounts in this shard
     fn count_accounts(&self) -> ShardingResult<u64> {
         let prefix = format!("shard:{}:account:", self.id);
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(ShardingError::KVStoreError)?;
 
         Ok(results.len() as u64)
@@ -221,12 +230,15 @@ impl<'a> StateShard<'a> {
         let mut total_balance = 0;
 
         let prefix = format!("shard:{}:account:", self.id);
-        let results = self.store.scan_prefix(prefix.as_bytes())
+        let results = self
+            .store
+            .scan_prefix(prefix.as_bytes())
             .map_err(ShardingError::KVStoreError)?;
 
         for (_, value) in results {
-            let account: AccountState = bincode::deserialize(&value)
-                .map_err(|e| ShardingError::Other(format!("Failed to deserialize account: {}", e)))?;
+            let account: AccountState = bincode::deserialize(&value).map_err(|e| {
+                ShardingError::Other(format!("Failed to deserialize account: {}", e))
+            })?;
 
             total_balance += account.balance;
         }
@@ -247,16 +259,19 @@ impl<'a> StateShard<'a> {
     pub fn get_account(&self, address: &[u8]) -> ShardingResult<Option<AccountState>> {
         let key = format!("shard:{}:account:{}", self.id, hex::encode(address));
 
-        let result = self.store.get(key.as_bytes())
+        let result = self
+            .store
+            .get(key.as_bytes())
             .map_err(ShardingError::KVStoreError)?;
 
         match result {
             Some(value) => {
-                let account: AccountState = bincode::deserialize(&value)
-                    .map_err(|e| ShardingError::Other(format!("Failed to deserialize account: {}", e)))?;
+                let account: AccountState = bincode::deserialize(&value).map_err(|e| {
+                    ShardingError::Other(format!("Failed to deserialize account: {}", e))
+                })?;
 
                 Ok(Some(account))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -268,7 +283,8 @@ impl<'a> StateShard<'a> {
         let value = bincode::serialize(account)
             .map_err(|e| ShardingError::Other(format!("Failed to serialize account: {}", e)))?;
 
-        self.store.put(key.as_bytes(), &value)
+        self.store
+            .put(key.as_bytes(), &value)
             .map_err(ShardingError::KVStoreError)?;
 
         // Update shard info
@@ -290,7 +306,8 @@ impl<'a> StateShard<'a> {
 
         let key = format!("shard:{}:account:{}", self.id, hex::encode(address));
 
-        self.store.delete(key.as_bytes())
+        self.store
+            .delete(key.as_bytes())
             .map_err(ShardingError::KVStoreError)?;
 
         // Update shard info
@@ -361,7 +378,11 @@ impl<'a> StateShardingManager<'a> {
         // Initialize shard info
         let current_height = match self.block_store.get_latest_height() {
             Some(height) => height,
-            None => return Err(ShardingError::Other("Failed to get latest height".to_string())),
+            None => {
+                return Err(ShardingError::Other(
+                    "Failed to get latest height".to_string(),
+                ))
+            }
         };
 
         for (_, shard) in shards.iter() {
@@ -398,7 +419,7 @@ impl<'a> StateShardingManager<'a> {
                 // Use first byte as shard ID
                 let shard_id = address[0] as u32 % self.config.shard_count;
                 Ok(shard_id)
-            },
+            }
             ShardingStrategy::AddressModulo => {
                 // Use modulo of address as shard ID
                 let mut sum = 0u32;
@@ -407,7 +428,7 @@ impl<'a> StateShardingManager<'a> {
                 }
                 let shard_id = sum % self.config.shard_count;
                 Ok(shard_id)
-            },
+            }
             ShardingStrategy::AccountType => {
                 // This would require knowing the account type
                 // For now, we'll fall back to address modulo
@@ -417,16 +438,18 @@ impl<'a> StateShardingManager<'a> {
                 }
                 let shard_id = sum % self.config.shard_count;
                 Ok(shard_id)
-            },
+            }
             ShardingStrategy::Custom => {
                 // Use custom function if provided
                 if let Some(custom_fn) = &self.config.custom_shard_fn {
                     let shard_id = custom_fn(address) % self.config.shard_count;
                     Ok(shard_id)
                 } else {
-                    Err(ShardingError::Other("Custom shard function not provided".to_string()))
+                    Err(ShardingError::Other(
+                        "Custom shard function not provided".to_string(),
+                    ))
                 }
-            },
+            }
         }
     }
 
@@ -464,7 +487,11 @@ impl<'a> StateShardingManager<'a> {
     pub fn update_all_shard_info(&self) -> ShardingResult<()> {
         let current_height = match self.block_store.get_latest_height() {
             Some(height) => height,
-            None => return Err(ShardingError::Other("Failed to get latest height".to_string())),
+            None => {
+                return Err(ShardingError::Other(
+                    "Failed to get latest height".to_string(),
+                ))
+            }
         };
 
         let shards = self.shards.read().unwrap();
@@ -499,7 +526,10 @@ impl<'a> StateShardingManager<'a> {
 
         for (address, account) in &accounts {
             let current_shard_id = self.calculate_shard_id(address)?;
-            let current_count = current_distribution.get(&current_shard_id).copied().unwrap_or(0);
+            let current_count = current_distribution
+                .get(&current_shard_id)
+                .copied()
+                .unwrap_or(0);
 
             // If this shard has more than ideal, consider moving accounts
             if (current_count as f64) > ideal_count_per_shard * 1.1 {
@@ -512,7 +542,12 @@ impl<'a> StateShardingManager<'a> {
                     let count = current_distribution.get(&id).copied().unwrap_or(0);
                     if (count as f64) < ideal_count_per_shard * 0.9 {
                         // Move this account to the new shard
-                        accounts_to_move.push((address.clone(), account.clone(), current_shard_id, id));
+                        accounts_to_move.push((
+                            address.clone(),
+                            account.clone(),
+                            current_shard_id,
+                            id,
+                        ));
 
                         // Update distribution counts
                         *current_distribution.entry(current_shard_id).or_insert(0) -= 1;
@@ -553,7 +588,9 @@ impl<'a> StateShardingManager<'a> {
 
         for (_, shard) in shards.iter() {
             let prefix = format!("shard:{}:account:", shard.id);
-            let results = self.store.scan_prefix(prefix.as_bytes())
+            let results = self
+                .store
+                .scan_prefix(prefix.as_bytes())
                 .map_err(ShardingError::KVStoreError)?;
 
             for (key, value) in results {
@@ -562,8 +599,9 @@ impl<'a> StateShardingManager<'a> {
                 let parts: Vec<&str> = key_str.split(':').collect();
                 if parts.len() == 4 {
                     if let Ok(address) = hex::decode(parts[3]) {
-                        let account: AccountState = bincode::deserialize(&value)
-                            .map_err(|e| ShardingError::Other(format!("Failed to deserialize account: {}", e)))?;
+                        let account: AccountState = bincode::deserialize(&value).map_err(|e| {
+                            ShardingError::Other(format!("Failed to deserialize account: {}", e))
+                        })?;
 
                         accounts.insert(address, account);
                     }
@@ -598,9 +636,9 @@ impl std::fmt::Display for RebalanceStats {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::state::AccountType;
+    use tempfile::tempdir;
 
     // Helper function to create a test environment
     fn setup_test_env() -> (

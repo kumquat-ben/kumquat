@@ -1,9 +1,9 @@
-use std::path::Path;
 use std::env;
+use std::path::Path;
 
-use kumquat::storage::RocksDBStore;
 use kumquat::storage::BlockStore;
 use kumquat::storage::KVStore;
+use kumquat::storage::RocksDBStore;
 
 fn main() {
     // Parse command line arguments
@@ -31,32 +31,28 @@ fn main() {
 
     // Process the command
     match args[1].as_str() {
-        "latest" => {
-            match block_store.get_latest_height() {
-                Some(height) => {
-                    match block_store.get_block_by_height(height) {
-                        Ok(Some(block)) => {
-                            println!("Latest block:");
-                            println!("  Height: {}", block.height);
-                            println!("  Hash: {}", hex::encode(&block.hash));
-                            println!("  Previous Hash: {}", hex::encode(&block.prev_hash));
-                            println!("  Timestamp: {}", block.timestamp);
-                            println!("  Transactions: {}", block.transactions.len());
-                            println!("  State Root: {}", hex::encode(&block.state_root));
-                            println!("  Transaction Root: {}", hex::encode(&block.tx_root));
-                            println!("  Nonce: {}", block.nonce);
-                            println!("  PoH Sequence: {}", block.poh_seq);
-                            println!("  PoH Hash: {}", hex::encode(&block.poh_hash));
-                            println!("  Difficulty: {}", block.difficulty);
-                            println!("  Total Difficulty: {}", block.total_difficulty);
-                        }
-                        Ok(None) => println!("Block not found at height {}", height),
-                        Err(e) => println!("Error retrieving block: {}", e),
-                    }
+        "latest" => match block_store.get_latest_height() {
+            Some(height) => match block_store.get_block_by_height(height) {
+                Ok(Some(block)) => {
+                    println!("Latest block:");
+                    println!("  Height: {}", block.height);
+                    println!("  Hash: {}", hex::encode(&block.hash));
+                    println!("  Previous Hash: {}", hex::encode(&block.prev_hash));
+                    println!("  Timestamp: {}", block.timestamp);
+                    println!("  Transactions: {}", block.transactions.len());
+                    println!("  State Root: {}", hex::encode(&block.state_root));
+                    println!("  Transaction Root: {}", hex::encode(&block.tx_root));
+                    println!("  Nonce: {}", block.nonce);
+                    println!("  PoH Sequence: {}", block.poh_seq);
+                    println!("  PoH Hash: {}", hex::encode(&block.poh_hash));
+                    println!("  Difficulty: {}", block.difficulty);
+                    println!("  Total Difficulty: {}", block.total_difficulty);
                 }
-                None => println!("No blocks found"),
-            }
-        }
+                Ok(None) => println!("Block not found at height {}", height),
+                Err(e) => println!("Error retrieving block: {}", e),
+            },
+            None => println!("No blocks found"),
+        },
         "height" => {
             if args.len() < 3 {
                 println!("Missing height argument");

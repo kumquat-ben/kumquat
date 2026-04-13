@@ -7,16 +7,16 @@
 //! - Supporting fork experimentation
 //! - Enabling time-travel debugging
 
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 use log::{error, info};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
+use crate::storage::block_store::{BlockStore, Hash};
 use crate::storage::kv_store::{KVStore, KVStoreError, RocksDBStore};
-use crate::storage::block_store::{Hash, BlockStore};
 use crate::storage::state_store::StateStore;
 
 /// Error types for snapshot operations
@@ -202,15 +202,13 @@ impl<'a> SnapshotManager<'a> {
     pub fn init(&self) -> Result<(), SnapshotError> {
         // Create the snapshot directory if it doesn't exist
         if !self.config.snapshot_dir.exists() {
-            fs::create_dir_all(&self.config.snapshot_dir)
-                .map_err(|e| SnapshotError::IoError(e))?
+            fs::create_dir_all(&self.config.snapshot_dir).map_err(|e| SnapshotError::IoError(e))?
         }
 
         // Create the metadata directory
         let metadata_dir = self.config.snapshot_dir.join("metadata");
         if !metadata_dir.exists() {
-            fs::create_dir_all(&metadata_dir)
-                .map_err(|e| SnapshotError::IoError(e))?
+            fs::create_dir_all(&metadata_dir).map_err(|e| SnapshotError::IoError(e))?
         }
 
         Ok(())
@@ -235,7 +233,10 @@ impl<'a> SnapshotManager<'a> {
 
     /// Get the metadata path for a snapshot
     fn get_metadata_path(&self, snapshot_id: &str) -> PathBuf {
-        self.config.snapshot_dir.join("metadata").join(format!("{}.json", snapshot_id))
+        self.config
+            .snapshot_dir
+            .join("metadata")
+            .join(format!("{}.json", snapshot_id))
     }
 
     /// Save snapshot metadata
@@ -245,8 +246,7 @@ impl<'a> SnapshotManager<'a> {
         let metadata_json = serde_json::to_string_pretty(metadata)
             .map_err(|e| SnapshotError::SerializationError(e.to_string()))?;
 
-        fs::write(metadata_path, metadata_json)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::write(metadata_path, metadata_json).map_err(|e| SnapshotError::IoError(e))?;
 
         Ok(())
     }
@@ -259,8 +259,8 @@ impl<'a> SnapshotManager<'a> {
             return Err(SnapshotError::SnapshotNotFound(snapshot_id.to_string()));
         }
 
-        let metadata_json = fs::read_to_string(metadata_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        let metadata_json =
+            fs::read_to_string(metadata_path).map_err(|e| SnapshotError::IoError(e))?;
 
         serde_json::from_str(&metadata_json)
             .map_err(|e| SnapshotError::DeserializationError(e.to_string()))
@@ -281,8 +281,8 @@ impl<'a> SnapshotManager<'a> {
             let path = entry.path();
 
             if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
-                let metadata_json = fs::read_to_string(path)
-                    .map_err(|e| SnapshotError::IoError(e))?;
+                let metadata_json =
+                    fs::read_to_string(path).map_err(|e| SnapshotError::IoError(e))?;
 
                 let metadata: SnapshotMetadata = serde_json::from_str(&metadata_json)
                     .map_err(|e| SnapshotError::DeserializationError(e.to_string()))?;
@@ -314,14 +314,18 @@ impl<'a> SnapshotManager<'a> {
         match self.config.snapshot_type {
             SnapshotType::Full | SnapshotType::BlocksOnly => {
                 if self.block_store.is_none() {
-                    return Err(SnapshotError::Other("Block store is required for this snapshot type".to_string()));
+                    return Err(SnapshotError::Other(
+                        "Block store is required for this snapshot type".to_string(),
+                    ));
                 }
-            },
+            }
             SnapshotType::StateOnly => {
                 if self.state_store.is_none() {
-                    return Err(SnapshotError::Other("State store is required for this snapshot type".to_string()));
+                    return Err(SnapshotError::Other(
+                        "State store is required for this snapshot type".to_string(),
+                    ));
                 }
-            },
+            }
         }
 
         // Initialize snapshot directories
@@ -332,8 +336,7 @@ impl<'a> SnapshotManager<'a> {
         let snapshot_path = self.get_snapshot_path(&snapshot_id);
 
         // Create the snapshot directory
-        fs::create_dir_all(&snapshot_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&snapshot_path).map_err(|e| SnapshotError::IoError(e))?;
 
         // Get the current block and state information
         let (block_height, block_hash, state_root) = self.get_current_chain_state()?;
@@ -342,13 +345,13 @@ impl<'a> SnapshotManager<'a> {
         match self.config.snapshot_type {
             SnapshotType::Full => {
                 self.create_full_snapshot(&snapshot_id, block_height)?;
-            },
+            }
             SnapshotType::StateOnly => {
                 self.create_state_snapshot(&snapshot_id, block_height)?;
-            },
+            }
             SnapshotType::BlocksOnly => {
                 self.create_blocks_snapshot(&snapshot_id, block_height)?;
-            },
+            }
         }
 
         // Calculate the snapshot size
@@ -378,7 +381,10 @@ impl<'a> SnapshotManager<'a> {
         // Prune old snapshots if needed
         self.prune_old_snapshots()?;
 
-        info!("Created snapshot {} at block height {}", snapshot_id, block_height);
+        info!(
+            "Created snapshot {} at block height {}",
+            snapshot_id, block_height
+        );
         Ok(metadata)
     }
 
@@ -395,16 +401,20 @@ impl<'a> SnapshotManager<'a> {
         // Get the latest block height
         let height = match block_store.get_latest_height() {
             Some(height) => height,
-            None => return Err(SnapshotError::Other("Failed to get latest height".to_string())),
+            None => {
+                return Err(SnapshotError::Other(
+                    "Failed to get latest height".to_string(),
+                ))
+            }
         };
 
         // Get the block at that height
-        let block = block_store.get_block_by_height(height)
+        let block = block_store
+            .get_block_by_height(height)
             .map_err(|e| SnapshotError::Other(format!("Failed to get block: {}", e)))?;
 
-        let block = block.ok_or_else(|| {
-            SnapshotError::Other(format!("Block at height {} not found", height))
-        })?;
+        let block = block
+            .ok_or_else(|| SnapshotError::Other(format!("Block at height {} not found", height)))?;
 
         // Get the state root
         let state_root = block.state_root;
@@ -413,16 +423,18 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Create a full snapshot (blocks, transactions, state)
-    fn create_full_snapshot(&self, snapshot_id: &str, block_height: u64) -> Result<(), SnapshotError> {
+    fn create_full_snapshot(
+        &self,
+        snapshot_id: &str,
+        block_height: u64,
+    ) -> Result<(), SnapshotError> {
         // Create the snapshot directory structure
         let snapshot_path = self.get_snapshot_path(snapshot_id);
         let blocks_path = snapshot_path.join("blocks");
         let state_path = snapshot_path.join("state");
 
-        fs::create_dir_all(&blocks_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
-        fs::create_dir_all(&state_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&blocks_path).map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&state_path).map_err(|e| SnapshotError::IoError(e))?;
 
         // Create RocksDB backup for blocks
         self.backup_blocks_to_snapshot(snapshot_id, block_height)?;
@@ -434,13 +446,16 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Create a state-only snapshot
-    fn create_state_snapshot(&self, snapshot_id: &str, _block_height: u64) -> Result<(), SnapshotError> {
+    fn create_state_snapshot(
+        &self,
+        snapshot_id: &str,
+        _block_height: u64,
+    ) -> Result<(), SnapshotError> {
         // Create the snapshot directory structure
         let snapshot_path = self.get_snapshot_path(snapshot_id);
         let state_path = snapshot_path.join("state");
 
-        fs::create_dir_all(&state_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&state_path).map_err(|e| SnapshotError::IoError(e))?;
 
         // Create RocksDB backup for state
         self.backup_state_to_snapshot(snapshot_id)?;
@@ -449,13 +464,16 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Create a blocks-only snapshot
-    fn create_blocks_snapshot(&self, snapshot_id: &str, block_height: u64) -> Result<(), SnapshotError> {
+    fn create_blocks_snapshot(
+        &self,
+        snapshot_id: &str,
+        block_height: u64,
+    ) -> Result<(), SnapshotError> {
         // Create the snapshot directory structure
         let snapshot_path = self.get_snapshot_path(snapshot_id);
         let blocks_path = snapshot_path.join("blocks");
 
-        fs::create_dir_all(&blocks_path)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&blocks_path).map_err(|e| SnapshotError::IoError(e))?;
 
         // Create RocksDB backup for blocks
         self.backup_blocks_to_snapshot(snapshot_id, block_height)?;
@@ -464,7 +482,11 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Backup blocks to snapshot
-    fn backup_blocks_to_snapshot(&self, snapshot_id: &str, block_height: u64) -> Result<(), SnapshotError> {
+    fn backup_blocks_to_snapshot(
+        &self,
+        snapshot_id: &str,
+        block_height: u64,
+    ) -> Result<(), SnapshotError> {
         let snapshot_path = self.get_snapshot_path(snapshot_id);
         let blocks_path = snapshot_path.join("blocks");
 
@@ -474,10 +496,13 @@ impl<'a> SnapshotManager<'a> {
             let type_name = std::any::type_name_of_val(self.store);
             if type_name.contains("RocksDBStore") {
                 // This is a safe downcast because we've checked the type name
-                let rocks_store = unsafe { &*(self.store as *const dyn KVStore as *const RocksDBStore) };
+                let rocks_store =
+                    unsafe { &*(self.store as *const dyn KVStore as *const RocksDBStore) };
                 rocks_store.get_db()
             } else {
-                return Err(SnapshotError::Other("Only RocksDBStore is supported for snapshots".to_string()))
+                return Err(SnapshotError::Other(
+                    "Only RocksDBStore is supported for snapshots".to_string(),
+                ));
             }
         };
 
@@ -486,13 +511,13 @@ impl<'a> SnapshotManager<'a> {
             .map_err(|e| SnapshotError::Other(format!("Failed to create checkpoint: {}", e)))?;
 
         // Create the checkpoint at the blocks path
-        checkpoint.create_checkpoint(&blocks_path)
+        checkpoint
+            .create_checkpoint(&blocks_path)
             .map_err(|e| SnapshotError::Other(format!("Failed to create checkpoint: {}", e)))?;
 
         // Write the block height to a file for reference
         let height_file = blocks_path.join("height.txt");
-        fs::write(height_file, block_height.to_string())
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::write(height_file, block_height.to_string()).map_err(|e| SnapshotError::IoError(e))?;
 
         Ok(())
     }
@@ -508,10 +533,13 @@ impl<'a> SnapshotManager<'a> {
             let type_name = std::any::type_name_of_val(self.store);
             if type_name.contains("RocksDBStore") {
                 // This is a safe downcast because we've checked the type name
-                let rocks_store = unsafe { &*(self.store as *const dyn KVStore as *const RocksDBStore) };
+                let rocks_store =
+                    unsafe { &*(self.store as *const dyn KVStore as *const RocksDBStore) };
                 rocks_store.get_db()
             } else {
-                return Err(SnapshotError::Other("Only RocksDBStore is supported for snapshots".to_string()))
+                return Err(SnapshotError::Other(
+                    "Only RocksDBStore is supported for snapshots".to_string(),
+                ));
             }
         };
 
@@ -520,7 +548,8 @@ impl<'a> SnapshotManager<'a> {
             .map_err(|e| SnapshotError::Other(format!("Failed to create checkpoint: {}", e)))?;
 
         // Create the checkpoint at the state path
-        checkpoint.create_checkpoint(&state_path)
+        checkpoint
+            .create_checkpoint(&state_path)
             .map_err(|e| SnapshotError::Other(format!("Failed to create checkpoint: {}", e)))?;
 
         Ok(())
@@ -538,13 +567,16 @@ impl<'a> SnapshotManager<'a> {
 
         // Walk the directory and sum up file sizes
         for entry in walkdir::WalkDir::new(&snapshot_path) {
-            let entry = entry.map_err(|e| SnapshotError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to walk directory: {}", e)
-            )))?;
+            let entry = entry.map_err(|e| {
+                SnapshotError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to walk directory: {}", e),
+                ))
+            })?;
 
             if entry.file_type().is_file() {
-                total_size += entry.metadata()
+                total_size += entry
+                    .metadata()
                     .map_err(|e| SnapshotError::IoError(e.into()))?
                     .len();
             }
@@ -584,14 +616,12 @@ impl<'a> SnapshotManager<'a> {
 
         // Delete the snapshot directory if it exists
         if snapshot_path.exists() {
-            fs::remove_dir_all(&snapshot_path)
-                .map_err(|e| SnapshotError::IoError(e))?;
+            fs::remove_dir_all(&snapshot_path).map_err(|e| SnapshotError::IoError(e))?;
         }
 
         // Delete the metadata file if it exists
         if metadata_path.exists() {
-            fs::remove_file(&metadata_path)
-                .map_err(|e| SnapshotError::IoError(e))?;
+            fs::remove_file(&metadata_path).map_err(|e| SnapshotError::IoError(e))?;
         }
 
         info!("Deleted snapshot {}", snapshot_id);
@@ -613,8 +643,7 @@ impl<'a> SnapshotManager<'a> {
 
         // Create the target directory if it doesn't exist
         if !target_dir.exists() {
-            fs::create_dir_all(target_dir)
-                .map_err(|e| SnapshotError::IoError(e))?;
+            fs::create_dir_all(target_dir).map_err(|e| SnapshotError::IoError(e))?;
         }
 
         // Get the snapshot path
@@ -628,21 +657,29 @@ impl<'a> SnapshotManager<'a> {
         match restore_type {
             SnapshotType::Full => {
                 self.restore_full_snapshot(snapshot_id, target_dir)?;
-            },
+            }
             SnapshotType::StateOnly => {
                 self.restore_state_snapshot(snapshot_id, target_dir)?;
-            },
+            }
             SnapshotType::BlocksOnly => {
                 self.restore_blocks_snapshot(snapshot_id, target_dir)?;
-            },
+            }
         }
 
-        info!("Restored snapshot {} to {}", snapshot_id, target_dir.display());
+        info!(
+            "Restored snapshot {} to {}",
+            snapshot_id,
+            target_dir.display()
+        );
         Ok(metadata)
     }
 
     /// Restore a full snapshot (blocks, transactions, state)
-    fn restore_full_snapshot(&self, snapshot_id: &str, target_dir: &Path) -> Result<(), SnapshotError> {
+    fn restore_full_snapshot(
+        &self,
+        snapshot_id: &str,
+        target_dir: &Path,
+    ) -> Result<(), SnapshotError> {
         // Get the snapshot path
         let snapshot_path = self.get_snapshot_path(snapshot_id);
 
@@ -651,19 +688,18 @@ impl<'a> SnapshotManager<'a> {
         let state_path = snapshot_path.join("state");
 
         if !blocks_path.exists() || !state_path.exists() {
-            return Err(SnapshotError::InvalidSnapshotFormat(
-                format!("Snapshot {} is not a full snapshot", snapshot_id)
-            ));
+            return Err(SnapshotError::InvalidSnapshotFormat(format!(
+                "Snapshot {} is not a full snapshot",
+                snapshot_id
+            )));
         }
 
         // Create target directories
         let target_blocks_dir = target_dir.join("blocks");
         let target_state_dir = target_dir.join("state");
 
-        fs::create_dir_all(&target_blocks_dir)
-            .map_err(|e| SnapshotError::IoError(e))?;
-        fs::create_dir_all(&target_state_dir)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&target_blocks_dir).map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&target_state_dir).map_err(|e| SnapshotError::IoError(e))?;
 
         // Copy blocks data
         self.copy_directory(&blocks_path, &target_blocks_dir)?;
@@ -675,7 +711,11 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Restore a state-only snapshot
-    fn restore_state_snapshot(&self, snapshot_id: &str, target_dir: &Path) -> Result<(), SnapshotError> {
+    fn restore_state_snapshot(
+        &self,
+        snapshot_id: &str,
+        target_dir: &Path,
+    ) -> Result<(), SnapshotError> {
         // Get the snapshot path
         let snapshot_path = self.get_snapshot_path(snapshot_id);
 
@@ -683,16 +723,16 @@ impl<'a> SnapshotManager<'a> {
         let state_path = snapshot_path.join("state");
 
         if !state_path.exists() {
-            return Err(SnapshotError::InvalidSnapshotFormat(
-                format!("Snapshot {} does not contain state data", snapshot_id)
-            ));
+            return Err(SnapshotError::InvalidSnapshotFormat(format!(
+                "Snapshot {} does not contain state data",
+                snapshot_id
+            )));
         }
 
         // Create target directory
         let target_state_dir = target_dir.join("state");
 
-        fs::create_dir_all(&target_state_dir)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&target_state_dir).map_err(|e| SnapshotError::IoError(e))?;
 
         // Copy state data
         self.copy_directory(&state_path, &target_state_dir)?;
@@ -701,7 +741,11 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Restore a blocks-only snapshot
-    fn restore_blocks_snapshot(&self, snapshot_id: &str, target_dir: &Path) -> Result<(), SnapshotError> {
+    fn restore_blocks_snapshot(
+        &self,
+        snapshot_id: &str,
+        target_dir: &Path,
+    ) -> Result<(), SnapshotError> {
         // Get the snapshot path
         let snapshot_path = self.get_snapshot_path(snapshot_id);
 
@@ -709,16 +753,16 @@ impl<'a> SnapshotManager<'a> {
         let blocks_path = snapshot_path.join("blocks");
 
         if !blocks_path.exists() {
-            return Err(SnapshotError::InvalidSnapshotFormat(
-                format!("Snapshot {} does not contain blocks data", snapshot_id)
-            ));
+            return Err(SnapshotError::InvalidSnapshotFormat(format!(
+                "Snapshot {} does not contain blocks data",
+                snapshot_id
+            )));
         }
 
         // Create target directory
         let target_blocks_dir = target_dir.join("blocks");
 
-        fs::create_dir_all(&target_blocks_dir)
-            .map_err(|e| SnapshotError::IoError(e))?;
+        fs::create_dir_all(&target_blocks_dir).map_err(|e| SnapshotError::IoError(e))?;
 
         // Copy blocks data
         self.copy_directory(&blocks_path, &target_blocks_dir)?;
@@ -729,20 +773,21 @@ impl<'a> SnapshotManager<'a> {
     /// Copy a directory recursively
     fn copy_directory(&self, src: &Path, dst: &Path) -> Result<(), SnapshotError> {
         if !src.exists() {
-            return Err(SnapshotError::IoError(
-                std::io::Error::new(std::io::ErrorKind::NotFound, format!("Source directory not found: {}", src.display()))
-            ));
+            return Err(SnapshotError::IoError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Source directory not found: {}", src.display()),
+            )));
         }
 
         if !src.is_dir() {
-            return Err(SnapshotError::IoError(
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Source is not a directory: {}", src.display()))
-            ));
+            return Err(SnapshotError::IoError(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Source is not a directory: {}", src.display()),
+            )));
         }
 
         if !dst.exists() {
-            fs::create_dir_all(dst)
-                .map_err(|e| SnapshotError::IoError(e))?;
+            fs::create_dir_all(dst).map_err(|e| SnapshotError::IoError(e))?;
         }
 
         for entry in fs::read_dir(src).map_err(SnapshotError::IoError)? {
@@ -754,8 +799,7 @@ impl<'a> SnapshotManager<'a> {
             if entry_path.is_dir() {
                 self.copy_directory(&entry_path, &dst_path)?;
             } else {
-                fs::copy(&entry_path, &dst_path)
-                    .map_err(|e| SnapshotError::IoError(e))?;
+                fs::copy(&entry_path, &dst_path).map_err(|e| SnapshotError::IoError(e))?;
             }
         }
 
@@ -763,7 +807,11 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Open a database from a snapshot
-    pub fn open_snapshot_db(&self, snapshot_id: &str, snapshot_type: SnapshotType) -> Result<RocksDBStore, SnapshotError> {
+    pub fn open_snapshot_db(
+        &self,
+        snapshot_id: &str,
+        snapshot_type: SnapshotType,
+    ) -> Result<RocksDBStore, SnapshotError> {
         // Load the snapshot metadata
         let _metadata = self.load_metadata(snapshot_id)?;
 
@@ -781,17 +829,19 @@ impl<'a> SnapshotManager<'a> {
         };
 
         if !db_path.exists() {
-            return Err(SnapshotError::InvalidSnapshotFormat(
-                format!("Snapshot {} does not contain the requested data type", snapshot_id)
-            ));
+            return Err(SnapshotError::InvalidSnapshotFormat(format!(
+                "Snapshot {} does not contain the requested data type",
+                snapshot_id
+            )));
         }
 
         // Open the database in read-only mode
         let mut opts = rocksdb::Options::default();
         opts.create_if_missing(false);
 
-        let db = RocksDBStore::with_options(&db_path, opts)
-            .map_err(|e| SnapshotError::Other(format!("Failed to open snapshot database: {}", e)))?;
+        let db = RocksDBStore::with_options(&db_path, opts).map_err(|e| {
+            SnapshotError::Other(format!("Failed to open snapshot database: {}", e))
+        })?;
 
         Ok(db)
     }
@@ -800,9 +850,9 @@ impl<'a> SnapshotManager<'a> {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::fs;
     use crate::storage::{AccountType, Block};
+    use std::fs;
+    use tempfile::tempdir;
 
     // Helper function to create a test block
     fn create_test_block(height: u64, prev_hash: Hash) -> Block {
@@ -858,10 +908,14 @@ mod tests {
 
         // Create some test accounts
         let address1 = [1; 32];
-        state_store.create_account(&address1, 1000, AccountType::User).unwrap();
+        state_store
+            .create_account(&address1, 1000, AccountType::User)
+            .unwrap();
 
         let address2 = [2; 32];
-        state_store.create_account(&address2, 2000, AccountType::Contract).unwrap();
+        state_store
+            .create_account(&address2, 2000, AccountType::Contract)
+            .unwrap();
 
         (temp_dir, kv_store, block_store, state_store)
     }
@@ -891,18 +945,23 @@ mod tests {
         snapshot_manager.init().unwrap();
 
         // Create a snapshot
-        let snapshot = snapshot_manager.create_snapshot(
-            "Test Snapshot",
-            Some("A test snapshot"),
-            vec!["test".to_string(), "initial".to_string()],
-            None,
-        ).unwrap();
+        let snapshot = snapshot_manager
+            .create_snapshot(
+                "Test Snapshot",
+                Some("A test snapshot"),
+                vec!["test".to_string(), "initial".to_string()],
+                None,
+            )
+            .unwrap();
 
         // Verify the snapshot metadata
         assert_eq!(snapshot.name, "Test Snapshot");
         assert_eq!(snapshot.description, Some("A test snapshot".to_string()));
         assert_eq!(snapshot.block_height, 2);
-        assert_eq!(snapshot.tags, vec!["test".to_string(), "initial".to_string()]);
+        assert_eq!(
+            snapshot.tags,
+            vec!["test".to_string(), "initial".to_string()]
+        );
 
         // List snapshots
         let snapshots = snapshot_manager.list_snapshots().unwrap();
@@ -940,23 +999,23 @@ mod tests {
         snapshot_manager.init().unwrap();
 
         // Create a snapshot
-        let snapshot = snapshot_manager.create_snapshot(
-            "Test Snapshot",
-            Some("A test snapshot"),
-            vec!["test".to_string()],
-            None,
-        ).unwrap();
+        let snapshot = snapshot_manager
+            .create_snapshot(
+                "Test Snapshot",
+                Some("A test snapshot"),
+                vec!["test".to_string()],
+                None,
+            )
+            .unwrap();
 
         // Create a restoration directory
         let restore_dir = temp_dir.path().join("restore");
         fs::create_dir_all(&restore_dir).unwrap();
 
         // Restore the snapshot
-        let restored_metadata = snapshot_manager.restore_snapshot(
-            &snapshot.id,
-            &restore_dir,
-            None,
-        ).unwrap();
+        let restored_metadata = snapshot_manager
+            .restore_snapshot(&snapshot.id, &restore_dir, None)
+            .unwrap();
 
         // Verify the restored metadata
         assert_eq!(restored_metadata.id, snapshot.id);
@@ -992,12 +1051,14 @@ mod tests {
         snapshot_manager.init().unwrap();
 
         // Create a snapshot
-        let snapshot = snapshot_manager.create_snapshot(
-            "Test Snapshot",
-            Some("A test snapshot"),
-            vec!["test".to_string()],
-            None,
-        ).unwrap();
+        let snapshot = snapshot_manager
+            .create_snapshot(
+                "Test Snapshot",
+                Some("A test snapshot"),
+                vec!["test".to_string()],
+                None,
+            )
+            .unwrap();
 
         // Verify the snapshot exists
         assert!(snapshot_manager.get_snapshot_path(&snapshot.id).exists());
@@ -1028,7 +1089,7 @@ mod tests {
             snapshot_dir: snapshot_dir.clone(),
             snapshot_type: SnapshotType::Full,
             compression: CompressionType::None,
-            max_snapshots: 2,  // Only keep 2 snapshots
+            max_snapshots: 2, // Only keep 2 snapshots
             include_mempool: false,
         };
 
@@ -1040,32 +1101,38 @@ mod tests {
         snapshot_manager.init().unwrap();
 
         // Create 3 snapshots
-        let snapshot1 = snapshot_manager.create_snapshot(
-            "Snapshot 1",
-            Some("First snapshot"),
-            vec!["test".to_string()],
-            None,
-        ).unwrap();
+        let snapshot1 = snapshot_manager
+            .create_snapshot(
+                "Snapshot 1",
+                Some("First snapshot"),
+                vec!["test".to_string()],
+                None,
+            )
+            .unwrap();
 
         // Sleep to ensure different timestamps
         std::thread::sleep(std::time::Duration::from_millis(100));
 
-        let snapshot2 = snapshot_manager.create_snapshot(
-            "Snapshot 2",
-            Some("Second snapshot"),
-            vec!["test".to_string()],
-            None,
-        ).unwrap();
+        let snapshot2 = snapshot_manager
+            .create_snapshot(
+                "Snapshot 2",
+                Some("Second snapshot"),
+                vec!["test".to_string()],
+                None,
+            )
+            .unwrap();
 
         // Sleep to ensure different timestamps
         std::thread::sleep(std::time::Duration::from_millis(100));
 
-        let snapshot3 = snapshot_manager.create_snapshot(
-            "Snapshot 3",
-            Some("Third snapshot"),
-            vec!["test".to_string()],
-            None,
-        ).unwrap();
+        let snapshot3 = snapshot_manager
+            .create_snapshot(
+                "Snapshot 3",
+                Some("Third snapshot"),
+                vec!["test".to_string()],
+                None,
+            )
+            .unwrap();
 
         // List snapshots - should only have the 2 most recent
         let snapshots = snapshot_manager.list_snapshots().unwrap();

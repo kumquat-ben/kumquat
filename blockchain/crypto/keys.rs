@@ -1,10 +1,10 @@
+use crate::crypto::hash::sha256;
 use ed25519_dalek::{Keypair, PublicKey, SecretKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Serialize, Deserialize};
-use std::fmt;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use crate::crypto::hash::sha256;
+use std::fmt;
 
 /// Kumquat keypair for signing and verification
 pub struct VibeKeypair {
@@ -35,10 +35,7 @@ impl VibeKeypair {
         OsRng.fill_bytes(&mut seed);
         let secret = SecretKey::from_bytes(&seed).expect("Failed to create secret key");
         let public = PublicKey::from(&secret);
-        Self {
-            public,
-            secret,
-        }
+        Self { public, secret }
     }
 
     /// Create a keypair from secret key bytes
@@ -136,7 +133,11 @@ impl fmt::Debug for VibePublicKey {
 
 impl fmt::Debug for VibeKeypair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VibeKeypair {{ public: {} }}", hex::encode(self.public.as_bytes()))
+        write!(
+            f,
+            "VibeKeypair {{ public: {} }}",
+            hex::encode(self.public.as_bytes())
+        )
     }
 }
 

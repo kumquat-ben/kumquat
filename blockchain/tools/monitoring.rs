@@ -3,13 +3,11 @@
 //! This module provides monitoring tools for the blockchain,
 //! including performance metrics, resource usage, and health checks.
 
+use log::error;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use log::error;
 
-use crate::storage::{
-    KVStore, BlockStore, StateStore, TxStore, DatabaseStats,
-};
+use crate::storage::{BlockStore, DatabaseStats, KVStore, StateStore, TxStore};
 
 /// Monitoring tools for blockchain performance
 pub struct MonitoringTools<'a> {
@@ -89,7 +87,9 @@ impl<'a> MonitoringTools<'a> {
         let current_avg = metrics.avg_block_processing_time;
         let current_count = metrics.blocks_processed;
 
-        metrics.avg_block_processing_time = (current_avg * (current_count - 1) as f64 + processing_time.as_millis() as f64) / current_count as f64;
+        metrics.avg_block_processing_time = (current_avg * (current_count - 1) as f64
+            + processing_time.as_millis() as f64)
+            / current_count as f64;
     }
 
     /// Update transaction processing metrics
@@ -101,7 +101,9 @@ impl<'a> MonitoringTools<'a> {
         let current_avg = metrics.avg_tx_processing_time;
         let current_count = metrics.transactions_processed;
 
-        metrics.avg_tx_processing_time = (current_avg * (current_count - 1) as f64 + processing_time.as_millis() as f64) / current_count as f64;
+        metrics.avg_tx_processing_time = (current_avg * (current_count - 1) as f64
+            + processing_time.as_millis() as f64)
+            / current_count as f64;
     }
 
     /// Update resource usage metrics

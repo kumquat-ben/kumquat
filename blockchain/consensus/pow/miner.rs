@@ -1,13 +1,16 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use log::{error, info, trace, warn};
+use rayon::prelude::*;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time;
-use log::{error, info, trace, warn};
-use rayon::prelude::*;
 
-use crate::storage::block_store::{Block, CanonicalBlockHeader, pow_hash};
-use crate::consensus::types::BlockTemplate;
 use crate::consensus::config::ConsensusConfig;
+use crate::consensus::types::BlockTemplate;
+use crate::storage::block_store::{pow_hash, Block, CanonicalBlockHeader};
 
 /// Result of mining
 #[derive(Clone)]
@@ -81,12 +84,7 @@ impl PoWMiner {
                     (thread_id + 1) as u64 * nonce_range_per_thread - 1
                 };
 
-                Self::mine_range(
-                    &template_clone,
-                    start_nonce,
-                    end_nonce,
-                    &stop_flag,
-                )
+                Self::mine_range(&template_clone, start_nonce, end_nonce, &stop_flag)
             });
 
             // Send the result if mining was successful
@@ -197,8 +195,7 @@ mod tests {
     #[tokio::test]
     async fn test_mining_with_easy_target() {
         // Create a config
-        let config = ConsensusConfig::default()
-            .with_mining_threads(1);
+        let config = ConsensusConfig::default().with_mining_threads(1);
 
         // Create a miner
         let miner = PoWMiner::new(config);
@@ -210,7 +207,7 @@ mod tests {
             timestamp: 12345,
             transactions: vec![],
             state_root: [0u8; 32],
-            tx_root: None, // Will be calculated when needed
+            tx_root: None,                      // Will be calculated when needed
             target: Target::from_difficulty(1), // Easiest possible difficulty
             poh_sequence_start: 0,
         };

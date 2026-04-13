@@ -1,7 +1,7 @@
 use log::{info, warn};
 
-use crate::consensus::types::Target;
 use crate::consensus::config::ConsensusConfig;
+use crate::consensus::types::Target;
 use crate::storage::block_store::BlockStore;
 
 /// Calculate the next target difficulty
@@ -20,11 +20,17 @@ pub fn calculate_next_target(
     let start_block = match block_store.get_block_by_height(start_height) {
         Ok(Some(block)) => block,
         Ok(None) => {
-            warn!("Could not find block at height {}, using initial difficulty", start_height);
+            warn!(
+                "Could not find block at height {}, using initial difficulty",
+                start_height
+            );
             return Target::from_difficulty(config.initial_difficulty);
-        },
+        }
         Err(_e) => {
-            warn!("Could not find block at height {}, using initial difficulty", start_height);
+            warn!(
+                "Could not find block at height {}, using initial difficulty",
+                start_height
+            );
             return Target::from_difficulty(config.initial_difficulty);
         }
     };
@@ -33,11 +39,17 @@ pub fn calculate_next_target(
     let latest_block = match block_store.get_block_by_height(current_height) {
         Ok(Some(block)) => block,
         Ok(None) => {
-            warn!("Could not find block at height {}, using initial difficulty", current_height);
+            warn!(
+                "Could not find block at height {}, using initial difficulty",
+                current_height
+            );
             return Target::from_difficulty(config.initial_difficulty);
-        },
+        }
         Err(_e) => {
-            warn!("Could not find block at height {}, using initial difficulty", current_height);
+            warn!(
+                "Could not find block at height {}, using initial difficulty",
+                current_height
+            );
             return Target::from_difficulty(config.initial_difficulty);
         }
     };
@@ -84,11 +96,17 @@ pub fn get_target_at_height(block_store: &BlockStore<'_>, height: u64) -> Target
     let _block = match block_store.get_block_by_height(height) {
         Ok(Some(block)) => block,
         Ok(None) => {
-            warn!("Could not find block at height {}, using default target", height);
+            warn!(
+                "Could not find block at height {}, using default target",
+                height
+            );
             return Target::from_difficulty(1);
-        },
+        }
         Err(_e) => {
-            warn!("Could not find block at height {}, using default target", height);
+            warn!(
+                "Could not find block at height {}, using default target",
+                height
+            );
             return Target::from_difficulty(1);
         }
     };

@@ -4,15 +4,15 @@
 //! including validation and execution.
 
 use log::{error, info};
-use thiserror::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
-use crate::storage::object::ObjectError;
-use crate::storage::object_store::{ObjectStore, ObjectStoreError};
-use crate::storage::object_transaction::{ObjectTransactionRecord, ObjectTransactionKind};
-use crate::storage::state_store::{StateStore, StateStoreError};
 use crate::crypto::keys::VibePublicKey;
 use crate::crypto::signer::verify_signature;
+use crate::storage::object::ObjectError;
+use crate::storage::object_store::{ObjectStore, ObjectStoreError};
+use crate::storage::object_transaction::{ObjectTransactionKind, ObjectTransactionRecord};
+use crate::storage::state_store::{StateStore, StateStoreError};
 
 /// Error type for object transaction processing
 #[derive(Debug, Error)]
@@ -88,10 +88,7 @@ impl<'a> ObjectProcessor<'a> {
     }
 
     /// Process an object transaction
-    pub fn process_transaction(
-        &self,
-        tx: &ObjectTransactionRecord,
-    ) -> ObjectProcessorResult<()> {
+    pub fn process_transaction(&self, tx: &ObjectTransactionRecord) -> ObjectProcessorResult<()> {
         // Validate the transaction
         self.validate_transaction(tx)?;
 
@@ -102,10 +99,7 @@ impl<'a> ObjectProcessor<'a> {
     }
 
     /// Validate an object transaction
-    fn validate_transaction(
-        &self,
-        tx: &ObjectTransactionRecord,
-    ) -> ObjectProcessorResult<()> {
+    fn validate_transaction(&self, tx: &ObjectTransactionRecord) -> ObjectProcessorResult<()> {
         // Verify signature
         // First, get the public key from the sender address
         // In a real implementation, we would look up the public key from the account state
@@ -142,16 +136,17 @@ impl<'a> ObjectProcessor<'a> {
                 ));
             }
         } else {
-            return Err(ObjectProcessorError::InvalidTransaction(
-                format!("Account does not exist: {}", hex::encode(&tx.sender))
-            ));
+            return Err(ObjectProcessorError::InvalidTransaction(format!(
+                "Account does not exist: {}",
+                hex::encode(&tx.sender)
+            )));
         }
 
         // Validate transaction-specific requirements
         match &tx.kind {
             ObjectTransactionKind::CreateObject { .. } => {
                 // No additional validation needed for object creation
-            },
+            }
             ObjectTransactionKind::MutateObject { id, .. } => {
                 // Check that the object exists
                 let object = match self.object_store.get_object(id)? {
@@ -161,17 +156,19 @@ impl<'a> ObjectProcessor<'a> {
 
                 // Check ownership
                 if object.is_immutable() {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Cannot mutate immutable object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Cannot mutate immutable object: {}",
+                        hex::encode(id)
+                    )));
                 }
 
                 if !object.is_shared() && !object.is_owned_by(&tx.sender) {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Sender does not own object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Sender does not own object: {}",
+                        hex::encode(id)
+                    )));
                 }
-            },
+            }
             ObjectTransactionKind::TransferObject { id, .. } => {
                 // Check that the object exists
                 let object = match self.object_store.get_object(id)? {
@@ -181,17 +178,19 @@ impl<'a> ObjectProcessor<'a> {
 
                 // Check ownership
                 if object.is_immutable() {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Cannot transfer immutable object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Cannot transfer immutable object: {}",
+                        hex::encode(id)
+                    )));
                 }
 
                 if !object.is_owned_by(&tx.sender) {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Sender does not own object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Sender does not own object: {}",
+                        hex::encode(id)
+                    )));
                 }
-            },
+            }
             ObjectTransactionKind::DeleteObject { id } => {
                 // Check that the object exists
                 let object = match self.object_store.get_object(id)? {
@@ -201,27 +200,26 @@ impl<'a> ObjectProcessor<'a> {
 
                 // Check ownership
                 if object.is_immutable() {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Cannot delete immutable object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Cannot delete immutable object: {}",
+                        hex::encode(id)
+                    )));
                 }
 
                 if !object.is_owned_by(&tx.sender) {
-                    return Err(ObjectProcessorError::UnauthorizedAccess(
-                        format!("Sender does not own object: {}", hex::encode(id))
-                    ));
+                    return Err(ObjectProcessorError::UnauthorizedAccess(format!(
+                        "Sender does not own object: {}",
+                        hex::encode(id)
+                    )));
                 }
-            },
+            }
         }
 
         Ok(())
     }
 
     /// Execute an object transaction
-    fn execute_transaction(
-        &self,
-        tx: &ObjectTransactionRecord,
-    ) -> ObjectProcessorResult<()> {
+    fn execute_transaction(&self, tx: &ObjectTransactionRecord) -> ObjectProcessorResult<()> {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -229,7 +227,12 @@ impl<'a> ObjectProcessor<'a> {
 
         // Execute transaction-specific logic
         match &tx.kind {
-            ObjectTransactionKind::CreateObject { type_tag, owner, contents, metadata } => {
+            ObjectTransactionKind::CreateObject {
+                type_tag,
+                owner,
+                contents,
+                metadata,
+            } => {
                 // Create the object
                 self.object_store.create_object(
                     owner.clone(),
@@ -239,60 +242,62 @@ impl<'a> ObjectProcessor<'a> {
                 )?;
 
                 info!("Created new object of type {}", type_tag);
-            },
+            }
             ObjectTransactionKind::MutateObject { id, new_contents } => {
                 // Update the object
                 self.object_store.update_object(id, |obj| {
-                    obj.update_contents(
-                        new_contents.clone(),
-                        timestamp,
-                        self.block_height,
-                    )
+                    obj.update_contents(new_contents.clone(), timestamp, self.block_height)
                 })?;
 
                 info!("Updated object {}", hex::encode(id));
-            },
+            }
             ObjectTransactionKind::TransferObject { id, new_owner } => {
                 // Transfer the object
                 self.object_store.update_object(id, |obj| {
-                    obj.transfer_ownership(
-                        new_owner.clone(),
-                        timestamp,
-                        self.block_height,
-                    )
+                    obj.transfer_ownership(new_owner.clone(), timestamp, self.block_height)
                 })?;
 
                 info!("Transferred object {}", hex::encode(id));
-            },
+            }
             ObjectTransactionKind::DeleteObject { id } => {
                 // Delete the object
                 self.object_store.delete_object(id)?;
 
                 info!("Deleted object {}", hex::encode(id));
-            },
+            }
         }
 
         // Update account nonce
         match self.state_store.increment_nonce(&tx.sender) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Err(ObjectProcessorError::StateStoreError(e)),
         };
 
         // Deduct gas cost by updating balance
         let account = match self.state_store.get_account_state(&tx.sender) {
             Some(account) => account,
-            None => return Err(ObjectProcessorError::Other(format!("Account not found: {}", hex::encode(&tx.sender)))),
+            None => {
+                return Err(ObjectProcessorError::Other(format!(
+                    "Account not found: {}",
+                    hex::encode(&tx.sender)
+                )))
+            }
         };
 
         // Calculate new balance after gas deduction
         let new_balance = match account.balance.checked_sub(tx.gas_cost()) {
             Some(balance) => balance,
-            None => return Err(ObjectProcessorError::InsufficientBalance(tx.gas_cost(), account.balance)),
+            None => {
+                return Err(ObjectProcessorError::InsufficientBalance(
+                    tx.gas_cost(),
+                    account.balance,
+                ))
+            }
         };
 
         // Update the balance
         match self.state_store.update_balance(&tx.sender, new_balance) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Err(ObjectProcessorError::StateStoreError(e)),
         };
 
@@ -308,9 +313,9 @@ impl<'a> ObjectProcessor<'a> {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
+    use crate::crypto::keys::VibeKeypair;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::{AccountType, Ownership};
-    use crate::crypto::keys::VibeKeypair;
     use tempfile::tempdir;
 
     fn setup_test_environment() -> (
@@ -332,7 +337,9 @@ mod tests {
         let sender = keypair.address();
 
         // Create an account with balance
-        state_store.create_account(&sender, 1_000_000, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 1_000_000, AccountType::User)
+            .unwrap();
 
         (temp_dir, object_store, state_store, processor, keypair)
     }
@@ -351,11 +358,7 @@ mod tests {
         };
 
         let tx = ObjectTransactionRecord::create_signed(
-            &keypair,
-            kind,
-            5,
-            21000,
-            0, // Nonce should be 0 for a new account
+            &keypair, kind, 5, 21000, 0, // Nonce should be 0 for a new account
         );
 
         // Process the transaction
@@ -374,12 +377,14 @@ mod tests {
         let sender = keypair.address();
 
         // Create an object
-        let object = object_store.create_object(
-            Ownership::Address(sender),
-            "TestCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address(sender),
+                "TestCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Increment nonce after first transaction
         state_store.increment_nonce(&sender).unwrap();
@@ -391,11 +396,7 @@ mod tests {
         };
 
         let tx = ObjectTransactionRecord::create_signed(
-            &keypair,
-            kind,
-            5,
-            21000,
-            1, // Nonce should be 1 now
+            &keypair, kind, 5, 21000, 1, // Nonce should be 1 now
         );
 
         // Process the transaction
@@ -414,12 +415,14 @@ mod tests {
         let recipient = [2; 32];
 
         // Create an object
-        let object = object_store.create_object(
-            Ownership::Address(sender),
-            "TestCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address(sender),
+                "TestCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Increment nonce after first transaction
         state_store.increment_nonce(&sender).unwrap();
@@ -431,11 +434,7 @@ mod tests {
         };
 
         let tx = ObjectTransactionRecord::create_signed(
-            &keypair,
-            kind,
-            5,
-            21000,
-            1, // Nonce should be 1 now
+            &keypair, kind, 5, 21000, 1, // Nonce should be 1 now
         );
 
         // Process the transaction
@@ -464,27 +463,23 @@ mod tests {
         let sender = keypair.address();
 
         // Create an object
-        let object = object_store.create_object(
-            Ownership::Address(sender),
-            "TestCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address(sender),
+                "TestCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Increment nonce after first transaction
         state_store.increment_nonce(&sender).unwrap();
 
         // Create a transaction to delete the object
-        let kind = ObjectTransactionKind::DeleteObject {
-            id: object.id,
-        };
+        let kind = ObjectTransactionKind::DeleteObject { id: object.id };
 
         let tx = ObjectTransactionRecord::create_signed(
-            &keypair,
-            kind,
-            5,
-            21000,
-            1, // Nonce should be 1 now
+            &keypair, kind, 5, 21000, 1, // Nonce should be 1 now
         );
 
         // Process the transaction
@@ -503,15 +498,19 @@ mod tests {
         let other_sender = other_keypair.address();
 
         // Create an account for the other sender
-        state_store.create_account(&other_sender, 1_000_000, AccountType::User).unwrap();
+        state_store
+            .create_account(&other_sender, 1_000_000, AccountType::User)
+            .unwrap();
 
         // Create an object owned by the first sender
-        let object = object_store.create_object(
-            Ownership::Address(sender),
-            "TestCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Address(sender),
+                "TestCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Try to mutate the object with the other sender
         let kind = ObjectTransactionKind::MutateObject {
@@ -519,19 +518,13 @@ mod tests {
             new_contents: vec![5, 6, 7, 8],
         };
 
-        let tx = ObjectTransactionRecord::create_signed(
-            &other_keypair,
-            kind,
-            5,
-            21000,
-            0,
-        );
+        let tx = ObjectTransactionRecord::create_signed(&other_keypair, kind, 5, 21000, 0);
 
         // Process the transaction (should fail)
         let result = processor.process_transaction(&tx);
         assert!(result.is_err());
         match result {
-            Err(ObjectProcessorError::UnauthorizedAccess(_)) => {},
+            Err(ObjectProcessorError::UnauthorizedAccess(_)) => {}
             _ => panic!("Expected UnauthorizedAccess error"),
         }
     }
@@ -542,12 +535,14 @@ mod tests {
         let sender = keypair.address();
 
         // Create an immutable object
-        let object = object_store.create_object(
-            Ownership::Immutable,
-            "ImmutableCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Immutable,
+                "ImmutableCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Increment nonce after first transaction
         state_store.increment_nonce(&sender).unwrap();
@@ -558,19 +553,13 @@ mod tests {
             new_contents: vec![5, 6, 7, 8],
         };
 
-        let tx = ObjectTransactionRecord::create_signed(
-            &keypair,
-            kind,
-            5,
-            21000,
-            1,
-        );
+        let tx = ObjectTransactionRecord::create_signed(&keypair, kind, 5, 21000, 1);
 
         // Process the transaction (should fail)
         let result = processor.process_transaction(&tx);
         assert!(result.is_err());
         match result {
-            Err(ObjectProcessorError::UnauthorizedAccess(_)) => {},
+            Err(ObjectProcessorError::UnauthorizedAccess(_)) => {}
             _ => panic!("Expected UnauthorizedAccess error"),
         }
     }
@@ -583,15 +572,19 @@ mod tests {
         let other_sender = other_keypair.address();
 
         // Create an account for the other sender
-        state_store.create_account(&other_sender, 1_000_000, AccountType::User).unwrap();
+        state_store
+            .create_account(&other_sender, 1_000_000, AccountType::User)
+            .unwrap();
 
         // Create a shared object
-        let object = object_store.create_object(
-            Ownership::Shared,
-            "SharedCoin".to_string(),
-            vec![1, 2, 3, 4],
-            None,
-        ).unwrap();
+        let object = object_store
+            .create_object(
+                Ownership::Shared,
+                "SharedCoin".to_string(),
+                vec![1, 2, 3, 4],
+                None,
+            )
+            .unwrap();
 
         // Increment nonce after first transaction
         state_store.increment_nonce(&sender).unwrap();
@@ -602,13 +595,7 @@ mod tests {
             new_contents: vec![5, 6, 7, 8],
         };
 
-        let tx = ObjectTransactionRecord::create_signed(
-            &other_keypair,
-            kind,
-            5,
-            21000,
-            0,
-        );
+        let tx = ObjectTransactionRecord::create_signed(&other_keypair, kind, 5, 21000, 0);
 
         // Process the transaction (should succeed)
         processor.process_transaction(&tx).unwrap();

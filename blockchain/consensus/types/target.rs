@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use crate::storage::block_store::Hash;
+use serde::{Deserialize, Serialize};
 
 /// Target difficulty for mining
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
@@ -93,7 +93,12 @@ mod tests {
                 difficulty as f64 / converted as f64
             };
 
-            assert!(ratio < 1.1, "Conversion error too large: {} -> {}", difficulty, converted);
+            assert!(
+                ratio < 1.1,
+                "Conversion error too large: {} -> {}",
+                difficulty,
+                converted
+            );
         }
     }
 

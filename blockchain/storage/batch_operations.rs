@@ -1,12 +1,12 @@
-use std::sync::Arc;
 use log::{error, info};
+use std::sync::Arc;
 
+use crate::storage::block_store::Hash;
 use crate::storage::block_store::{Block, BlockStore, BlockStoreError};
-use crate::storage::tx_store::{TransactionRecord, TxStore, TxStoreError};
+use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::state::AccountState;
 use crate::storage::state_store::{StateStore, StateStoreError};
-use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
-use crate::storage::block_store::Hash;
+use crate::storage::tx_store::{TransactionRecord, TxStore, TxStoreError};
 
 /// Error type for batch operations
 #[derive(Debug, thiserror::Error)]
@@ -97,8 +97,9 @@ impl<'a> BatchOperationManager<'a> {
         for tx in transactions {
             // Primary index by transaction hash
             let tx_key = format!("tx:{}", hex::encode(&tx.tx_id));
-            let tx_value = bincode::serialize(tx)
-                .map_err(|e| BatchOperationError::Other(format!("Failed to serialize transaction: {}", e)))?;
+            let tx_value = bincode::serialize(tx).map_err(|e| {
+                BatchOperationError::Other(format!("Failed to serialize transaction: {}", e))
+            })?;
 
             batch.push(WriteBatchOperation::Put {
                 key: tx_key.as_bytes().to_vec(),
@@ -113,14 +114,22 @@ impl<'a> BatchOperationManager<'a> {
             });
 
             // Secondary index: transactions by sender
-            let sender_tx_key = format!("tx_sender:{}:{}", hex::encode(&tx.sender), hex::encode(&tx.tx_id));
+            let sender_tx_key = format!(
+                "tx_sender:{}:{}",
+                hex::encode(&tx.sender),
+                hex::encode(&tx.tx_id)
+            );
             batch.push(WriteBatchOperation::Put {
                 key: sender_tx_key.as_bytes().to_vec(),
                 value: tx.tx_id.to_vec(),
             });
 
             // Secondary index: transactions by recipient
-            let recipient_tx_key = format!("tx_recipient:{}:{}", hex::encode(&tx.recipient), hex::encode(&tx.tx_id));
+            let recipient_tx_key = format!(
+                "tx_recipient:{}:{}",
+                hex::encode(&tx.recipient),
+                hex::encode(&tx.tx_id)
+            );
             batch.push(WriteBatchOperation::Put {
                 key: recipient_tx_key.as_bytes().to_vec(),
                 value: tx.tx_id.to_vec(),
@@ -150,7 +159,7 @@ impl<'a> BatchOperationManager<'a> {
                             value: tx.nonce.to_be_bytes().to_vec(),
                         });
                     }
-                },
+                }
                 _ => {
                     // No existing nonce, store this one
                     batch.push(WriteBatchOperation::Put {
@@ -164,8 +173,9 @@ impl<'a> BatchOperationManager<'a> {
         // Add state changes to batch
         for (address, state) in state_changes {
             let state_key = format!("state:{}", hex::encode(address));
-            let state_value = bincode::serialize(state)
-                .map_err(|e| BatchOperationError::Other(format!("Failed to serialize state: {}", e)))?;
+            let state_value = bincode::serialize(state).map_err(|e| {
+                BatchOperationError::Other(format!("Failed to serialize state: {}", e))
+            })?;
 
             batch.push(WriteBatchOperation::Put {
                 key: state_key.as_bytes().to_vec(),
@@ -174,12 +184,15 @@ impl<'a> BatchOperationManager<'a> {
         }
 
         // Calculate and store state root
-        let state_root = self.state_store.calculate_state_root(block.height, block.timestamp)
+        let state_root = self
+            .state_store
+            .calculate_state_root(block.height, block.timestamp)
             .map_err(|e| BatchOperationError::StateStoreError(e))?;
 
         let state_root_key = format!("state_root:{}", block.height);
-        let state_root_value = bincode::serialize(&state_root)
-            .map_err(|e| BatchOperationError::Other(format!("Failed to serialize state root: {}", e)))?;
+        let state_root_value = bincode::serialize(&state_root).map_err(|e| {
+            BatchOperationError::Other(format!("Failed to serialize state root: {}", e))
+        })?;
 
         batch.push(WriteBatchOperation::Put {
             key: state_root_key.as_bytes().to_vec(),
@@ -187,11 +200,16 @@ impl<'a> BatchOperationManager<'a> {
         });
 
         // Execute the batch
-        self.store.write_batch(batch)
+        self.store
+            .write_batch(batch)
             .map_err(|e| BatchOperationError::KVStoreError(e))?;
 
-        info!("Committed block {} with {} transactions and {} state changes",
-              block.height, transactions.len(), state_changes.len());
+        info!(
+            "Committed block {} with {} transactions and {} state changes",
+            block.height,
+            transactions.len(),
+            state_changes.len()
+        );
 
         Ok(())
     }
@@ -201,7 +219,12 @@ impl<'a> BatchOperationManager<'a> {
         // Get the block
         let block = match self.block_store.get_block_by_height(block_height)? {
             Some(block) => block,
-            None => return Err(BatchOperationError::Other(format!("Block not found: {}", block_height))),
+            None => {
+                return Err(BatchOperationError::Other(format!(
+                    "Block not found: {}",
+                    block_height
+                )))
+            }
         };
 
         // Get all transactions in the block
@@ -249,13 +272,21 @@ impl<'a> BatchOperationManager<'a> {
             });
 
             // Remove sender index
-            let sender_tx_key = format!("tx_sender:{}:{}", hex::encode(&tx.sender), hex::encode(&tx.tx_id));
+            let sender_tx_key = format!(
+                "tx_sender:{}:{}",
+                hex::encode(&tx.sender),
+                hex::encode(&tx.tx_id)
+            );
             batch.push(WriteBatchOperation::Delete {
                 key: sender_tx_key.as_bytes().to_vec(),
             });
 
             // Remove recipient index
-            let recipient_tx_key = format!("tx_recipient:{}:{}", hex::encode(&tx.recipient), hex::encode(&tx.tx_id));
+            let recipient_tx_key = format!(
+                "tx_recipient:{}:{}",
+                hex::encode(&tx.recipient),
+                hex::encode(&tx.tx_id)
+            );
             batch.push(WriteBatchOperation::Delete {
                 key: recipient_tx_key.as_bytes().to_vec(),
             });
@@ -270,10 +301,15 @@ impl<'a> BatchOperationManager<'a> {
         });
 
         // Execute the batch
-        self.store.write_batch(batch)
+        self.store
+            .write_batch(batch)
             .map_err(|e| BatchOperationError::KVStoreError(e))?;
 
-        info!("Rolled back block {} with {} transactions", block_height, transactions.len());
+        info!(
+            "Rolled back block {} with {} transactions",
+            block_height,
+            transactions.len()
+        );
 
         Ok(())
     }
@@ -282,8 +318,8 @@ impl<'a> BatchOperationManager<'a> {
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::storage::kv_store::RocksDBStore;
+    use tempfile::tempdir;
 
     #[test]
     fn test_commit_and_rollback_block() {
@@ -370,13 +406,12 @@ mod tests {
             account_type: crate::storage::AccountType::User,
         };
 
-        let state_changes = vec![
-            ([10; 32], state1),
-            ([11; 32], state2),
-        ];
+        let state_changes = vec![([10; 32], state1), ([11; 32], state2)];
 
         // Commit the block
-        batch_manager.commit_block(&block, &[tx1, tx2], &state_changes).unwrap();
+        batch_manager
+            .commit_block(&block, &[tx1, tx2], &state_changes)
+            .unwrap();
 
         // Verify the block was stored
         let stored_block = block_store.get_block_by_height(1).unwrap().unwrap();
