@@ -447,8 +447,47 @@ def delete_deployment(node: ManagedNode):
     delete_container(node)
     root = node_root(node)
     if root.exists():
-        shutil.rmtree(root, ignore_errors=False)
+        _delete_runtime_root(node, root)
     node.delete()
+
+
+def _delete_runtime_root(node: ManagedNode, root: Path):
+    try:
+        shutil.rmtree(root, ignore_errors=False)
+        return
+    except PermissionError:
+        pass
+    except OSError:
+        pass
+
+    parent = root.parent
+    client = docker_client()
+    helper_image = _resolve_node_image(node) or getattr(settings, "NODE_LAUNCHER_IMAGE", "")
+    if not helper_image:
+        raise NodeLauncherError(f"Failed to delete deployment files for {node.name}: no helper image is configured.")
+
+    ensure_image_available(client, helper_image)
+    try:
+        client.containers.run(
+            helper_image,
+            command=["-lc", f"rm -rf -- /launcher/{node.name}"],
+            entrypoint="/bin/sh",
+            user="0:0",
+            remove=True,
+            detach=False,
+            network_mode="none",
+            volumes={
+                str(parent): {
+                    "bind": "/launcher",
+                    "mode": "rw",
+                }
+            },
+        )
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to delete deployment files for {node.name}: {exc}") from exc
+
+    if root.exists():
+        raise NodeLauncherError(f"Failed to delete deployment files for {node.name}: runtime directory still exists.")
 
 
 def restart_runtime_container(container_id: str):
