@@ -6,9 +6,84 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use thiserror::Error;
+
+static DENOMINATION_INDEX: Lazy<DenominationIndexDocument> = Lazy::new(|| {
+    serde_json::from_str(include_str!("../kumquat_denominations.json"))
+        .expect("denomination index JSON must be valid")
+});
+
+static DENOMINATION_RANGES_ASC: Lazy<Vec<DenominationRange>> = Lazy::new(|| {
+    let ascending = [
+        Denomination::Cents1,
+        Denomination::Cents5,
+        Denomination::Cents10,
+        Denomination::Cents25,
+        Denomination::Cents50,
+        Denomination::Dollars1,
+        Denomination::Dollars2,
+        Denomination::Dollars5,
+        Denomination::Dollars10,
+        Denomination::Dollars20,
+        Denomination::Dollars50,
+        Denomination::Dollars100,
+    ];
+
+    let mut cursor = 0u64;
+    ascending
+        .into_iter()
+        .filter_map(|denomination| {
+            let count = DENOMINATION_INDEX
+                .denominations
+                .iter()
+                .find_map(|entry| {
+                    let parsed = Denomination::parse(entry.denomination.trim_start_matches('$'))?;
+                    (parsed == denomination).then_some(entry.count)
+                })
+                .unwrap_or(0);
+
+            if count == 0 {
+                return None;
+            }
+
+            let range = DenominationRange {
+                denomination,
+                start_index: cursor,
+                count,
+            };
+            cursor += count;
+            Some(range)
+        })
+        .collect()
+});
+
+#[derive(Debug, Deserialize)]
+struct DenominationIndexDocument {
+    total_units: u64,
+    denominations: Vec<DenominationIndexEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DenominationIndexEntry {
+    denomination: String,
+    count: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DenominationRange {
+    denomination: Denomination,
+    start_index: u64,
+    count: u64,
+}
+
+impl DenominationRange {
+    fn end_exclusive(&self) -> u64 {
+        self.start_index + self.count
+    }
+}
 
 /// Error type for state operations
 #[derive(Debug, Error)]
@@ -156,6 +231,26 @@ impl Denomination {
         Self::all_descending().to_vec()
     }
 
+    pub fn from_assignment_index(assignment_index: u64) -> Option<Self> {
+        DENOMINATION_RANGES_ASC
+            .iter()
+            .find(|range| {
+                assignment_index >= range.start_index && assignment_index < range.end_exclusive()
+            })
+            .map(|range| range.denomination)
+    }
+
+    pub fn assignment_range(&self) -> Option<(u64, u64)> {
+        DENOMINATION_RANGES_ASC
+            .iter()
+            .find(|range| range.denomination == *self)
+            .map(|range| (range.start_index, range.count))
+    }
+
+    pub fn total_assignment_count() -> u64 {
+        DENOMINATION_INDEX.total_units
+    }
+
     pub fn parse(input: &str) -> Option<Self> {
         match input.trim() {
             "100" | "100.0" | "100.00" => Some(Denomination::Dollars100),
@@ -194,8 +289,8 @@ pub enum TokenMintSource {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct DenominationToken {
     pub token_id: [u8; 32],
+    pub assignment_index: u64,
     pub owner: [u8; 32],
-    pub denomination: Denomination,
     pub minted_at_block: u64,
     pub mint_source: TokenMintSource,
     pub metadata: HashMap<String, String>,
@@ -204,31 +299,33 @@ pub struct DenominationToken {
 impl DenominationToken {
     pub fn new(
         owner: [u8; 32],
-        denomination: Denomination,
+        assignment_index: u64,
         minted_at_block: u64,
         mint_source: TokenMintSource,
-        sequence: u64,
     ) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(owner);
-        hasher.update(denomination.label().as_bytes());
-        hasher.update(minted_at_block.to_be_bytes());
-        hasher.update(sequence.to_be_bytes());
-        hasher.update([mint_source as u8]);
-        let token_id: [u8; 32] = hasher.finalize().into();
+        assert!(
+            Denomination::from_assignment_index(assignment_index).is_some(),
+            "assignment index must map to a known denomination"
+        );
+        let token_id = assignment_index_to_token_id(assignment_index);
 
         Self {
             token_id,
+            assignment_index,
             owner,
-            denomination,
             minted_at_block,
             mint_source,
             metadata: HashMap::new(),
         }
     }
 
+    pub fn denomination(&self) -> Denomination {
+        Denomination::from_assignment_index(self.assignment_index)
+            .expect("stored assignment index must map to a denomination")
+    }
+
     pub fn value_cents(&self) -> AmountCents {
-        self.denomination.value_cents()
+        self.denomination().value_cents()
     }
 }
 
@@ -664,12 +761,18 @@ fn mint_exact_amount(
 
     for denomination in Denomination::all_descending() {
         while remaining >= denomination.value_cents() {
-            tokens.push(DenominationToken::new(
+            let assignment_index = deterministic_assignment_index(
                 owner,
                 *denomination,
                 block_height,
                 mint_source,
                 tokens.len() as u64,
+            )?;
+            tokens.push(DenominationToken::new(
+                owner,
+                assignment_index,
+                block_height,
+                mint_source,
             ));
             remaining -= denomination.value_cents();
         }
@@ -683,6 +786,55 @@ fn mint_exact_amount(
     }
 
     Ok(tokens)
+}
+
+pub fn assignment_index_to_token_id(assignment_index: u64) -> [u8; 32] {
+    let mut token_id = [0u8; 32];
+    token_id[24..].copy_from_slice(&assignment_index.to_be_bytes());
+    token_id
+}
+
+pub fn assignment_index_for_denomination(
+    denomination: Denomination,
+    ordinal_in_denomination: u64,
+) -> StateResult<u64> {
+    let (start_index, count) = denomination.assignment_range().ok_or_else(|| {
+        StateError::Other(format!("missing assignment range for denomination {}", denomination))
+    })?;
+
+    if ordinal_in_denomination >= count {
+        return Err(StateError::Other(format!(
+            "assignment ordinal {} exceeds supply for denomination {}",
+            ordinal_in_denomination, denomination
+        )));
+    }
+
+    Ok(start_index + ordinal_in_denomination)
+}
+
+fn deterministic_assignment_index(
+    owner: [u8; 32],
+    denomination: Denomination,
+    block_height: u64,
+    mint_source: TokenMintSource,
+    sequence: u64,
+) -> StateResult<u64> {
+    let (start_index, count) = denomination.assignment_range().ok_or_else(|| {
+        StateError::Other(format!("missing assignment range for denomination {}", denomination))
+    })?;
+
+    let mut hasher = Sha256::new();
+    hasher.update(owner);
+    hasher.update(denomination.label().as_bytes());
+    hasher.update(block_height.to_be_bytes());
+    hasher.update([mint_source as u8]);
+    hasher.update(sequence.to_be_bytes());
+    let digest = hasher.finalize();
+
+    let mut word = [0u8; 8];
+    word.copy_from_slice(&digest[..8]);
+    let offset = u64::from_be_bytes(word) % count.max(1);
+    Ok(start_index + offset)
 }
 
 /// State root hash

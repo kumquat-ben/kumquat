@@ -8,7 +8,8 @@ use crate::crypto::hash::sha256;
 use crate::crypto::{decode_address, encode_address};
 use crate::storage::block_store::{result_commitment, Block, Hash};
 use crate::storage::state::{
-    AccountState, AccountType, Denomination, DenominationToken, TokenMintSource,
+    assignment_index_for_denomination, AccountState, AccountType, Denomination,
+    DenominationToken, TokenMintSource,
 };
 
 /// Genesis configuration
@@ -183,6 +184,7 @@ impl GenesisConfig {
     /// Generate initial account states from the configuration
     pub fn generate_account_states(&self) -> Vec<(Hash, AccountState)> {
         let mut account_states = Vec::new();
+        let mut denomination_ordinals = HashMap::new();
 
         for (address_text, account) in &self.initial_accounts {
             let address = decode_address(address_text)
@@ -202,7 +204,8 @@ impl GenesisConfig {
                 }
             };
 
-            let tokens = self.generate_account_tokens(address, account);
+            let tokens =
+                self.generate_account_tokens(address, account, &mut denomination_ordinals);
 
             // Create the account state
             let state = if !tokens.is_empty() {
@@ -231,24 +234,27 @@ impl GenesisConfig {
         &self,
         address: Hash,
         account: &GenesisAccount,
+        denomination_ordinals: &mut HashMap<Denomination, u64>,
     ) -> Vec<DenominationToken> {
         if let Some(denominations) = &account.denominations {
             return denominations
                 .iter()
-                .enumerate()
-                .filter_map(|(index, value)| {
+                .filter_map(|value| {
                     let denomination = Denomination::parse(value);
                     if denomination.is_none() {
                         warn!("Unknown denomination '{}' in genesis account", value);
                     }
-                    denomination.map(|denomination| {
-                        DenominationToken::new(
+                    denomination.and_then(|denomination| {
+                        let next_ordinal = denomination_ordinals.entry(denomination).or_insert(0);
+                        let assignment_index =
+                            assignment_index_for_denomination(denomination, *next_ordinal).ok()?;
+                        *next_ordinal += 1;
+                        Some(DenominationToken::new(
                             address,
-                            denomination,
+                            assignment_index,
                             0,
                             TokenMintSource::Genesis,
-                            index as u64,
-                        )
+                        ))
                     })
                 })
                 .collect();
@@ -256,15 +262,22 @@ impl GenesisConfig {
 
         let mut remaining = account.balance.unwrap_or(0);
         let mut tokens = Vec::new();
+        let mut local_ordinals = HashMap::new();
         for denomination in Denomination::all_descending() {
             while remaining >= denomination.value_cents() {
+                let next_ordinal = local_ordinals.entry(*denomination).or_insert(0);
+                let assignment_index =
+                    match assignment_index_for_denomination(*denomination, *next_ordinal) {
+                        Ok(index) => index,
+                        Err(_) => break,
+                    };
                 tokens.push(DenominationToken::new(
                     address,
-                    *denomination,
+                    assignment_index,
                     0,
                     TokenMintSource::LegacyBalanceBootstrap,
-                    tokens.len() as u64,
                 ));
+                *next_ordinal += 1;
                 remaining -= denomination.value_cents();
             }
         }

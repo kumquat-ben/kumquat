@@ -2,7 +2,9 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::storage::block_store::Hash;
-use crate::storage::state::{Denomination, DenominationToken, TokenMintSource};
+use crate::storage::state::{
+    assignment_index_to_token_id, Denomination, DenominationToken, TokenMintSource,
+};
 
 const MAX_MULTI_UNIT_REWARD: u32 = 8;
 
@@ -28,20 +30,12 @@ struct EraSchedule {
     era: u8,
     avg_units_per_block: f64,
     multi_unit_blocks_possible: bool,
-    denominations: Vec<EraDenomination>,
-}
-
-#[derive(Debug, Deserialize)]
-struct EraDenomination {
-    denomination: String,
-    units_in_era: u64,
 }
 
 #[derive(Debug, Clone)]
 struct EraWeights {
     avg_units_per_block: f64,
     multi_unit_blocks_possible: bool,
-    weights: Vec<(Denomination, f64)>,
 }
 
 pub fn reward_tokens_for_block(
@@ -64,15 +58,16 @@ pub fn reward_tokens_for_block(
 
     (0..reward_count)
         .filter_map(|index| {
-            sample_denomination(&era, block_hash, index as usize + 1).map(|denomination| {
-                DenominationToken::new(
-                    owner,
-                    denomination,
-                    block_height,
-                    TokenMintSource::BlockReward,
-                    index as u64,
-                )
-            })
+            sample_assignment_index(block_height, block_hash, index as usize + 1).map(
+                |assignment_index| {
+                    DenominationToken::new(
+                        owner,
+                        assignment_index,
+                        block_height,
+                        TokenMintSource::BlockReward,
+                    )
+                },
+            )
         })
         .collect()
 }
@@ -89,37 +84,9 @@ fn era_weights_for_height(block_height: u64) -> Option<EraWeights> {
     let era_index = ((block_height - 1) / blocks_per_era) as usize;
     let era = MINING_SCHEDULE.eras.get(era_index)?;
 
-    let total_units = era
-        .denominations
-        .iter()
-        .map(|item| item.units_in_era)
-        .sum::<u64>() as f64;
-    if total_units == 0.0 {
-        return Some(EraWeights {
-            avg_units_per_block: era.avg_units_per_block,
-            multi_unit_blocks_possible: era.multi_unit_blocks_possible,
-            weights: Vec::new(),
-        });
-    }
-
-    let mut weights = Vec::new();
-    for item in &era.denominations {
-        if item.units_in_era == 0 {
-            continue;
-        }
-
-        let Some(denomination) = Denomination::parse(item.denomination.trim_start_matches('$'))
-        else {
-            continue;
-        };
-
-        weights.push((denomination, item.units_in_era as f64 / total_units));
-    }
-
     Some(EraWeights {
         avg_units_per_block: era.avg_units_per_block,
         multi_unit_blocks_possible: era.multi_unit_blocks_possible,
-        weights,
     })
 }
 
@@ -138,25 +105,24 @@ fn sample_reward_count(era: &EraWeights, block_hash: &Hash) -> u32 {
     }
 }
 
-fn sample_denomination(
-    era: &EraWeights,
+fn sample_assignment_index(
+    block_height: u64,
     block_hash: &Hash,
     window_index: usize,
-) -> Option<Denomination> {
-    if era.weights.is_empty() {
+) -> Option<u64> {
+    let total = Denomination::total_assignment_count();
+    if total == 0 {
         return None;
     }
 
-    let roll = uniform_from_word(entropy_word(block_hash, window_index));
-    let mut cumulative = 0.0;
-    for (denomination, weight) in &era.weights {
-        cumulative += *weight;
-        if roll <= cumulative {
-            return Some(*denomination);
-        }
-    }
-
-    era.weights.last().map(|(denomination, _)| *denomination)
+    let mut data = Vec::with_capacity(block_hash.len() + 16);
+    data.extend_from_slice(block_hash);
+    data.extend_from_slice(&block_height.to_be_bytes());
+    data.extend_from_slice(&(window_index as u64).to_be_bytes());
+    let digest = crate::crypto::hash::sha256(&data);
+    let mut word = [0u8; 8];
+    word.copy_from_slice(&digest[..8]);
+    Some(u64::from_be_bytes(word) % total)
 }
 
 fn sample_poisson(lambda: f64, uniform: f64) -> u32 {
@@ -220,16 +186,12 @@ mod tests {
     }
 
     #[test]
-    fn extinct_hundreds_do_not_reappear_after_era_five() {
-        let blocks_per_era = MINING_SCHEDULE.mining_schedule.blocks_per_era;
-        let block_height = blocks_per_era * 4 + 1;
-
-        for nonce in 0u8..=64 {
-            let block_hash = [nonce; 32];
-            let minted = reward_tokens_for_block([9u8; 32], block_height, &block_hash);
-            assert!(minted
-                .iter()
-                .all(|token| token.denomination != Denomination::Dollars100));
+    fn reward_token_ids_encode_assignment_indices() {
+        let block_hash = [11u8; 32];
+        let minted = reward_tokens_for_block([9u8; 32], 42, &block_hash);
+        for token in minted {
+            assert_eq!(token.token_id, assignment_index_to_token_id(token.assignment_index));
+            assert!(Denomination::from_assignment_index(token.assignment_index).is_some());
         }
     }
 
