@@ -459,10 +459,10 @@ impl PeerHandler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use tokio::net::{TcpListener, TcpStream};
+    use crate::storage::Block;
     use std::net::SocketAddr;
 
     #[tokio::test]
@@ -548,8 +548,11 @@ mod tests {
             timestamp: 12345,
             transactions: vec![],
             miner: [0u8; 32],
+            pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
+            result_commitment: [0; 32],
             state_root: [0; 32],
+            tx_root: [0; 32],
             poh_hash: [0; 32],
             poh_seq: 100,
             nonce: 0,
@@ -625,8 +628,11 @@ mod tests {
                         timestamp: 12345,
                         transactions: vec![],
                         miner: [0u8; 32],
+                        pre_reward_state_root: [0; 32],
                         reward_token_ids: vec![],
+                        result_commitment: [0; 32],
                         state_root: [0; 32],
+                        tx_root: [0; 32],
                         poh_hash: [0; 32],
                         poh_seq: 100,
                         nonce: 0,

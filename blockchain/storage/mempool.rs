@@ -449,6 +449,7 @@ impl<'a> MempoolStore<'a> {
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::TransactionStatus;
     use tempfile::tempdir;
     use std::time::{SystemTime, UNIX_EPOCH};
 

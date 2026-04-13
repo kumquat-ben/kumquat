@@ -179,6 +179,7 @@ impl<'a> TransactionValidator<'a> {
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::{AccountType, TransactionStatus};
     use crate::crypto::keys::VibeKeypair;
     use tempfile::tempdir;
 
@@ -186,7 +187,7 @@ mod tests {
     fn test_transaction_validation() {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
 
         // Create the stores
         let tx_store = Arc::new(TxStore::new(&kv_store));
@@ -204,31 +205,35 @@ mod tests {
 
         // Create an account with some balance
         let address = keypair.address();
-        state_store.create_account(&address, 1000);
+        state_store.create_account(&address, 1000, AccountType::User).unwrap();
 
         // Create a transaction
         let tx = TransactionRecord {
             tx_id: [1u8; 32],
             sender: address,
             recipient: [2u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
+            transfer_token_ids: vec![[4u8; 32]],
+            fee_token_id: Some([5u8; 32]),
             value: 100,
+            gas_price: 1,
+            gas_limit: 21_000,
             gas_used: 10,
-            block_height: 0, // Not yet included in a block
+            nonce: 0,
+            timestamp: 1,
+            block_height: 0,
+            data: None,
+            status: TransactionStatus::Pending,
         };
 
         // Create a dummy signature
         let signature = VibeSignature::new([0u8; 64]);
 
-        // Validate the transaction
+        // The dummy signature should fail.
         let result = validator.validate_transaction(&tx, &signature, &pubkey);
-
-        // The transaction should be valid
-        assert_eq!(result, TransactionValidationResult::Valid);
+        assert!(matches!(result, TransactionValidationResult::Invalid(_)));
 
         // Store the transaction
-        tx_store.put_transaction(&tx);
+        tx_store.put_transaction(&tx).unwrap();
 
         // Try to validate the same transaction again
         let result = validator.validate_transaction(&tx, &signature, &pubkey);

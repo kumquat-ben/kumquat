@@ -2,7 +2,7 @@ use std::sync::Arc;
 use log::{error, warn};
 use sha2::Digest;
 
-use crate::storage::block_store::{Block, BlockStore, compute_block_pow_hash, compute_block_result_commitment};
+use crate::storage::block_store::{Block, BlockStore, pow_hash, result_commitment, reward_outcome};
 use crate::storage::tx_store::TxStore;
 use crate::storage::state_store::StateStore;
 use crate::consensus::types::Target;
@@ -134,15 +134,19 @@ impl<'a> BlockValidator<'a> {
             }
         };
 
-        let expected_hash = compute_block_pow_hash(
-            block.height,
-            &block.prev_hash,
-            block.timestamp,
-            &block.miner,
-            &pre_reward_state_root,
-            &block.tx_root,
-            block.nonce,
-        );
+        if pre_reward_state_root != block.pre_reward_state_root {
+            error!(
+                "Pre-reward state root mismatch at height {}: expected {}, got {}",
+                block.height,
+                hex::encode(pre_reward_state_root),
+                hex::encode(block.pre_reward_state_root),
+            );
+            return false;
+        }
+
+        let mut header = block.canonical_header();
+        header.pre_reward_state_root = pre_reward_state_root;
+        let expected_hash = pow_hash(&header);
 
         if expected_hash != block.hash {
             error!(
@@ -173,11 +177,10 @@ impl<'a> BlockValidator<'a> {
             return true;
         }
 
-        let expected_reward_token_ids = crate::rewards::reward_token_ids_for_block(
-            block.miner,
-            block.height,
-            &block.hash,
-        );
+        let expected_reward_token_ids = reward_outcome(block.miner, block.height, &block.hash)
+            .into_iter()
+            .map(|token| token.token_id)
+            .collect::<Vec<_>>();
 
         if block.reward_token_ids != expected_reward_token_ids {
             error!(
@@ -193,7 +196,7 @@ impl<'a> BlockValidator<'a> {
     }
 
     fn validate_result_commitment(&self, block: &Block) -> bool {
-        let expected_commitment = compute_block_result_commitment(
+        let expected_commitment = result_commitment(
             &block.hash,
             &block.state_root,
             &block.reward_token_ids,
@@ -434,388 +437,158 @@ impl<'a> BlockValidator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::block_store::{pow_hash, result_commitment, reward_outcome, CanonicalBlockHeader};
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
-    #[test]
-    fn test_block_validation() {
-        // Create a temporary directory for the database
+    fn setup_validator() -> (Arc<BlockStore<'static>>, Arc<TxStore<'static>>, Arc<StateStore<'static>>, BlockValidator<'static>) {
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
-
-        // Create the stores
-        let block_store = Arc::new(BlockStore::new(&kv_store));
-        let tx_store = Arc::new(TxStore::new(&kv_store));
-        let state_store = Arc::new(StateStore::new(&kv_store));
-
-        // Create a validator
-        let validator = BlockValidator::new(
-            block_store.clone(),
-            tx_store.clone(),
-            state_store.clone(),
-        );
-
-        // Create a genesis block
-        let genesis = Block {
-            height: 0,
-            hash: [0u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 0,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            poh_hash: [0u8; 32],
-            poh_seq: 0,
-            nonce: 0,
-            difficulty: 1,
-            total_difficulty: 1,
-        };
-
-        // Store the genesis block
-        block_store.put_block(&genesis);
-
-        // Create a valid block
-        let valid_block = Block {
-            height: 1,
-            hash: [1u8; 32],
-            prev_hash: [0u8; 32], // Points to genesis
-            timestamp: 10,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            poh_hash: [0u8; 32],
-            poh_seq: 10,
-            nonce: 42,
-            difficulty: 1,
-            total_difficulty: 2,
-        };
-
-        // Create an easy target
-        let target = Target::from_difficulty(1);
-
-        // Validate the block
-        let result = validator.validate_block(&valid_block, &target);
-
-        // The block should be valid
-        assert_eq!(result, BlockValidationResult::Valid);
-
-        // Store the block
-        block_store.put_block(&valid_block);
-
-        // Try to validate the same block again
-        let result = validator.validate_block(&valid_block, &target);
-
-        // The block should be already known
-        assert_eq!(result, BlockValidationResult::AlreadyKnown);
-
-        // Create a block with unknown parent
-        let orphan_block = Block {
-            height: 2,
-            hash: [2u8; 32],
-            prev_hash: [99u8; 32], // Unknown parent
-            timestamp: 20,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            poh_hash: [0u8; 32],
-            poh_seq: 20,
-            nonce: 42,
-            difficulty: 1,
-            total_difficulty: 3,
-        };
-
-        // Validate the orphan block
-        let result = validator.validate_block(&orphan_block, &target);
-
-        // The block should have an unknown parent
-        assert_eq!(result, BlockValidationResult::UnknownParent);
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
+        let tx_store = Arc::new(TxStore::new(kv_store));
+        let state_store = Arc::new(StateStore::new(kv_store));
+        let validator = BlockValidator::new(block_store.clone(), tx_store.clone(), state_store.clone());
+        std::mem::forget(temp_dir);
+        (block_store, tx_store, state_store, validator)
     }
 
-    #[test]
-    fn test_tx_root_validation() {
-        // Skip this test if the clone_for_validation method is not implemented
-        if !cfg!(feature = "test_tx_root") {
-            return;
-        }
-        // Create a temporary directory for the database
-        let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
-
-        // Create the stores
-        let block_store = Arc::new(BlockStore::new(&kv_store));
-        let tx_store = Arc::new(TxStore::new(&kv_store));
-        let state_store = Arc::new(StateStore::new(&kv_store));
-
-        // Create a validator
-        let validator = BlockValidator::new(
-            block_store.clone(),
-            tx_store.clone(),
-            state_store.clone(),
-        );
-
-        // Create some test transactions
-        let tx1_hash = [1u8; 32];
-        let tx2_hash = [2u8; 32];
-
-        // Store the transactions
-        let tx1 = TransactionRecord {
-            tx_id: tx1_hash,
-            sender: [10u8; 32],
-            recipient: [11u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
-            value: 100,
-            gas_price: 1,
-            gas_limit: 21000,
-            gas_used: 21000,
-            nonce: 0,
-            timestamp: 10,
-            block_height: 1,
-            data: None,
-            status: crate::storage::tx_store::TransactionStatus::Confirmed,
-        };
-
-        let tx2 = TransactionRecord {
-            tx_id: tx2_hash,
-            sender: [12u8; 32],
-            recipient: [13u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
-            value: 200,
-            gas_price: 1,
-            gas_limit: 21000,
-            gas_used: 21000,
-            nonce: 0,
-            timestamp: 10,
-            block_height: 1,
-            data: None,
-            status: crate::storage::tx_store::TransactionStatus::Confirmed,
-        };
-
-        tx_store.put_transaction(&tx1).unwrap();
-        tx_store.put_transaction(&tx2).unwrap();
-
-        // Calculate the expected transaction root
-        let tx_hashes = vec![tx1_hash, tx2_hash];
-        let expected_tx_root = validator.calculate_tx_root(&tx_hashes);
-
-        // Create a genesis block
-        let genesis = Block {
+    fn genesis_block() -> Block {
+        let empty_tx_root = sha256(b"empty_tx_root");
+        Block {
             height: 0,
             hash: [0u8; 32],
             prev_hash: [0u8; 32],
             timestamp: 0,
             transactions: vec![],
             miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
+            result_commitment: result_commitment(&[0u8; 32], &[0u8; 32], &[]),
             state_root: [0u8; 32],
-            tx_root: [0u8; 32],
+            tx_root: empty_tx_root,
             poh_hash: [0u8; 32],
             poh_seq: 0,
             nonce: 0,
             difficulty: 1,
             total_difficulty: 1,
+        }
+    }
+
+    fn build_block(
+        state_store: &StateStore<'static>,
+        tx_hashes: Vec<[u8; 32]>,
+        transactions: &[TransactionRecord],
+        prev_hash: [u8; 32],
+        height: u64,
+        timestamp: u64,
+        miner: [u8; 32],
+    ) -> Block {
+        let tx_root = if tx_hashes.is_empty() {
+            sha256(b"empty_tx_root")
+        } else {
+            let mut nodes: Vec<Hash> = tx_hashes.iter().copied().map(Hash::new).collect();
+            while nodes.len() > 1 {
+                let mut next_level = Vec::new();
+                for chunk in nodes.chunks(2) {
+                    let mut hasher = sha2::Sha256::new();
+                    hasher.update(chunk[0].as_bytes());
+                    hasher.update(chunk.get(1).unwrap_or(&chunk[0]).as_bytes());
+                    let mut hash = [0u8; 32];
+                    hash.copy_from_slice(&hasher.finalize());
+                    next_level.push(Hash::new(hash));
+                }
+                nodes = next_level;
+            }
+            *nodes[0].as_bytes()
         };
 
-        // Store the genesis block
-        block_store.put_block(&genesis).unwrap();
-
-        // Create a block with valid transaction root
-        let valid_block = Block {
-            height: 1,
-            hash: [1u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 10,
-            transactions: tx_hashes.clone(),
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: expected_tx_root,
-            poh_hash: [0u8; 32],
-            poh_seq: 10,
+        let pre_reward_state_root = state_store
+            .calculate_projected_state_root(height, timestamp, transactions, &miner)
+            .unwrap()
+            .root_hash;
+        let header = CanonicalBlockHeader {
+            height,
+            prev_hash,
+            timestamp,
+            miner,
+            pre_reward_state_root,
+            tx_root,
             nonce: 42,
+            poh_seq: timestamp,
+            poh_hash: [0u8; 32],
             difficulty: 1,
             total_difficulty: 2,
         };
+        let hash = pow_hash(&header);
+        let reward_token_ids = reward_outcome(miner, height, &hash)
+            .into_iter()
+            .map(|token| token.token_id)
+            .collect::<Vec<_>>();
+        let state_root = state_store
+            .calculate_projected_state_root_with_block_reward(height, timestamp, transactions, &miner, &hash)
+            .unwrap()
+            .root_hash;
 
-        // Create an easy target
-        let target = Target::from_difficulty(1);
-
-        // Validate the block
-        let result = validator.validate_block(&valid_block, &target);
-
-        // The block should be valid
-        assert_eq!(result, BlockValidationResult::Valid);
-
-        // Create a block with invalid transaction root
-        let invalid_block = Block {
-            height: 1,
-            hash: [3u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 10,
+        Block {
+            height,
+            hash,
+            prev_hash,
+            timestamp,
             transactions: tx_hashes,
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [99u8; 32], // Invalid tx root
+            miner,
+            pre_reward_state_root,
+            reward_token_ids: reward_token_ids.clone(),
+            result_commitment: result_commitment(&hash, &state_root, &reward_token_ids),
+            state_root,
+            tx_root,
             poh_hash: [0u8; 32],
-            poh_seq: 10,
+            poh_seq: timestamp,
             nonce: 42,
             difficulty: 1,
             total_difficulty: 2,
-        };
-
-        // Validate the block
-        let result = validator.validate_block(&invalid_block, &target);
-
-        // The block should be invalid
-        assert!(matches!(result, BlockValidationResult::Invalid(_)));
+        }
     }
 
     #[test]
-    fn test_state_root_validation() {
-        // Skip this test if the clone_for_validation method is not implemented
-        if !cfg!(feature = "test_state_root") {
-            return;
-        }
+    fn test_block_validation_and_unknown_parent() {
+        let (block_store, _tx_store, state_store, validator) = setup_validator();
+        let genesis = genesis_block();
+        let target = Target::from_difficulty(1);
+        assert_eq!(validator.validate_block(&genesis, &target), BlockValidationResult::Valid);
 
-        // Create a temporary directory for the database
-        let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        block_store.put_block(&genesis).unwrap();
+        let valid_block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [7u8; 32]);
+        block_store.put_block(&valid_block).unwrap();
+        assert_eq!(validator.validate_block(&valid_block, &target), BlockValidationResult::AlreadyKnown);
 
-        // Create the stores
-        let block_store = Arc::new(BlockStore::new(&kv_store));
-        let tx_store = Arc::new(TxStore::new(&kv_store));
-        let state_store = Arc::new(StateStore::new(&kv_store));
+        let orphan_block = build_block(&state_store, vec![], &[], [99u8; 32], 2, 20, [8u8; 32]);
+        assert_eq!(validator.validate_block(&orphan_block, &target), BlockValidationResult::UnknownParent);
+    }
 
-        // Create a validator
-        let validator = BlockValidator::new(
-            block_store.clone(),
-            tx_store.clone(),
-            state_store.clone(),
-        );
-
-        // Create some accounts
-        state_store.create_account(&[10u8; 32], 1000, crate::storage::state_store::AccountType::User).unwrap();
-        state_store.create_account(&[11u8; 32], 500, crate::storage::state_store::AccountType::User).unwrap();
-
-        // Create a transaction
-        let tx_hash = [1u8; 32];
-        let tx = TransactionRecord {
-            tx_id: tx_hash,
-            sender: [10u8; 32],
-            recipient: [11u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
-            value: 100,
-            gas_price: 1,
-            gas_limit: 21000,
-            gas_used: 21000,
-            nonce: 0,
-            timestamp: 10,
-            block_height: 1,
-            data: None,
-            status: crate::storage::tx_store::TransactionStatus::Confirmed,
-        };
-
-        tx_store.put_transaction(&tx).unwrap();
-
-        // Create a genesis block
-        let genesis = Block {
-            height: 0,
-            hash: [0u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 0,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            poh_hash: [0u8; 32],
-            poh_seq: 0,
-            nonce: 0,
-            difficulty: 1,
-            total_difficulty: 1,
-        };
-
-        // Store the genesis block
+    #[test]
+    fn test_rejects_tampered_reward_claim() {
+        let (block_store, _tx_store, state_store, validator) = setup_validator();
+        let genesis = genesis_block();
         block_store.put_block(&genesis).unwrap();
 
-        // Apply the transaction to a temporary state to get the expected state root
-        let temp_state = state_store.clone_for_validation();
-        let block = Block {
-            height: 1,
-            hash: [1u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 10,
-            transactions: vec![tx_hash],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32], // Will be updated
-            tx_root: validator.calculate_tx_root(&vec![tx_hash]),
-            poh_hash: [0u8; 32],
-            poh_seq: 10,
-            nonce: 42,
-            difficulty: 1,
-            total_difficulty: 2,
-        };
+        let mut block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [9u8; 32]);
+        block.reward_token_ids.push([77u8; 32]);
+        block.result_commitment = result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
 
-        temp_state.apply_block(&block, &tx_store).unwrap();
-        let state_root = temp_state.calculate_state_root(1, 10).unwrap().root_hash;
-
-        // Create a block with valid state root
-        let valid_block = Block {
-            height: 1,
-            hash: [1u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 10,
-            transactions: vec![tx_hash],
-            state_root,
-            tx_root: validator.calculate_tx_root(&vec![tx_hash]),
-            poh_hash: [0u8; 32],
-            poh_seq: 10,
-            nonce: 42,
-            difficulty: 1,
-            total_difficulty: 2,
-        };
-
-        // Create an easy target
         let target = Target::from_difficulty(1);
+        assert!(matches!(validator.validate_block(&block, &target), BlockValidationResult::Invalid(_)));
+    }
 
-        // Validate the block
-        let result = validator.validate_block(&valid_block, &target);
+    #[test]
+    fn test_rejects_tampered_result_commitment() {
+        let (block_store, _tx_store, state_store, validator) = setup_validator();
+        let genesis = genesis_block();
+        block_store.put_block(&genesis).unwrap();
 
-        // The block should be valid
-        assert_eq!(result, BlockValidationResult::Valid);
+        let mut block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [14u8; 32]);
+        block.result_commitment = [255u8; 32];
 
-        // Create a block with invalid state root
-        let invalid_block = Block {
-            height: 1,
-            hash: [3u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 10,
-            transactions: vec![tx_hash],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [99u8; 32], // Invalid state root
-            tx_root: validator.calculate_tx_root(&vec![tx_hash]),
-            poh_hash: [0u8; 32],
-            poh_seq: 10,
-            nonce: 42,
-            difficulty: 1,
-            total_difficulty: 2,
-        };
-
-        // Validate the block
-        let result = validator.validate_block(&invalid_block, &target);
-
-        // The block should be invalid
-        assert!(matches!(result, BlockValidationResult::Invalid(_)));
+        let target = Target::from_difficulty(1);
+        assert!(matches!(validator.validate_block(&block, &target), BlockValidationResult::Invalid(_)));
     }
 }

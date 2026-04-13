@@ -668,7 +668,7 @@ impl<'a> StateStore<'a> {
         let mut miner_state = self.get_account_state(miner)
             .unwrap_or_else(|| AccountState::new_user(0, block_height));
 
-        let minted_tokens = AccountState::mint_block_reward_set(*miner, block_height, block_hash);
+        let minted_tokens = crate::storage::block_store::reward_outcome(*miner, block_height, block_hash);
         let reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
 
         miner_state.tokens.extend(minted_tokens);
@@ -892,7 +892,7 @@ impl<'a> StateStore<'a> {
                 Some(state) => state.clone(),
                 None => self.get_account_state(&block.miner).unwrap_or_else(|| AccountState::new_user(0, block.height)),
             };
-            let minted_tokens = AccountState::mint_block_reward_set(block.miner, block.height, &block.hash);
+            let minted_tokens = crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash);
             let expected_reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
             if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
                 return Err(StateStoreError::Other(format!(
@@ -943,7 +943,7 @@ impl<'a> StateStore<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;

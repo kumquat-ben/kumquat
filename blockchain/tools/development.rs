@@ -189,6 +189,7 @@ impl<'a> DevelopmentTools<'a> {
                 .as_secs(),
             transactions: transactions.iter().map(|tx| tx.tx_id).collect(),
             miner: [0u8; 32],
+            pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
             result_commitment: [0; 32],
             state_root: [0; 32], // Will be calculated later
@@ -204,7 +205,7 @@ impl<'a> DevelopmentTools<'a> {
         let block_data = bincode::serialize(&block).unwrap();
         let hash = crate::crypto::hash::sha256(&block_data);
         block.hash.copy_from_slice(&hash);
-        block.result_commitment = crate::storage::block_store::compute_block_result_commitment(
+        block.result_commitment = crate::storage::block_store::result_commitment(
             &block.hash,
             &block.state_root,
             &block.reward_token_ids,

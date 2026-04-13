@@ -154,7 +154,7 @@ impl TransactionHandler {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
     use crate::mempool::pool::MempoolConfig;

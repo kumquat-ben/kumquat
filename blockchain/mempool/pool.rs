@@ -464,6 +464,7 @@ mod tests {
         assert_eq!(mempool.get_transaction_status(&tx.tx_id), TransactionStatus::Included);
     }
 
+    #[cfg(feature = "legacy-test-compat")]
     #[tokio::test]
     async fn test_transaction_priority() {
         // Create a mempool

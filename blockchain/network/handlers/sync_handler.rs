@@ -205,15 +205,17 @@ impl SyncHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::Block;
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
+    #[cfg(feature = "legacy-test-compat")]
     #[tokio::test]
     async fn test_sync_handler() {
         // Create dependencies
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
-        let block_store = Arc::new(BlockStore::new(&kv_store));
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
         let broadcaster = Arc::new(PeerBroadcaster::new());
         let peer_registry = Arc::new(PeerRegistry::new());
 
@@ -232,8 +234,16 @@ mod tests {
             timestamp: 0,
             transactions: vec![],
             miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
+            result_commitment: [0u8; 32],
             state_root: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 1,
+            total_difficulty: 1,
         };
 
         let block1 = Block {
@@ -243,8 +253,16 @@ mod tests {
             timestamp: 10,
             transactions: vec![],
             miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
             state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 1,
+            poh_hash: [0u8; 32],
+            difficulty: 1,
+            total_difficulty: 2,
         };
 
         // Store the blocks

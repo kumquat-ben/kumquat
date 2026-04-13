@@ -338,6 +338,7 @@ impl SyncManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::peer::state::ConnectionState;
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
@@ -345,8 +346,8 @@ mod tests {
     async fn test_sync_manager() {
         // Create dependencies
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
-        let block_store = Arc::new(BlockStore::new(&kv_store));
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
         let peer_registry = Arc::new(PeerRegistry::new());
         let broadcaster = Arc::new(PeerBroadcaster::new());
 

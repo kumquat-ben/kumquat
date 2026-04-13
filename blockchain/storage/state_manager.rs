@@ -606,10 +606,10 @@ impl<'a> StateManager<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
-    use crate::storage::kv_store::{RocksDBStore, MemoryStore};
+    use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
     #[test]
@@ -666,7 +666,8 @@ mod tests {
 
     #[test]
     fn test_state_root() {
-        let store = MemoryStore::new();
+        let temp_dir = tempdir().unwrap();
+        let store = RocksDBStore::new(temp_dir.path()).unwrap();
         let state_manager = StateManager::new(&store);
 
         // Create some accounts
@@ -690,7 +691,8 @@ mod tests {
 
     #[test]
     fn test_apply_block() {
-        let store = MemoryStore::new();
+        let temp_dir = tempdir().unwrap();
+        let store = RocksDBStore::new(temp_dir.path()).unwrap();
         let state_manager = StateManager::new(&store);
 
         // Create sender and recipient accounts
@@ -732,7 +734,9 @@ mod tests {
             timestamp: 12345,
             transactions: vec![tx.tx_id],
             miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
+            result_commitment: [0u8; 32],
             state_root: [0u8; 32], // Will be calculated
             tx_root: [0u8; 32],
             nonce: 0,

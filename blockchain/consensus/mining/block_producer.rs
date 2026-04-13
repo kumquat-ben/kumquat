@@ -3,7 +3,7 @@ use tokio::sync::{mpsc, Mutex};
 use log::{error, info, warn};
 use sha2::Digest;
 
-use crate::storage::block_store::{Block, BlockStore, compute_block_result_commitment};
+use crate::storage::block_store::{Block, BlockStore, result_commitment};
 use crate::storage::tx_store::TxStore;
 use crate::storage::state_store::StateStore;
 use crate::consensus::types::{ChainState, BlockTemplate, Target};
@@ -219,7 +219,7 @@ impl<'a> BlockProducer<'a> {
                         return None;
                     }
                 }
-                block.result_commitment = compute_block_result_commitment(
+                block.result_commitment = result_commitment(
                     &block.hash,
                     &block.state_root,
                     &block.reward_token_ids,
@@ -277,6 +277,7 @@ impl<'a> BlockProducer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::{StateRoot, TransactionRecord, TransactionStatus};
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
@@ -284,7 +285,7 @@ mod tests {
     async fn test_block_template_creation() {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
 
         // Create the stores
         let block_store = Arc::new(BlockStore::new(&kv_store));
@@ -298,19 +299,22 @@ mod tests {
         let config = ConsensusConfig::default();
 
         // Create a PoH generator
-        let poh_generator = Arc::new(PoHGenerator::new(&config));
+        let poh_generator = Arc::new(Mutex::new(PoHGenerator::new(&config)));
 
         // Create a network channel
         let (network_tx, _network_rx) = mpsc::channel(100);
 
         // Create a chain state
-        let chain_state = ChainState {
-            height: 10,
-            current_target: Target::from_difficulty(100),
-            latest_hash: [10u8; 32],
-            latest_timestamp: 100,
-            latest_poh_sequence: 1000,
-        };
+        let mut chain_state = ChainState::new(
+            10,
+            [10u8; 32],
+            StateRoot::new([0u8; 32], 10, 100),
+            100,
+            10,
+            [10u8; 32],
+        );
+        chain_state.current_target = Target::from_difficulty(100);
+        chain_state.latest_timestamp = 100;
 
         // Create a block producer
         let producer = BlockProducer::new(
@@ -332,8 +336,14 @@ mod tests {
             transfer_token_ids: vec![],
             fee_token_id: None,
             value: 100,
+            gas_price: 1,
+            gas_limit: 21_000,
             gas_used: 10,
+            nonce: 0,
+            timestamp: 100,
             block_height: 0,
+            data: None,
+            status: TransactionStatus::Pending,
         };
 
         let tx2 = TransactionRecord {
@@ -343,20 +353,26 @@ mod tests {
             transfer_token_ids: vec![],
             fee_token_id: None,
             value: 200,
+            gas_price: 1,
+            gas_limit: 21_000,
             gas_used: 10,
+            nonce: 1,
+            timestamp: 100,
             block_height: 0,
+            data: None,
+            status: TransactionStatus::Pending,
         };
 
         mempool.add_transaction(tx1);
         mempool.add_transaction(tx2);
 
         // Create a block template
-        let template = producer.create_block_template();
+        let template = producer.create_block_template().await;
 
         // Check the template
         assert_eq!(template.height, 11);
         assert_eq!(template.prev_hash, [10u8; 32]);
         assert_eq!(template.transactions.len(), 2);
-        assert!(template.tx_root.is_none()); // tx_root is calculated when needed
+        assert_ne!(template.tx_root, [0u8; 32]);
     }
 }

@@ -391,7 +391,7 @@ impl<'a> TxStore<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;

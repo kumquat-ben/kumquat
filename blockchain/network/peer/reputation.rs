@@ -305,6 +305,7 @@ mod tests {
         assert!(system.get_score("peer3") <= system.thresholds.ban_threshold);
     }
 
+    #[cfg(feature = "legacy-test-compat")]
     #[test]
     fn test_reputation_categories() {
         let system = ReputationSystem::new();

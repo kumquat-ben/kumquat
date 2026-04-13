@@ -364,7 +364,7 @@ mod tests {
         tx.sign(&keypair);
         
         // Verify that the signature is not zero
-        assert_ne!(tx.signature.as_bytes(), [0u8; 64]);
+        assert_ne!(*tx.signature.as_bytes(), [0u8; 64]);
         
         // Create a signed transaction directly
         let signed_tx = ObjectTransactionRecord::create_signed(
@@ -379,6 +379,6 @@ mod tests {
         
         assert_eq!(signed_tx.sender, sender);
         assert_eq!(signed_tx.nonce, 2);
-        assert_ne!(signed_tx.signature.as_bytes(), [0u8; 64]);
+        assert_ne!(*signed_tx.signature.as_bytes(), [0u8; 64]);
     }
 }

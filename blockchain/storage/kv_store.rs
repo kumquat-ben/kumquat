@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_basic_operations() {
         let temp_dir = tempdir().unwrap();
-        let store = RocksDBStore::new(temp_dir.path());
+        let store = RocksDBStore::new(temp_dir.path()).unwrap();
 
         // Test put and get
         let key = b"test_key";
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn test_batch_operations() {
         let temp_dir = tempdir().unwrap();
-        let store = RocksDBStore::new(temp_dir.path());
+        let store = RocksDBStore::new(temp_dir.path()).unwrap();
 
         // Create a batch of operations
         let mut batch = Vec::new();
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_scan_prefix() {
         let temp_dir = tempdir().unwrap();
-        let store = RocksDBStore::new(temp_dir.path());
+        let store = RocksDBStore::new(temp_dir.path()).unwrap();
 
         // Insert some keys with a common prefix
         store.put(b"prefix:1", b"value1").unwrap();

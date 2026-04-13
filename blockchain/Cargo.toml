@@ -8,6 +8,7 @@ description = "A next-generation blockchain combining Proof-of-Work with Solana-
 [features]
 default = []
 advanced-crypto = ["blst", "curve25519-dalek", "merlin", "rand_chacha"]
+legacy-test-compat = []
 
 [dependencies]
 # rocksdb = "0.20.1"

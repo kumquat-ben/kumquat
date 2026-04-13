@@ -3,31 +3,47 @@ use log::{debug, error};
 use hex;
 
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
+use crate::storage::state::DenominationToken;
 
 /// Type alias for a 32-byte hash
 pub type Hash = [u8; 32];
 
-pub fn compute_block_pow_hash(
-    height: u64,
-    prev_hash: &Hash,
-    timestamp: u64,
-    miner: &Hash,
-    pre_reward_state_root: &Hash,
-    tx_root: &Hash,
-    nonce: u64,
-) -> Hash {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalBlockHeader {
+    pub height: u64,
+    pub prev_hash: Hash,
+    pub timestamp: u64,
+    pub miner: Hash,
+    pub pre_reward_state_root: Hash,
+    pub tx_root: Hash,
+    pub nonce: u64,
+    pub poh_seq: u64,
+    pub poh_hash: Hash,
+    pub difficulty: u64,
+    pub total_difficulty: u128,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalBlockBody {
+    pub transactions: Vec<Hash>,
+    pub reward_token_ids: Vec<Hash>,
+    pub state_root: Hash,
+    pub result_commitment: Hash,
+}
+
+pub fn pow_hash(header: &CanonicalBlockHeader) -> Hash {
     let mut preimage = Vec::with_capacity(8 + 32 + 8 + 32 + 32 + 32 + 8);
-    preimage.extend_from_slice(&height.to_be_bytes());
-    preimage.extend_from_slice(prev_hash);
-    preimage.extend_from_slice(&timestamp.to_be_bytes());
-    preimage.extend_from_slice(miner);
-    preimage.extend_from_slice(pre_reward_state_root);
-    preimage.extend_from_slice(tx_root);
-    preimage.extend_from_slice(&nonce.to_be_bytes());
+    preimage.extend_from_slice(&header.height.to_be_bytes());
+    preimage.extend_from_slice(&header.prev_hash);
+    preimage.extend_from_slice(&header.timestamp.to_be_bytes());
+    preimage.extend_from_slice(&header.miner);
+    preimage.extend_from_slice(&header.pre_reward_state_root);
+    preimage.extend_from_slice(&header.tx_root);
+    preimage.extend_from_slice(&header.nonce.to_be_bytes());
     crate::crypto::hash::sha256(&preimage)
 }
 
-pub fn compute_block_result_commitment(
+pub fn result_commitment(
     block_hash: &Hash,
     state_root: &Hash,
     reward_token_ids: &[Hash],
@@ -40,6 +56,10 @@ pub fn compute_block_result_commitment(
         preimage.extend_from_slice(token_id);
     }
     crate::crypto::hash::sha256(&preimage)
+}
+
+pub fn reward_outcome(owner: Hash, block_height: u64, block_hash: &Hash) -> Vec<DenominationToken> {
+    crate::rewards::reward_tokens_for_block(owner, block_height, block_hash)
 }
 
 /// Block structure representing a block in the blockchain
@@ -62,6 +82,9 @@ pub struct Block {
 
     /// Reward recipient for this block.
     pub miner: Hash,
+
+    /// State root before applying the block reward.
+    pub pre_reward_state_root: Hash,
 
     /// IDs of denomination tokens minted as this block reward.
     pub reward_token_ids: Vec<Hash>,
@@ -317,7 +340,7 @@ impl<'a> BlockStore<'a> {
 
     /// Check if a block exists by hash
     pub fn has_block_by_hash(&self, hash: &Hash) -> bool {
-        let key = format!("block:hash:{}", hex::encode(hash));
+        let key = format!("block_hash:{}", hex::encode(hash));
         match self.store.get(key.as_bytes()) {
             Ok(Some(_)) => true,
             _ => false,
@@ -326,7 +349,7 @@ impl<'a> BlockStore<'a> {
 
     /// Check if a block exists by height
     pub fn has_block_by_height(&self, height: u64) -> bool {
-        let key = format!("block:height:{}", height);
+        let key = format!("block:{}", height);
         match self.store.get(key.as_bytes()) {
             Ok(Some(_)) => true,
             _ => false,
@@ -339,53 +362,86 @@ impl<'a> BlockStore<'a> {
     }
 }
 
+impl Block {
+    pub fn canonical_header(&self) -> CanonicalBlockHeader {
+        CanonicalBlockHeader {
+            height: self.height,
+            prev_hash: self.prev_hash,
+            timestamp: self.timestamp,
+            miner: self.miner,
+            pre_reward_state_root: self.pre_reward_state_root,
+            tx_root: self.tx_root,
+            nonce: self.nonce,
+            poh_seq: self.poh_seq,
+            poh_hash: self.poh_hash,
+            difficulty: self.difficulty,
+            total_difficulty: self.total_difficulty,
+        }
+    }
+
+    pub fn canonical_body(&self) -> CanonicalBlockBody {
+        CanonicalBlockBody {
+            transactions: self.transactions.clone(),
+            reward_token_ids: self.reward_token_ids.clone(),
+            state_root: self.state_root,
+            result_commitment: self.result_commitment,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
+    fn test_block(height: u64) -> Block {
+        Block {
+            height,
+            hash: [height as u8; 32],
+            prev_hash: if height == 0 { [0; 32] } else { [(height - 1) as u8; 32] },
+            timestamp: 12345 + height,
+            transactions: vec![[height as u8 + 1; 32]],
+            miner: [0u8; 32],
+            pre_reward_state_root: [height as u8 + 7; 32],
+            reward_token_ids: vec![],
+            result_commitment: [height as u8 + 8; 32],
+            state_root: [height as u8 + 2; 32],
+            tx_root: [height as u8 + 4; 32],
+            nonce: 42 + height,
+            poh_seq: 100 + height,
+            poh_hash: [height as u8 + 3; 32],
+            difficulty: 1000 + height,
+            total_difficulty: 1000 + (height as u128 * 1000),
+        }
+    }
+
     #[test]
     fn test_block_store() {
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
         let block_store = BlockStore::new(&kv_store);
 
         // Create a test block
-        let block = Block {
-            height: 1,
-            hash: [1; 32],
-            prev_hash: [0; 32],
-            timestamp: 12345,
-            transactions: vec![[2; 32], [3; 32]],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [4; 32],
-            tx_root: [6; 32],
-            nonce: 42,
-            poh_seq: 100,
-            poh_hash: [5; 32],
-            difficulty: 1000,
-            total_difficulty: 1000,
-        };
+        let block = test_block(1);
 
         // Store the block
         block_store.put_block(&block).unwrap();
 
         // Retrieve by height
         let retrieved = block_store.get_block_by_height(1).unwrap();
-        assert_eq!(retrieved, block);
+        assert_eq!(retrieved, Some(block.clone()));
 
         // Retrieve by hash
         let retrieved = block_store.get_block_by_hash(&[1; 32]).unwrap();
-        assert_eq!(retrieved, block);
+        assert_eq!(retrieved, Some(block.clone()));
 
         // Test latest height
         assert_eq!(block_store.get_latest_height(), Some(1));
 
         // Test latest block
         let latest = block_store.get_latest_block().unwrap();
-        assert_eq!(latest, block);
+        assert_eq!(latest, Some(block));
 
         // Test has_block methods
         assert!(block_store.has_block_by_height(1));
@@ -400,27 +456,12 @@ mod tests {
     #[test]
     fn test_multiple_blocks() {
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
         let block_store = BlockStore::new(&kv_store);
 
         // Create and store multiple blocks
         for i in 0..5 {
-            let block = Block {
-                height: i,
-                hash: [i as u8; 32],
-                prev_hash: if i == 0 { [0; 32] } else { [(i-1) as u8; 32] },
-                timestamp: 12345 + i,
-                transactions: vec![[i as u8 + 1; 32]],
-                miner: [0u8; 32],
-                reward_token_ids: vec![],
-                state_root: [i as u8 + 2; 32],
-                tx_root: [i as u8 + 4; 32],
-                nonce: 42 + i,
-                poh_seq: 100 + i,
-                poh_hash: [i as u8 + 3; 32],
-                difficulty: 1000 + i,
-                total_difficulty: 1000 + (i as u128 * 1000),
-            };
+            let block = test_block(i);
 
             block_store.put_block(&block).unwrap();
         }
@@ -429,7 +470,7 @@ mod tests {
         assert_eq!(block_store.get_latest_height(), Some(4));
 
         // Test get_blocks_by_height_range
-        let blocks = block_store.get_blocks_by_height_range(1, 3);
+        let blocks = block_store.get_blocks_by_height_range(1, 3).unwrap();
         assert_eq!(blocks.len(), 3);
         assert_eq!(blocks[0].height, 1);
         assert_eq!(blocks[1].height, 2);

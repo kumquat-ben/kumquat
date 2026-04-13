@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use log::{info, warn};
 
-use crate::storage::block_store::{Block, Hash, compute_block_result_commitment};
+use crate::storage::block_store::{Block, Hash, result_commitment};
 use crate::storage::state::{AccountState, AccountType, Denomination, DenominationToken, TokenMintSource};
 use crate::crypto::hash::sha256;
 
@@ -139,6 +139,7 @@ impl GenesisConfig {
             timestamp: self.timestamp,
             transactions: vec![],
             miner: [0; 32],
+            pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
             result_commitment: [0; 32],
             state_root: [0; 32], // Will be calculated later
@@ -162,7 +163,7 @@ impl GenesisConfig {
         );
 
         block.hash = sha256(block_data.as_bytes());
-        block.result_commitment = compute_block_result_commitment(
+        block.result_commitment = result_commitment(
             &block.hash,
             &block.state_root,
             &block.reward_token_ids,

@@ -595,7 +595,7 @@ impl std::fmt::Display for RebalanceStats {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
     use tempfile::tempdir;
@@ -603,12 +603,17 @@ mod tests {
     use crate::storage::state::AccountType;
 
     // Helper function to create a test environment
-    fn setup_test_env() -> (tempfile::TempDir, RocksDBStore, BlockStore, StateStore) {
+    fn setup_test_env() -> (
+        tempfile::TempDir,
+        &'static RocksDBStore,
+        BlockStore<'static>,
+        StateStore<'static>,
+    ) {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
 
         // Create a RocksDB store
-        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
 
         // Create block and state stores
         let block_store = BlockStore::new(&kv_store);

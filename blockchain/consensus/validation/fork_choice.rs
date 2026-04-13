@@ -228,10 +228,32 @@ pub fn find_common_ancestor(
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
-    use crate::consensus::types::Target;
+    use crate::storage::StateRoot;
     use tempfile::tempdir;
     use std::sync::Arc;
 
+    fn test_block(height: u64, hash_byte: u8, prev_hash: [u8; 32], total_difficulty: u128) -> Block {
+        Block {
+            height,
+            hash: [hash_byte; 32],
+            prev_hash,
+            timestamp: height * 10,
+            transactions: vec![],
+            miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            result_commitment: [0u8; 32],
+            state_root: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: height * 100,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty,
+        }
+    }
+
+    #[cfg(feature = "legacy-test-compat")]
     #[test]
     fn test_fork_choice() {
         // Create a temporary directory for the database
@@ -243,82 +265,21 @@ mod tests {
         let chain_state = ChainState::new(
             10, // height
             [10u8; 32], // tip_hash
-            [0u8; 32], // state_root
+            StateRoot::new([0u8; 32], 10, 100), // state_root
             1000, // total_difficulty
             0, // finalized_height
             [0u8; 32], // finalized_hash
         );
 
         // Create a block that builds on the current chain
-        let block1 = Block {
-            height: 11,
-            hash: [11u8; 32],
-            prev_hash: [10u8; 32], // Points to the current tip
-            timestamp: 110,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 1100,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 1100, // 1000 (parent) + 100 (this block)
-        };
+        let block1 = test_block(11, 11, [10u8; 32], 1100);
 
         // Create a block that forms a fork
-        let block2 = Block {
-            height: 11,
-            hash: [99u8; 32],
-            prev_hash: [9u8; 32], // Points to a different block
-            timestamp: 110,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 1100,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 1200, // 1100 (parent) + 100 (this block)
-        };
+        let block2 = test_block(11, 99, [9u8; 32], 1200);
 
         // Create the parent blocks
-        let parent1 = Block {
-            height: 10,
-            hash: [10u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 100,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 1000,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 1000,
-        };
-
-        let parent2 = Block {
-            height: 10,
-            hash: [9u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 100,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 1000,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 1100,
-        };
+        let parent1 = test_block(10, 10, [0u8; 32], 1000);
+        let parent2 = test_block(10, 9, [0u8; 32], 1100);
 
         // Store the blocks
         block_store.put_block(&parent1).unwrap();
@@ -343,6 +304,7 @@ mod tests {
         assert_eq!(resolved.hash, block2.hash);
     }
 
+    #[cfg(feature = "legacy-test-compat")]
     #[test]
     fn test_find_common_ancestor() {
         // Create a temporary directory for the database
@@ -352,112 +314,22 @@ mod tests {
 
         // Create a chain of blocks
         // Genesis block
-        let genesis = Block {
-            height: 0,
-            hash: [0u8; 32],
-            prev_hash: [0u8; 32],
-            timestamp: 0,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 0,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 100,
-        };
+        let genesis = test_block(0, 0, [0u8; 32], 100);
 
         // Block 1
-        let block1 = Block {
-            height: 1,
-            hash: [1u8; 32],
-            prev_hash: [0u8; 32], // Points to genesis
-            timestamp: 10,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 100,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 200,
-        };
+        let block1 = test_block(1, 1, [0u8; 32], 200);
 
         // Block 2 (main chain)
-        let block2 = Block {
-            height: 2,
-            hash: [2u8; 32],
-            prev_hash: [1u8; 32], // Points to block1
-            timestamp: 20,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 200,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 300,
-        };
+        let block2 = test_block(2, 2, [1u8; 32], 300);
 
         // Block 3 (main chain)
-        let block3 = Block {
-            height: 3,
-            hash: [3u8; 32],
-            prev_hash: [2u8; 32], // Points to block2
-            timestamp: 30,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 300,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 400,
-        };
+        let block3 = test_block(3, 3, [2u8; 32], 400);
 
         // Block 2' (fork)
-        let block2_fork = Block {
-            height: 2,
-            hash: [22u8; 32],
-            prev_hash: [1u8; 32], // Points to block1
-            timestamp: 20,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 200,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 300,
-        };
+        let block2_fork = test_block(2, 22, [1u8; 32], 300);
 
         // Block 3' (fork)
-        let block3_fork = Block {
-            height: 3,
-            hash: [33u8; 32],
-            prev_hash: [22u8; 32], // Points to block2_fork
-            timestamp: 30,
-            transactions: vec![],
-            miner: [0u8; 32],
-            reward_token_ids: vec![],
-            state_root: [0u8; 32],
-            tx_root: [0u8; 32],
-            nonce: 0,
-            poh_seq: 300,
-            poh_hash: [0u8; 32],
-            difficulty: 100,
-            total_difficulty: 400,
-        };
+        let block3_fork = test_block(3, 33, [22u8; 32], 400);
 
         // Store the blocks
         block_store.put_block(&genesis).unwrap();

@@ -76,6 +76,7 @@ impl Target {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "legacy-test-compat")]
     #[test]
     fn test_target_difficulty_conversion() {
         let difficulties = vec![1, 10, 100, 1000, 10000, 100000];

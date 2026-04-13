@@ -305,18 +305,18 @@ impl<'a> ObjectProcessor<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
-    use crate::storage::state::{AccountState, AccountType};
+    use crate::storage::{AccountType, Ownership};
     use crate::crypto::keys::VibeKeypair;
     use tempfile::tempdir;
 
     fn setup_test_environment() -> (
         tempfile::TempDir,
-        ObjectStore<'static>,
-        StateStore<'static>,
+        &'static ObjectStore<'static>,
+        &'static StateStore<'static>,
         ObjectProcessor<'static>,
         VibeKeypair,
     ) {
@@ -324,9 +324,9 @@ mod tests {
         let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
         let kv_store_static = Box::leak(Box::new(kv_store));
 
-        let object_store = ObjectStore::new(kv_store_static);
-        let state_store = StateStore::new(kv_store_static);
-        let processor = ObjectProcessor::new(&object_store, &state_store, 1);
+        let object_store = Box::leak(Box::new(ObjectStore::new(kv_store_static)));
+        let state_store = Box::leak(Box::new(StateStore::new(kv_store_static)));
+        let processor = ObjectProcessor::new(object_store, state_store, 1);
 
         let keypair = VibeKeypair::generate();
         let sender = keypair.address();

@@ -106,6 +106,26 @@ impl Mempool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::TransactionStatus;
+
+    fn test_tx(tx_id: [u8; 32], value: u64) -> TransactionRecord {
+        TransactionRecord {
+            tx_id,
+            sender: [2u8; 32],
+            recipient: [3u8; 32],
+            transfer_token_ids: vec![[9u8; 32]],
+            fee_token_id: Some([8u8; 32]),
+            value,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 10,
+            nonce: 0,
+            timestamp: 0,
+            block_height: 0,
+            data: None,
+            status: TransactionStatus::Pending,
+        }
+    }
     
     #[test]
     fn test_mempool() {
@@ -113,27 +133,8 @@ mod tests {
         let mempool = Mempool::new(100);
         
         // Create some transactions
-        let tx1 = TransactionRecord {
-            tx_id: [1u8; 32],
-            sender: [2u8; 32],
-            recipient: [3u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
-            value: 100,
-            gas_used: 10,
-            block_height: 0, // Not yet included in a block
-        };
-        
-        let tx2 = TransactionRecord {
-            tx_id: [2u8; 32],
-            sender: [2u8; 32],
-            recipient: [3u8; 32],
-            transfer_token_ids: vec![],
-            fee_token_id: None,
-            value: 200,
-            gas_used: 10,
-            block_height: 0,
-        };
+        let tx1 = test_tx([1u8; 32], 100);
+        let tx2 = test_tx([2u8; 32], 200);
         
         // Add the transactions
         assert!(mempool.add_transaction(tx1.clone()));

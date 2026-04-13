@@ -4,7 +4,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time;
 use log::{debug, error, info, warn};
 
-use crate::storage::block_store::{Block, BlockStore, compute_block_result_commitment};
+use crate::storage::block_store::{Block, BlockStore, result_commitment};
 use crate::storage::tx_store::{TransactionRecord, TxStore};
 use crate::storage::state_store::StateStore;
 use crate::storage::{BatchOperationManager, KVStore};
@@ -21,8 +21,9 @@ fn create_genesis_block(config: &ConsensusConfig) -> Block {
         timestamp: 0,
         transactions: vec![],
         miner: [0u8; 32],
+        pre_reward_state_root: [0u8; 32],
         reward_token_ids: vec![],
-        result_commitment: compute_block_result_commitment(&[0u8; 32], &[0u8; 32], &[]),
+        result_commitment: result_commitment(&[0u8; 32], &[0u8; 32], &[]),
         state_root: [0u8; 32],
         tx_root: [0u8; 32],
         nonce: 0,
@@ -488,6 +489,7 @@ impl ConsensusEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consensus::telemetry::new_consensus_telemetry;
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
@@ -495,26 +497,30 @@ mod tests {
     async fn test_consensus_engine_creation() {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
-        let kv_store = RocksDBStore::new(temp_dir.path());
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(RocksDBStore::new(&temp_dir.path().join("manager")).unwrap());
 
         // Create the stores
-        let block_store = Arc::new(BlockStore::new(&kv_store));
-        let tx_store = Arc::new(TxStore::new(&kv_store));
-        let state_store = Arc::new(StateStore::new(&kv_store));
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
 
         // Create a network channel
         let (network_tx, _network_rx) = mpsc::channel(100);
 
         // Create a config
         let config = ConsensusConfig::default();
+        let telemetry = new_consensus_telemetry(false);
 
         // Create the consensus engine
         let engine = ConsensusEngine::new(
             config,
+            manager_store,
             block_store,
             tx_store,
             state_store,
             network_tx,
+            telemetry,
         );
 
         // Check that the engine was created successfully
