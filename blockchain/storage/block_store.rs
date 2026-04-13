@@ -7,6 +7,26 @@ use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 /// Type alias for a 32-byte hash
 pub type Hash = [u8; 32];
 
+pub fn compute_block_pow_hash(
+    height: u64,
+    prev_hash: &Hash,
+    timestamp: u64,
+    miner: &Hash,
+    pre_reward_state_root: &Hash,
+    tx_root: &Hash,
+    nonce: u64,
+) -> Hash {
+    let mut preimage = Vec::with_capacity(8 + 32 + 8 + 32 + 32 + 32 + 8);
+    preimage.extend_from_slice(&height.to_be_bytes());
+    preimage.extend_from_slice(prev_hash);
+    preimage.extend_from_slice(&timestamp.to_be_bytes());
+    preimage.extend_from_slice(miner);
+    preimage.extend_from_slice(pre_reward_state_root);
+    preimage.extend_from_slice(tx_root);
+    preimage.extend_from_slice(&nonce.to_be_bytes());
+    crate::crypto::hash::sha256(&preimage)
+}
+
 /// Block structure representing a block in the blockchain
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Block {

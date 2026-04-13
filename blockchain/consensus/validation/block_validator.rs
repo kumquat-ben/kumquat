@@ -2,12 +2,13 @@ use std::sync::Arc;
 use log::{error, warn};
 use sha2::Digest;
 
-use crate::storage::block_store::{Block, BlockStore};
+use crate::storage::block_store::{Block, BlockStore, compute_block_pow_hash};
 use crate::storage::tx_store::TxStore;
 use crate::storage::state_store::StateStore;
 use crate::consensus::types::Target;
 use crate::consensus::poh::verifier::PoHVerifier;
 use crate::crypto::hash::{sha256, Hash};
+use crate::storage::TransactionRecord;
 
 /// Result of block validation
 #[derive(Debug, PartialEq)]
@@ -69,19 +70,23 @@ impl<'a> BlockValidator<'a> {
             }
         }
 
+        // Validate transactions
+        if !self.validate_transactions(block) {
+            return BlockValidationResult::Invalid("Invalid transactions".to_string());
+        }
+
         // Validate block hash
         if !self.validate_block_hash(block) {
             return BlockValidationResult::Invalid("Invalid block hash".to_string());
         }
 
+        if !self.validate_reward_token_ids(block) {
+            return BlockValidationResult::Invalid("Invalid reward token ids".to_string());
+        }
+
         // Validate PoW
         if !self.validate_pow(block, target) {
             return BlockValidationResult::Invalid("Invalid proof of work".to_string());
-        }
-
-        // Validate transactions
-        if !self.validate_transactions(block) {
-            return BlockValidationResult::Invalid("Invalid transactions".to_string());
         }
 
         // Validate state root
@@ -99,10 +104,52 @@ impl<'a> BlockValidator<'a> {
     }
 
     /// Validate the block hash
-    fn validate_block_hash(&self, _block: &Block) -> bool {
-        // In a real implementation, we would compute the expected hash
-        // based on the block contents and compare it to block.hash
-        // For now, we'll just return true
+    fn validate_block_hash(&self, block: &Block) -> bool {
+        if block.height == 0 {
+            return true;
+        }
+
+        let transactions = match self.load_block_transactions(block) {
+            Ok(transactions) => transactions,
+            Err(err) => {
+                error!("Failed to load block transactions for hash validation: {}", err);
+                return false;
+            }
+        };
+
+        let pre_reward_state_root = match self.state_store.calculate_projected_state_root(
+            block.height,
+            block.timestamp,
+            &transactions,
+            &block.miner,
+        ) {
+            Ok(root) => root.root_hash,
+            Err(err) => {
+                error!("Failed to calculate pre-reward state root for block {}: {}", block.height, err);
+                return false;
+            }
+        };
+
+        let expected_hash = compute_block_pow_hash(
+            block.height,
+            &block.prev_hash,
+            block.timestamp,
+            &block.miner,
+            &pre_reward_state_root,
+            &block.tx_root,
+            block.nonce,
+        );
+
+        if expected_hash != block.hash {
+            error!(
+                "Block hash mismatch at height {}: expected {}, got {}",
+                block.height,
+                hex::encode(expected_hash),
+                hex::encode(block.hash),
+            );
+            return false;
+        }
+
         true
     }
 
@@ -117,31 +164,44 @@ impl<'a> BlockValidator<'a> {
         target.is_met_by(&block.hash)
     }
 
+    fn validate_reward_token_ids(&self, block: &Block) -> bool {
+        if block.height == 0 {
+            return true;
+        }
+
+        let expected_reward_token_ids = crate::rewards::reward_token_ids_for_block(
+            block.miner,
+            block.height,
+            &block.hash,
+        );
+
+        if block.reward_token_ids != expected_reward_token_ids {
+            error!(
+                "Reward token id mismatch at height {}: expected {} ids, got {}",
+                block.height,
+                expected_reward_token_ids.len(),
+                block.reward_token_ids.len(),
+            );
+            return false;
+        }
+
+        true
+    }
+
     /// Validate the transactions in the block
     fn validate_transactions(&self, block: &Block) -> bool {
         // Check that all transactions exist and are valid
-        for tx_hash in &block.transactions {
-            if let Ok(Some(tx)) = self.tx_store.get_transaction(tx_hash) {
-                // Verify transaction block height
-                if tx.block_height != block.height {
-                    error!("Transaction {} has incorrect block height: expected {}, got {}",
-                           hex::encode(tx_hash), block.height, tx.block_height);
-                    return false;
-                }
-
-                // Additional transaction validation could be done here
-                // - Verify signatures
-                // - Check for double-spends
-                // - Validate inputs and outputs
-            } else {
-                error!("Transaction {} not found in transaction store", hex::encode(tx_hash));
+        let transactions = match self.load_block_transactions(block) {
+            Ok(transactions) => transactions,
+            Err(err) => {
+                error!("{}", err);
                 return false;
             }
-        }
+        };
 
         // Validate the transaction root
         // Convert [u8; 32] array to Hash type
-        let tx_hashes: Vec<Hash> = block.transactions.iter().map(|tx| Hash::new(*tx)).collect();
+        let tx_hashes: Vec<Hash> = transactions.iter().map(|tx| Hash::new(tx.tx_id)).collect();
         let calculated_tx_root = self.calculate_tx_root(&tx_hashes);
         if calculated_tx_root != Hash::new(block.tx_root) {
             error!("Transaction root mismatch: expected {}, calculated {}",
@@ -150,6 +210,34 @@ impl<'a> BlockValidator<'a> {
         }
 
         true
+    }
+
+    fn load_block_transactions(&self, block: &Block) -> Result<Vec<TransactionRecord>, String> {
+        let mut transactions = Vec::with_capacity(block.transactions.len());
+
+        for tx_hash in &block.transactions {
+            match self.tx_store.get_transaction(tx_hash) {
+                Ok(Some(tx)) => {
+                    if tx.block_height != block.height {
+                        return Err(format!(
+                            "Transaction {} has incorrect block height: expected {}, got {}",
+                            hex::encode(tx_hash),
+                            block.height,
+                            tx.block_height,
+                        ));
+                    }
+                    transactions.push(tx);
+                }
+                Ok(None) => {
+                    return Err(format!("Transaction not found in transaction store: {}", hex::encode(tx_hash)));
+                }
+                Err(err) => {
+                    return Err(format!("Failed to load transaction {}: {}", hex::encode(tx_hash), err));
+                }
+            }
+        }
+
+        Ok(transactions)
     }
 
     /// Calculate the transaction root (Merkle root of transactions)

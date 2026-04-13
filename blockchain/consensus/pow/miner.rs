@@ -5,8 +5,7 @@ use tokio::time;
 use log::{error, info, trace, warn};
 use rayon::prelude::*;
 
-use crate::crypto::hash::sha256;
-use crate::storage::block_store::Block;
+use crate::storage::block_store::{Block, compute_block_pow_hash};
 use crate::consensus::types::BlockTemplate;
 use crate::consensus::config::ConsensusConfig;
 
@@ -158,17 +157,15 @@ impl PoWMiner {
             // Create a block with this nonce
             // In a real implementation, we would compute the block hash here
             // For now, we'll just use a placeholder
-            let block_data = format!(
-                "{}:{}:{}:{}:{}:{}",
+            let hash = compute_block_pow_hash(
                 template.height,
-                hex::encode(&template.prev_hash),
+                &template.prev_hash,
                 template.timestamp,
-                hex::encode(&template.state_root),
-                hex::encode(&template.tx_root),
-                nonce
+                &template.miner,
+                &template.state_root,
+                &template.tx_root,
+                nonce,
             );
-
-            let hash = sha256(block_data.as_bytes());
 
             // Check if the hash meets the target
             if target.is_met_by(&hash) {
