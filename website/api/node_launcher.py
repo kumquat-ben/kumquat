@@ -155,6 +155,19 @@ def dashboard_proxy_path(node: ManagedNode) -> str:
     return f"/nodes/{node.id}/proxy/dashboard"
 
 
+def dashboard_subdomain_host(node: ManagedNode) -> str:
+    return f"{node.name}.{settings.NODE_PROXY_BASE_DOMAIN}"
+
+
+def dashboard_subdomain_url(node: ManagedNode) -> str:
+    site_origin = (settings.SITE_URL or "https://kumquat.info").rstrip("/")
+    if "://" in site_origin:
+        scheme = site_origin.split("://", 1)[0]
+    else:
+        scheme = "https"
+    return f"{scheme}://{dashboard_subdomain_host(node)}/dashboard"
+
+
 def _split_image_reference(image: str):
     registry, remainder = image.split("/", 1)
     repository = remainder

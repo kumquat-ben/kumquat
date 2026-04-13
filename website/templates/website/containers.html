@@ -62,8 +62,8 @@
                 <div class="managed-node-meta-item"><span class="section-eyebrow">Launched</span><p>{{ node.launched_at|default:"Unavailable" }}</p></div>
               </div>
               <div class="managed-node-actions">
-                {% if node.dashboard_proxy_url and node.status == "running" %}
-                  <a class="button button-secondary" href="{{ node.dashboard_proxy_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
+                {% if node.dashboard_url and node.status == "running" %}
+                  <a class="button button-secondary" href="{{ node.dashboard_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
                 {% endif %}
                 <form action="/nodes/{{ node.id }}/restart" class="inline-form" method="post">
                   {% csrf_token %}
@@ -121,8 +121,8 @@
               <div class="managed-node-meta-item"><span class="section-eyebrow">Status</span><p>{{ container.status }}</p></div>
             </div>
             <div class="managed-node-actions">
-              {% if container.dashboard_proxy_url %}
-                <a class="button button-secondary" href="{{ container.dashboard_proxy_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
+              {% if container.dashboard_url %}
+                <a class="button button-secondary" href="{{ container.dashboard_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
               {% endif %}
               {% if container.managed_node_id %}
               <form action="/nodes/{{ container.managed_node_id }}/restart" class="inline-form" method="post">

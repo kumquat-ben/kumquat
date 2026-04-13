@@ -8,6 +8,9 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import redirect
 
+from .models import ManagedNode
+from .node_launcher import NodeLauncherError, refresh_node
+
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -33,7 +36,11 @@ class NodeSubdomainProxyMiddleware:
             return self.get_response(request)
         if node_host_state is False:
             return JsonResponse({"error": "Invalid node subdomain."}, status=400)
-        node_id = node_host_state
+        node_label = node_host_state
+
+        node = self._resolve_node(node_label)
+        if node is None:
+            return JsonResponse({"error": "Managed node not found for subdomain.", "node_id": node_label}, status=404)
 
         if request.method.upper() not in settings.NODE_PROXY_ALLOWED_METHODS:
             return HttpResponseNotAllowed(sorted(settings.NODE_PROXY_ALLOWED_METHODS))
@@ -48,24 +55,38 @@ class NodeSubdomainProxyMiddleware:
                 status=401,
             )
 
-        upstream_url = self._build_upstream_url(node_id, request)
+        try:
+            node = refresh_node(node)
+        except NodeLauncherError as exc:
+            return JsonResponse(
+                {"error": f"Failed to refresh managed node status: {exc}", "node_id": node.name},
+                status=502,
+            )
+
+        if node.status != ManagedNode.STATUS_RUNNING:
+            return JsonResponse(
+                {"error": "Managed node is not running.", "node_id": node.name, "status": node.status},
+                status=409,
+            )
+
+        upstream_url = self._build_upstream_url(node, request)
         upstream_request = Request(
             upstream_url,
             data=request.body if request.body else None,
             method=request.method.upper(),
-            headers=self._build_upstream_headers(request, node_id),
+            headers=self._build_upstream_headers(request, node),
         )
 
         try:
             with urlopen(upstream_request, timeout=settings.NODE_PROXY_TIMEOUT_SECONDS) as upstream_response:
-                return self._build_proxy_response(upstream_response, node_id)
+                return self._build_proxy_response(upstream_response, node)
         except HTTPError as exc:
-            return self._build_error_response(exc, node_id)
+            return self._build_error_response(exc, node)
         except URLError as exc:
             return JsonResponse(
                 {
                     "error": "Node dashboard upstream is unavailable.",
-                    "node_id": node_id,
+                    "node_id": node.name,
                     "reason": str(exc.reason),
                 },
                 status=502,
@@ -93,19 +114,30 @@ class NodeSubdomainProxyMiddleware:
         accept = (request.headers.get("Accept") or "").lower()
         return "text/html" in accept or "*/*" in accept
 
-    def _build_upstream_url(self, node_id, request):
-        path = request.get_full_path() or "/"
-        return (
-            f"http://{node_id}.{settings.NODE_PROXY_SERVICE_NAME}."
-            f"{settings.NODE_PROXY_NAMESPACE}.svc.cluster.local:"
-            f"{settings.NODE_PROXY_PORT}{path}"
-        )
+    def _resolve_node(self, node_label):
+        node = ManagedNode.objects.filter(name=node_label).first()
+        if node is not None:
+            return node
 
-    def _build_upstream_headers(self, request, node_id):
+        node = ManagedNode.objects.filter(container_name=node_label).first()
+        if node is not None:
+            return node
+
+        node = ManagedNode.objects.filter(container_id__startswith=node_label).first()
+        if node is not None:
+            return node
+
+        return None
+
+    def _build_upstream_url(self, node, request):
+        path = request.get_full_path() or "/"
+        return f"http://127.0.0.1:{node.api_port}{path}"
+
+    def _build_upstream_headers(self, request, node):
         headers = {
             "X-Forwarded-Host": request.get_host(),
             "X-Forwarded-Proto": "https" if request.is_secure() else "http",
-            "X-Kumquat-Node-Id": node_id,
+            "X-Kumquat-Node-Id": node.name,
         }
 
         for header_name in ("Accept", "Accept-Encoding", "User-Agent", "Content-Type"):
@@ -115,10 +147,10 @@ class NodeSubdomainProxyMiddleware:
 
         return headers
 
-    def _build_proxy_response(self, upstream_response, node_id):
+    def _build_proxy_response(self, upstream_response, node):
         body = upstream_response.read()
         response = HttpResponse(body, status=upstream_response.status)
-        response["X-Kumquat-Node-Id"] = node_id
+        response["X-Kumquat-Node-Id"] = node.name
 
         for header_name, header_value in upstream_response.headers.items():
             if header_name.lower() in HOP_BY_HOP_HEADERS:
@@ -127,10 +159,10 @@ class NodeSubdomainProxyMiddleware:
 
         return response
 
-    def _build_error_response(self, exc, node_id):
+    def _build_error_response(self, exc, node):
         body = exc.read()
         response = HttpResponse(body, status=exc.code)
-        response["X-Kumquat-Node-Id"] = node_id
+        response["X-Kumquat-Node-Id"] = node.name
 
         for header_name, header_value in exc.headers.items():
             if header_name.lower() in HOP_BY_HOP_HEADERS:

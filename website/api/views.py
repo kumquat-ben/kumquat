@@ -36,6 +36,7 @@ from .node_launcher import (
     delete_container,
     delete_deployment,
     delete_runtime_container,
+    dashboard_subdomain_url,
     list_runtime_containers,
     map_container_status,
     NodeLauncherError,
@@ -799,6 +800,7 @@ def _serialize_managed_node(node):
         "status": node.status,
         "last_error": node.last_error,
         "logs_tail": node.last_logs,
+        "dashboard_url": dashboard_subdomain_url(node),
         "dashboard_proxy_url": dashboard_proxy_path(node),
         "launched_by": node.launched_by.email if node.launched_by else "",
         "launched_at": node.launched_at.isoformat() if node.launched_at else None,
@@ -825,6 +827,7 @@ def _serialize_runtime_container(container, managed_node=None):
         "ports": ports,
         "managed_node_id": managed_node.id if managed_node else None,
         "managed_node_name": managed_node.display_name if managed_node else "",
+        "dashboard_url": dashboard_subdomain_url(managed_node) if managed_node else "",
         "dashboard_proxy_url": dashboard_proxy_path(managed_node) if managed_node else "",
         "last_error": state.get("Error") or "",
     }
@@ -1275,7 +1278,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <p class="meta">Reward address: <code>${{escapeHtml(node.reward_address || "node-derived default")}}</code></p>
             ${{node.last_error ? `<p class="error">${{escapeHtml(node.last_error)}}</p>` : ""}}
             <div class="actions">
-              <a class="button" href="${{escapeHtml(node.dashboard_proxy_url || "#")}}">Open GUI</a>
+              <a class="button" href="${{escapeHtml(node.dashboard_url || node.dashboard_proxy_url || "#")}}">Open GUI</a>
             </div>
             <pre>${{escapeHtml(node.logs_tail || "No logs available yet.")}}</pre>
           </div>
