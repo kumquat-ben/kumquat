@@ -28,6 +28,80 @@
         </div>
       {% endif %}
 
+      <section class="dashboard-card managed-node-card">
+        <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Managed Deployments</p>
+            <h3>Saved node deployments</h3>
+          </div>
+          <a class="button button-secondary" href="/dashboard">Launch or review nodes</a>
+        </div>
+        <div class="dashboard-inline-summary">
+          <p class="body-copy">
+            Failed launches still appear here even if no runtime container was created yet. Use this section to restart the node, delete its container, or delete the deployment record entirely.
+          </p>
+        </div>
+        <div class="managed-node-grid">
+          {% for node in dashboard.managed_nodes %}
+            <article class="dashboard-card managed-node-card">
+              <div class="dashboard-card-header">
+                <div>
+                  <p class="section-eyebrow">Managed Node</p>
+                  <h3>{{ node.display_name }}</h3>
+                </div>
+                <span class="managed-node-status managed-node-status-{{ node.status }}">{{ node.status }}</span>
+              </div>
+              <div class="managed-node-meta">
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Node Name</span><p>{{ node.name }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Container</span><p>{{ node.container_name|default:"Not present" }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Image</span><p><code>{{ node.image }}</code></p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Chain ID</span><p>{{ node.chain_id }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">API Port</span><p>{{ node.api_port }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">P2P Port</span><p>{{ node.p2p_port }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Mining</span><p>{% if node.enable_mining %}On ({{ node.mining_threads }} threads){% else %}Off{% endif %}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Launched</span><p>{{ node.launched_at|default:"Unavailable" }}</p></div>
+              </div>
+              <div class="managed-node-actions">
+                {% if node.dashboard_proxy_url and node.status == "running" %}
+                  <a class="button button-secondary" href="{{ node.dashboard_proxy_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
+                {% endif %}
+                <form action="/nodes/{{ node.id }}/restart" class="inline-form" method="post">
+                  {% csrf_token %}
+                  <button class="button button-secondary" type="submit">Restart node</button>
+                </form>
+                <form action="/nodes/{{ node.id }}/stop" class="inline-form" method="post">
+                  {% csrf_token %}
+                  <button class="button button-secondary" {% if node.status != "running" %}disabled{% endif %} type="submit">Stop container</button>
+                </form>
+                <form action="/nodes/{{ node.id }}/delete-container" class="inline-form" method="post" onsubmit="return confirm('Delete the container for {{ node.display_name|escapejs }}?');">
+                  {% csrf_token %}
+                  <button class="button button-secondary button-danger" type="submit">Delete container</button>
+                </form>
+                <form action="/nodes/{{ node.id }}/delete-deployment" class="inline-form" method="post" onsubmit="return confirm('Delete the full deployment for {{ node.display_name|escapejs }}? This removes the container, runtime files, and admin record.');">
+                  {% csrf_token %}
+                  <button class="button button-danger" type="submit">Delete deployment</button>
+                </form>
+              </div>
+              {% if node.last_error %}
+                <p class="dashboard-message dashboard-message-error">{{ node.last_error }}</p>
+              {% endif %}
+            </article>
+          {% empty %}
+            <section class="dashboard-card managed-node-card managed-node-empty">
+              <p class="body-copy">No managed node deployments exist yet.</p>
+            </section>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="dashboard-card managed-node-card">
+        <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Runtime Containers</p>
+            <h3>Containers currently visible to the launcher daemon</h3>
+          </div>
+        </div>
+      </section>
       <section class="managed-node-grid">
         {% for container in runtime_containers %}
           <article class="dashboard-card managed-node-card">
