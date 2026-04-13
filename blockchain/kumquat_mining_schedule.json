@@ -1,0 +1,779 @@
+{
+  "project": "Kumquat",
+  "version": "0.4",
+  "mining_schedule": {
+    "total_supply": 420000000,
+    "total_blocks": 441806400,
+    "block_time_seconds": 1,
+    "mining_lifespan_years": 14,
+    "consensus": "Proof of Work",
+    "num_eras": 7,
+    "blocks_per_era": 63115200,
+    "note": "Early eras average >1 unit per block, meaning some blocks drop multiple denominations. Later eras drop below 1, meaning some blocks are empty. This creates natural excitement curves."
+  },
+  "denomination_totals": [
+    {
+      "denomination": "$100.00",
+      "type": "bill",
+      "total_supply": 20154961,
+      "pct_of_total_supply": 4.7988
+    },
+    {
+      "denomination": "$50.00",
+      "type": "bill",
+      "total_supply": 2624344,
+      "pct_of_total_supply": 0.6248
+    },
+    {
+      "denomination": "$20.00",
+      "type": "bill",
+      "total_supply": 11652087,
+      "pct_of_total_supply": 2.7743
+    },
+    {
+      "denomination": "$10.00",
+      "type": "bill",
+      "total_supply": 2519370,
+      "pct_of_total_supply": 0.5998
+    },
+    {
+      "denomination": "$5.00",
+      "type": "bill",
+      "total_supply": 3884029,
+      "pct_of_total_supply": 0.9248
+    },
+    {
+      "denomination": "$2.00",
+      "type": "bill",
+      "total_supply": 1784554,
+      "pct_of_total_supply": 0.4249
+    },
+    {
+      "denomination": "$1.00",
+      "type": "bill",
+      "total_supply": 6298425,
+      "pct_of_total_supply": 1.4996
+    },
+    {
+      "denomination": "$0.50",
+      "type": "coin",
+      "total_supply": 1574606,
+      "pct_of_total_supply": 0.3749
+    },
+    {
+      "denomination": "$0.25",
+      "type": "coin",
+      "total_supply": 54586353,
+      "pct_of_total_supply": 12.9968
+    },
+    {
+      "denomination": "$0.10",
+      "type": "coin",
+      "total_supply": 38840290,
+      "pct_of_total_supply": 9.2477
+    },
+    {
+      "denomination": "$0.05",
+      "type": "coin",
+      "total_supply": 24143964,
+      "pct_of_total_supply": 5.7486
+    },
+    {
+      "denomination": "$0.01",
+      "type": "coin",
+      "total_supply": 251937017,
+      "pct_of_total_supply": 59.985
+    }
+  ],
+  "lottery_logic": {
+    "method": "hash_derived_deterministic_lottery",
+    "overview": "The PoW solution hash is the sole entropy source for the denomination lottery.",
+    "mechanics": {
+      "step_1_solve_block": "Miner finds nonce where hash(block_header + nonce) meets difficulty target. Standard PoW.",
+      "step_2_unit_count": "Extract bits [0..31] as uint32. Use Poisson distribution with lambda = avg_units_per_block for current era. This determines how many units (0, 1, or 2+) this block produces. In later eras with lower rates, many blocks produce 0. In early eras, some blocks produce 2.",
+      "step_3_denomination_per_unit": "For each unit produced, extract successive 32-bit windows from the hash. Map each to denomination ranges using cumulative probabilities for the current era.",
+      "step_4_era_from_height": "era = block_height / 63115200. Pure math, no clock."
+    },
+    "properties": {
+      "deterministic": "Any node verifies lottery from block hash alone",
+      "unforgeable": "Changing outcome requires re-solving PoW",
+      "no_external_randomness": "All entropy from hash",
+      "self_verifying": "Every minted unit's denomination recomputable from block hash",
+      "no_wasted_blocks": "Even when avg > 1 unit/block, the system handles it via multi-unit rewards"
+    }
+  },
+  "eras": [
+    {
+      "era": 1,
+      "years": "Year 0 to Year 2",
+      "block_range_start": 0,
+      "block_range_end": 63115199,
+      "total_blocks": 63115200,
+      "total_units_in_era": 79603335,
+      "avg_units_per_block": 1.261239,
+      "multi_unit_blocks_possible": true,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 11855859,
+          "lottery_weight": "14.8937%",
+          "avg_time_between_drops": "5.3 seconds"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 1410938,
+          "lottery_weight": "1.7725%",
+          "avg_time_between_drops": "44.7 seconds"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 5178705,
+          "lottery_weight": "6.5056%",
+          "avg_time_between_drops": "12.2 seconds"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 1013540,
+          "lottery_weight": "1.2732%",
+          "avg_time_between_drops": "1.0 minutes"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 1420986,
+          "lottery_weight": "1.7851%",
+          "avg_time_between_drops": "44.4 seconds"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 557673,
+          "lottery_weight": "0.7006%",
+          "avg_time_between_drops": "1.9 minutes"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 1657480,
+          "lottery_weight": "2.0822%",
+          "avg_time_between_drops": "38.1 seconds"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 399196,
+          "lottery_weight": "0.5015%",
+          "avg_time_between_drops": "2.6 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 10284385,
+          "lottery_weight": "12.9195%",
+          "avg_time_between_drops": "6.1 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 6282988,
+          "lottery_weight": "7.8929%",
+          "avg_time_between_drops": "10.0 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 3550583,
+          "lottery_weight": "4.4603%",
+          "avg_time_between_drops": "17.8 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 35991002,
+          "lottery_weight": "45.2129%",
+          "avg_time_between_drops": "1.8 seconds"
+        }
+      ]
+    },
+    {
+      "era": 2,
+      "years": "Year 2 to Year 4",
+      "block_range_start": 63115200,
+      "block_range_end": 126230399,
+      "total_blocks": 63115200,
+      "total_units_in_era": 69270850,
+      "avg_units_per_block": 1.09753,
+      "multi_unit_blocks_possible": true,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 5927930,
+          "lottery_weight": "8.5576%",
+          "avg_time_between_drops": "10.6 seconds"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 846563,
+          "lottery_weight": "1.2221%",
+          "avg_time_between_drops": "1.2 minutes"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 3236691,
+          "lottery_weight": "4.6725%",
+          "avg_time_between_drops": "19.5 seconds"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 723957,
+          "lottery_weight": "1.0451%",
+          "avg_time_between_drops": "1.5 minutes"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 1065739,
+          "lottery_weight": "1.5385%",
+          "avg_time_between_drops": "59.2 seconds"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 440791,
+          "lottery_weight": "0.6363%",
+          "avg_time_between_drops": "2.4 minutes"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 1381233,
+          "lottery_weight": "1.9940%",
+          "avg_time_between_drops": "45.7 seconds"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 339317,
+          "lottery_weight": "0.4898%",
+          "avg_time_between_drops": "3.1 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 9152454,
+          "lottery_weight": "13.2110%",
+          "avg_time_between_drops": "6.9 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 5656842,
+          "lottery_weight": "8.1659%",
+          "avg_time_between_drops": "11.2 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 3292396,
+          "lottery_weight": "4.7528%",
+          "avg_time_between_drops": "19.2 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 31235137,
+          "lottery_weight": "45.0908%",
+          "avg_time_between_drops": "2.0 seconds"
+        }
+      ]
+    },
+    {
+      "era": 3,
+      "years": "Year 4 to Year 6",
+      "block_range_start": 126230400,
+      "block_range_end": 189345599,
+      "total_blocks": 63115200,
+      "total_units_in_era": 61165973,
+      "avg_units_per_block": 0.969127,
+      "multi_unit_blocks_possible": false,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 1975977,
+          "lottery_weight": "3.2308%",
+          "avg_time_between_drops": "31.9 seconds"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 299877,
+          "lottery_weight": "0.4903%",
+          "avg_time_between_drops": "3.5 minutes"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 1864334,
+          "lottery_weight": "3.0470%",
+          "avg_time_between_drops": "33.9 seconds"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 452887,
+          "lottery_weight": "0.7404%",
+          "avg_time_between_drops": "2.3 minutes"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 741408,
+          "lottery_weight": "1.2120%",
+          "avg_time_between_drops": "1.4 minutes"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 356911,
+          "lottery_weight": "0.5834%",
+          "avg_time_between_drops": "2.9 minutes"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 1259685,
+          "lottery_weight": "2.0594%",
+          "avg_time_between_drops": "50.1 seconds"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 314921,
+          "lottery_weight": "0.5149%",
+          "avg_time_between_drops": "3.3 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 8107210,
+          "lottery_weight": "13.2547%",
+          "avg_time_between_drops": "7.8 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 5126918,
+          "lottery_weight": "8.3808%",
+          "avg_time_between_drops": "12.3 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 3066283,
+          "lottery_weight": "5.0130%",
+          "avg_time_between_drops": "20.6 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 41164662,
+          "lottery_weight": "67.2993%",
+          "avg_time_between_drops": "1.5 seconds"
+        }
+      ]
+    },
+    {
+      "era": 4,
+      "years": "Year 6 to Year 8",
+      "block_range_start": 189345600,
+      "block_range_end": 252460799,
+      "total_blocks": 63115200,
+      "total_units_in_era": 56671224,
+      "avg_units_per_block": 0.897707,
+      "multi_unit_blocks_possible": false,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 395195,
+          "lottery_weight": "0.6974%",
+          "avg_time_between_drops": "2.7 minutes"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 669102,
+          "lottery_weight": "1.1804%",
+          "avg_time_between_drops": "1.6 minutes"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 1083644,
+          "lottery_weight": "1.9120%",
+          "avg_time_between_drops": "58.2 seconds"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 329768,
+          "lottery_weight": "0.5819%",
+          "avg_time_between_drops": "3.2 minutes"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 656401,
+          "lottery_weight": "1.1580%",
+          "avg_time_between_drops": "1.6 minutes"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 249838,
+          "lottery_weight": "0.4409%",
+          "avg_time_between_drops": "4.2 minutes"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 931798,
+          "lottery_weight": "1.6447%",
+          "avg_time_between_drops": "1.1 minutes"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 226742,
+          "lottery_weight": "0.4001%",
+          "avg_time_between_drops": "4.6 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 7379391,
+          "lottery_weight": "13.0200%",
+          "avg_time_between_drops": "8.6 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 5073908,
+          "lottery_weight": "8.9530%",
+          "avg_time_between_drops": "12.4 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 3004244,
+          "lottery_weight": "5.3014%",
+          "avg_time_between_drops": "21.0 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 41701093,
+          "lottery_weight": "73.5849%",
+          "avg_time_between_drops": "1.5 seconds"
+        }
+      ]
+    },
+    {
+      "era": 5,
+      "years": "Year 8 to Year 10",
+      "block_range_start": 252460800,
+      "block_range_end": 315575999,
+      "total_blocks": 63115200,
+      "total_units_in_era": 53956629,
+      "avg_units_per_block": 0.854827,
+      "multi_unit_blocks_possible": false,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 397102,
+          "lottery_weight": "0.7359%",
+          "avg_time_between_drops": "2.6 minutes"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 288641,
+          "lottery_weight": "0.5349%",
+          "avg_time_between_drops": "3.6 minutes"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 179341,
+          "lottery_weight": "0.3324%",
+          "avg_time_between_drops": "5.9 minutes"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 757707,
+          "lottery_weight": "1.4043%",
+          "avg_time_between_drops": "1.4 minutes"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 157461,
+          "lottery_weight": "0.2918%",
+          "avg_time_between_drops": "6.7 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 7019431,
+          "lottery_weight": "13.0099%",
+          "avg_time_between_drops": "9.0 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 4910793,
+          "lottery_weight": "9.1010%",
+          "avg_time_between_drops": "12.9 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 2904598,
+          "lottery_weight": "5.3838%",
+          "avg_time_between_drops": "21.7 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 37477356,
+          "lottery_weight": "69.2060%",
+          "avg_time_between_drops": "1.7 seconds"
+        }
+      ]
+    },
+    {
+      "era": 6,
+      "years": "Year 10 to Year 12",
+      "block_range_start": 315576000,
+      "block_range_end": 378691199,
+      "total_blocks": 63115200,
+      "total_units_in_era": 51648114,
+      "avg_units_per_block": 0.818251,
+      "multi_unit_blocks_possible": false,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 310522,
+          "lottery_weight": "0.6012%",
+          "avg_time_between_drops": "3.4 minutes"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 136463,
+          "lottery_weight": "0.2642%",
+          "avg_time_between_drops": "7.7 minutes"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 6312958,
+          "lottery_weight": "12.2224%",
+          "avg_time_between_drops": "10.0 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 4681099,
+          "lottery_weight": "9.0633%",
+          "avg_time_between_drops": "13.5 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 2897276,
+          "lottery_weight": "5.6097%",
+          "avg_time_between_drops": "21.8 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 43309669,
+          "lottery_weight": "83.8392%",
+          "avg_time_between_drops": "1.5 seconds"
+        }
+      ]
+    },
+    {
+      "era": 7,
+      "years": "Year 12 to Year 14",
+      "block_range_start": 378691200,
+      "block_range_end": 441806399,
+      "total_blocks": 63115200,
+      "total_units_in_era": 47783775,
+      "avg_units_per_block": 0.755818,
+      "multi_unit_blocks_possible": false,
+      "denominations": [
+        {
+          "denomination": "$100.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$50.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$20.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$10.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$5.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$2.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$1.00",
+          "type": "bill",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$0.50",
+          "type": "coin",
+          "units_in_era": 0,
+          "lottery_weight": "0.0000%",
+          "avg_time_between_drops": "extinct this era"
+        },
+        {
+          "denomination": "$0.25",
+          "type": "coin",
+          "units_in_era": 6320524,
+          "lottery_weight": "13.2276%",
+          "avg_time_between_drops": "10.0 seconds"
+        },
+        {
+          "denomination": "$0.10",
+          "type": "coin",
+          "units_in_era": 9111742,
+          "lottery_weight": "19.0657%",
+          "avg_time_between_drops": "6.9 seconds"
+        },
+        {
+          "denomination": "$0.05",
+          "type": "coin",
+          "units_in_era": 5423584,
+          "lottery_weight": "11.3500%",
+          "avg_time_between_drops": "11.6 seconds"
+        },
+        {
+          "denomination": "$0.01",
+          "type": "coin",
+          "units_in_era": 36927925,
+          "lottery_weight": "77.3567%",
+          "avg_time_between_drops": "1.7 seconds"
+        }
+      ]
+    }
+  ]
+}

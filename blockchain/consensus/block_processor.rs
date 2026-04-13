@@ -234,7 +234,7 @@ impl<'a> BlockProcessor<'a> {
         }
 
         if block.height > 0 {
-            let expected_reward_token_ids = AccountState::mint_block_reward_set(block.miner, block.height)
+            let expected_reward_token_ids = AccountState::mint_block_reward_set(block.miner, block.height, &block.hash)
                 .iter()
                 .map(|token| token.token_id)
                 .collect::<Vec<_>>();
@@ -253,7 +253,7 @@ impl<'a> BlockProcessor<'a> {
                 }
             };
 
-            miner.tokens.extend(AccountState::mint_block_reward_set(block.miner, block.height));
+            miner.tokens.extend(AccountState::mint_block_reward_set(block.miner, block.height, &block.hash));
             miner.sync_balance_from_tokens();
             miner.last_updated = block.height;
             miner.assign_token_owner(block.miner);

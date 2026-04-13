@@ -10,6 +10,7 @@ pub mod config;
 pub mod tools;
 pub mod node_runtime;
 pub mod api;
+pub mod rewards;
 
 // Initialize logging
 pub fn init_logger() {

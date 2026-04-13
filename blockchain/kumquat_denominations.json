@@ -1,0 +1,92 @@
+{
+  "project": "Kumquat",
+  "total_units": 420000000,
+  "total_face_value": 2456280906.62,
+  "distribution_basis": "Proportional to US currency circulation by unit count (bills + coins), including $2 denomination",
+  "denominations": [
+    {
+      "denomination": "$100.00",
+      "type": "bill",
+      "count": 20154961,
+      "percentage": 4.80,
+      "face_value": 2015496100.00
+    },
+    {
+      "denomination": "$50.00",
+      "type": "bill",
+      "count": 2624344,
+      "percentage": 0.62,
+      "face_value": 131217200.00
+    },
+    {
+      "denomination": "$20.00",
+      "type": "bill",
+      "count": 11652087,
+      "percentage": 2.77,
+      "face_value": 233041740.00
+    },
+    {
+      "denomination": "$10.00",
+      "type": "bill",
+      "count": 2519370,
+      "percentage": 0.60,
+      "face_value": 25193700.00
+    },
+    {
+      "denomination": "$5.00",
+      "type": "bill",
+      "count": 3884029,
+      "percentage": 0.92,
+      "face_value": 19420145.00
+    },
+    {
+      "denomination": "$2.00",
+      "type": "bill",
+      "count": 1784554,
+      "percentage": 0.42,
+      "face_value": 3569108.00
+    },
+    {
+      "denomination": "$1.00",
+      "type": "bill",
+      "count": 6298425,
+      "percentage": 1.50,
+      "face_value": 6298425.00
+    },
+    {
+      "denomination": "$0.50",
+      "type": "coin",
+      "count": 1574606,
+      "percentage": 0.37,
+      "face_value": 787303.00
+    },
+    {
+      "denomination": "$0.25",
+      "type": "coin",
+      "count": 54586353,
+      "percentage": 13.00,
+      "face_value": 13646588.25
+    },
+    {
+      "denomination": "$0.10",
+      "type": "coin",
+      "count": 38840290,
+      "percentage": 9.25,
+      "face_value": 3884029.00
+    },
+    {
+      "denomination": "$0.05",
+      "type": "coin",
+      "count": 24143964,
+      "percentage": 5.75,
+      "face_value": 1207198.20
+    },
+    {
+      "denomination": "$0.01",
+      "type": "coin",
+      "count": 251937017,
+      "percentage": 59.99,
+      "face_value": 2519370.17
+    }
+  ]
+}

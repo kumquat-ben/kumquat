@@ -663,11 +663,12 @@ impl<'a> StateStore<'a> {
         &self,
         miner: &Hash,
         block_height: u64,
+        block_hash: &Hash,
     ) -> Result<Vec<Hash>, StateStoreError> {
         let mut miner_state = self.get_account_state(miner)
             .unwrap_or_else(|| AccountState::new_user(0, block_height));
 
-        let minted_tokens = AccountState::mint_block_reward_set(*miner, block_height);
+        let minted_tokens = AccountState::mint_block_reward_set(*miner, block_height, block_hash);
         let reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
 
         miner_state.tokens.extend(minted_tokens);
@@ -692,7 +693,24 @@ impl<'a> StateStore<'a> {
             temp_state.apply_token_transaction(tx, miner, block_height)?;
         }
 
-        temp_state.apply_block_reward(miner, block_height)?;
+        temp_state.calculate_state_root(block_height, timestamp)
+    }
+
+    pub fn calculate_projected_state_root_with_block_reward(
+        &self,
+        block_height: u64,
+        timestamp: u64,
+        transactions: &[TransactionRecord],
+        miner: &Hash,
+        block_hash: &Hash,
+    ) -> Result<StateRoot, StateStoreError> {
+        let temp_state = self.clone_for_validation();
+
+        for tx in transactions {
+            temp_state.apply_token_transaction(tx, miner, block_height)?;
+        }
+
+        temp_state.apply_block_reward(miner, block_height, block_hash)?;
         temp_state.calculate_state_root(block_height, timestamp)
     }
 
@@ -874,7 +892,7 @@ impl<'a> StateStore<'a> {
                 Some(state) => state.clone(),
                 None => self.get_account_state(&block.miner).unwrap_or_else(|| AccountState::new_user(0, block.height)),
             };
-            let minted_tokens = AccountState::mint_block_reward_set(block.miner, block.height);
+            let minted_tokens = AccountState::mint_block_reward_set(block.miner, block.height, &block.hash);
             let expected_reward_token_ids = minted_tokens.iter().map(|token| token.token_id).collect::<Vec<_>>();
             if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids {
                 return Err(StateStoreError::Other(format!(

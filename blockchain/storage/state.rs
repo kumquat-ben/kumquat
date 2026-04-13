@@ -91,9 +91,10 @@ pub enum Denomination {
     Dollars20,
     Dollars10,
     Dollars5,
+    Dollars2,
     Dollars1,
     Cents50,
-    Cents15,
+    Cents25,
     Cents10,
     Cents5,
     Cents1,
@@ -107,9 +108,10 @@ impl Denomination {
             Denomination::Dollars20 => 2_000,
             Denomination::Dollars10 => 1_000,
             Denomination::Dollars5 => 500,
+            Denomination::Dollars2 => 200,
             Denomination::Dollars1 => 100,
             Denomination::Cents50 => 50,
-            Denomination::Cents15 => 15,
+            Denomination::Cents25 => 25,
             Denomination::Cents10 => 10,
             Denomination::Cents5 => 5,
             Denomination::Cents1 => 1,
@@ -123,9 +125,10 @@ impl Denomination {
             Denomination::Dollars20 => "20",
             Denomination::Dollars10 => "10",
             Denomination::Dollars5 => "5",
+            Denomination::Dollars2 => "2",
             Denomination::Dollars1 => "1",
             Denomination::Cents50 => "0.5",
-            Denomination::Cents15 => "0.15",
+            Denomination::Cents25 => "0.25",
             Denomination::Cents10 => "0.1",
             Denomination::Cents5 => "0.05",
             Denomination::Cents1 => "0.01",
@@ -139,9 +142,10 @@ impl Denomination {
             Denomination::Dollars20,
             Denomination::Dollars10,
             Denomination::Dollars5,
+            Denomination::Dollars2,
             Denomination::Dollars1,
             Denomination::Cents50,
-            Denomination::Cents15,
+            Denomination::Cents25,
             Denomination::Cents10,
             Denomination::Cents5,
             Denomination::Cents1,
@@ -159,9 +163,10 @@ impl Denomination {
             "20" | "20.0" | "20.00" => Some(Denomination::Dollars20),
             "10" | "10.0" | "10.00" => Some(Denomination::Dollars10),
             "5" | "5.0" | "5.00" => Some(Denomination::Dollars5),
+            "2" | "2.0" | "2.00" => Some(Denomination::Dollars2),
             "1" | "1.0" | "1.00" => Some(Denomination::Dollars1),
             "0.5" | "0.50" => Some(Denomination::Cents50),
-            "0.15" | ".15" => Some(Denomination::Cents15),
+            "0.25" | ".25" => Some(Denomination::Cents25),
             "0.1" | "0.10" | ".1" => Some(Denomination::Cents10),
             "0.05" | ".05" => Some(Denomination::Cents5),
             "0.01" | ".01" => Some(Denomination::Cents1),
@@ -488,20 +493,12 @@ impl AccountState {
         self.sync_balance_from_tokens();
     }
 
-    pub fn mint_block_reward_set(owner: [u8; 32], block_height: u64) -> Vec<DenominationToken> {
-        Denomination::reward_set()
-            .into_iter()
-            .enumerate()
-            .map(|(index, denomination)| {
-                DenominationToken::new(
-                    owner,
-                    denomination,
-                    block_height,
-                    TokenMintSource::BlockReward,
-                    index as u64,
-                )
-            })
-            .collect()
+    pub fn mint_block_reward_set(
+        owner: [u8; 32],
+        block_height: u64,
+        block_hash: &[u8; 32],
+    ) -> Vec<DenominationToken> {
+        crate::rewards::reward_tokens_for_block(owner, block_height, block_hash)
     }
 
     pub fn remint_tokens_from_balance(

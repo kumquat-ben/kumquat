@@ -84,7 +84,7 @@ impl<'a> BlockProducer<'a> {
         let next_height = self.chain_state.height + 1;
         let timestamp = chrono::Utc::now().timestamp() as u64;
 
-        // Calculate the projected state root including pending transactions and block reward.
+        // Calculate the provisional state root before the hash-derived reward is known.
         let state_root = match self.state_store.calculate_projected_state_root(
             next_height,
             timestamp,
@@ -193,6 +193,7 @@ impl<'a> BlockProducer<'a> {
     pub async fn mine_block(&self) -> Option<Block> {
         // Create a block template
         let template = self.create_block_template().await;
+        let template_transactions = template.transactions.clone();
 
         info!("Mining block at height {}", template.height);
 
@@ -201,7 +202,23 @@ impl<'a> BlockProducer<'a> {
 
         match result {
             Some(mining_result) => {
-                let block = mining_result.block;
+                let mut block = mining_result.block;
+
+                match self.state_store.calculate_projected_state_root_with_block_reward(
+                    block.height,
+                    block.timestamp,
+                    &template_transactions,
+                    &block.miner,
+                    &block.hash,
+                ) {
+                    Ok(root) => {
+                        block.state_root = root.root_hash;
+                    }
+                    Err(e) => {
+                        error!("Failed to finalize mined block state root: {}", e);
+                        return None;
+                    }
+                }
 
                 // Mark transactions as included
                 for tx_id in &block.transactions {
