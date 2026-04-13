@@ -35,11 +35,15 @@ from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
     delete_container,
     delete_deployment,
+    delete_runtime_container,
+    list_runtime_containers,
+    map_container_status,
     NodeLauncherError,
     dashboard_proxy_path,
     launch_node,
     launcher_enabled,
     refresh_node,
+    restart_runtime_container,
     restart_node,
     stop_node,
     tail_logs,
@@ -502,12 +506,14 @@ def admin_containers_page_view(request):
         return JsonResponse({"error": "Superuser access required."}, status=403)
 
     dashboard = _build_dashboard_context()
+    runtime_containers = _load_runtime_containers()
     return render(
         request,
         "website/containers.html",
         {
             "auth_user": _current_user_context(request),
             "dashboard": dashboard,
+            "runtime_containers": runtime_containers,
             **_seo_context(
                 request,
                 title="Containers | Kumquat",
@@ -801,6 +807,29 @@ def _serialize_managed_node(node):
     }
 
 
+def _serialize_runtime_container(container, managed_node=None):
+    attrs = container.attrs or {}
+    state = attrs.get("State") or {}
+    labels = attrs.get("Config", {}).get("Labels") or {}
+    status = map_container_status(state.get("Status") or container.status or "")
+    ports = attrs.get("NetworkSettings", {}).get("Ports") or {}
+    return {
+        "id": container.id,
+        "short_id": container.short_id,
+        "name": container.name,
+        "image": attrs.get("Config", {}).get("Image") or "",
+        "status": status,
+        "docker_status": state.get("Status") or container.status or "",
+        "created": attrs.get("Created"),
+        "labels": labels,
+        "ports": ports,
+        "managed_node_id": managed_node.id if managed_node else None,
+        "managed_node_name": managed_node.display_name if managed_node else "",
+        "dashboard_proxy_url": dashboard_proxy_path(managed_node) if managed_node else "",
+        "last_error": state.get("Error") or "",
+    }
+
+
 def _next_managed_node_ports():
     aggregate = ManagedNode.objects.aggregate(
         max_api_port=Max("api_port"),
@@ -833,6 +862,32 @@ def _load_managed_nodes():
         except NodeLauncherError:
             hydrated.append(node)
     return hydrated
+
+
+def _load_runtime_containers():
+    managed_nodes = {node.id: node for node in _load_managed_nodes()}
+    containers = []
+    try:
+        runtime = list_runtime_containers()
+    except NodeLauncherError:
+        return []
+
+    for container in runtime:
+        labels = (container.labels or {})
+        managed_node = None
+        label_id = labels.get("kumquat.managed-node-id")
+        if label_id:
+            try:
+                managed_node = managed_nodes.get(int(label_id))
+            except ValueError:
+                managed_node = None
+        if managed_node is None:
+            managed_node = next(
+                (node for node in managed_nodes.values() if node.container_id == container.id or node.container_name == container.name),
+                None,
+            )
+        containers.append(_serialize_runtime_container(container, managed_node))
+    return sorted(containers, key=lambda item: (item["managed_node_name"] or item["name"]).lower())
 
 
 def index_view(_request):
@@ -2066,6 +2121,36 @@ def admin_node_delete_deployment_view(request, node_id):
             return JsonResponse({"error": str(exc)}, status=502)
         messages.error(request, str(exc))
         return HttpResponseRedirect("/containers")
+
+
+@csrf_exempt
+def admin_runtime_container_restart_view(request, container_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    try:
+        restart_runtime_container(container_id)
+        messages.success(request, f"Container '{container_id[:12]}' restarted successfully.")
+    except NodeLauncherError as exc:
+        messages.error(request, str(exc))
+    return HttpResponseRedirect("/containers")
+
+
+@csrf_exempt
+def admin_runtime_container_delete_view(request, container_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    try:
+        delete_runtime_container(container_id)
+        messages.success(request, f"Container '{container_id[:12]}' deleted successfully.")
+    except NodeLauncherError as exc:
+        messages.error(request, str(exc))
+    return HttpResponseRedirect("/containers")
 
 
 def admin_node_logs_view(request, node_id):

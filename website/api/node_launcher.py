@@ -254,6 +254,24 @@ def fetch_container(node: ManagedNode):
     return None
 
 
+def fetch_container_by_id(container_id: str):
+    client = docker_client()
+    try:
+        return client.containers.get(container_id)
+    except NotFound:
+        return None
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to inspect container {container_id}: {exc}") from exc
+
+
+def list_runtime_containers():
+    client = docker_client()
+    try:
+        return client.containers.list(all=True)
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to list runtime containers: {exc}") from exc
+
+
 def launch_node(node: ManagedNode) -> ManagedNode:
     ensure_runtime_files(node)
     client = docker_client()
@@ -396,6 +414,28 @@ def delete_deployment(node: ManagedNode):
     if root.exists():
         shutil.rmtree(root, ignore_errors=False)
     node.delete()
+
+
+def restart_runtime_container(container_id: str):
+    container = fetch_container_by_id(container_id)
+    if container is None:
+        raise NodeLauncherError("Container not found.")
+    try:
+        container.restart(timeout=10)
+        container.reload()
+        return container
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to restart container: {exc}") from exc
+
+
+def delete_runtime_container(container_id: str):
+    container = fetch_container_by_id(container_id)
+    if container is None:
+        raise NodeLauncherError("Container not found.")
+    try:
+        container.remove(force=True)
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to delete container: {exc}") from exc
 
 
 def tail_logs(node: ManagedNode, lines: int = 120) -> str:
