@@ -214,6 +214,27 @@ def _registry_auth_config(image: str):
     return None
 
 
+def _is_same_repository(left: str, right: str) -> bool:
+    try:
+        left_registry, left_repository, _ = _split_image_reference(left)
+        right_registry, right_repository, _ = _split_image_reference(right)
+    except ValueError:
+        return False
+    return left_registry == right_registry and left_repository == right_repository
+
+
+def _resolve_node_image(node: ManagedNode) -> str:
+    configured_image = (getattr(settings, "NODE_LAUNCHER_IMAGE", "") or "").strip()
+    current_image = (node.image or "").strip()
+    if not current_image:
+        return configured_image
+    if configured_image and current_image != configured_image and _is_same_repository(current_image, configured_image):
+        node.image = configured_image
+        node.save(update_fields=["image", "updated_at"])
+        return configured_image
+    return current_image
+
+
 def ensure_image_available(client, image: str):
     pull_policy = getattr(settings, "NODE_LAUNCHER_IMAGE_PULL_POLICY", "ifnotpresent")
     if pull_policy == "never":
@@ -278,6 +299,7 @@ def launch_node(node: ManagedNode) -> ManagedNode:
     existing = fetch_container(node)
     if existing is not None and existing.status in {"created", "running", "restarting"}:
         raise NodeLauncherError("Managed node is already running.")
+    image = _resolve_node_image(node)
 
     root = node_root(node)
     volumes = {
@@ -302,9 +324,9 @@ def launch_node(node: ManagedNode) -> ManagedNode:
             except DockerException:
                 pass
 
-        ensure_image_available(client, node.image)
+        ensure_image_available(client, image)
         container = client.containers.run(
-            node.image,
+            image,
             command=command,
             detach=True,
             name=container_name(node),
