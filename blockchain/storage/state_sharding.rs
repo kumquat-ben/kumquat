@@ -376,14 +376,7 @@ impl<'a> StateShardingManager<'a> {
         }
 
         // Initialize shard info
-        let current_height = match self.block_store.get_latest_height() {
-            Some(height) => height,
-            None => {
-                return Err(ShardingError::Other(
-                    "Failed to get latest height".to_string(),
-                ))
-            }
-        };
+        let current_height = self.block_store.get_latest_height().unwrap_or(0);
 
         for (_, shard) in shards.iter() {
             shard.update_info(current_height)?;

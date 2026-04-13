@@ -149,7 +149,7 @@ impl ConsensusEngine {
         };
 
         // Create the chain state
-        let chain_state = Arc::new(Mutex::new(ChainState::new(
+        let mut initial_chain_state = ChainState::new(
             latest_block.height,
             latest_block.hash,
             crate::storage::state::StateRoot::new(
@@ -160,7 +160,11 @@ impl ConsensusEngine {
             latest_block.total_difficulty as u64,
             0,         // finalized_height
             [0u8; 32], // finalized_hash
-        )));
+        );
+        initial_chain_state.current_target =
+            crate::consensus::types::Target::from_difficulty(latest_block.difficulty);
+        initial_chain_state.latest_timestamp = latest_block.timestamp;
+        let chain_state = Arc::new(Mutex::new(initial_chain_state));
 
         // Create the batch operation manager
         let batch_manager = Arc::new(BatchOperationManager::new(
@@ -398,7 +402,14 @@ impl ConsensusEngine {
             chain_state.tip_hash = block.hash;
             chain_state.latest_hash = block.hash;
             chain_state.latest_timestamp = block.timestamp;
-            chain_state.total_difficulty += 1; // Increment difficulty
+            chain_state.state_root = crate::storage::state::StateRoot::new(
+                block.state_root,
+                block.height,
+                block.timestamp,
+            );
+            chain_state.total_difficulty = block.total_difficulty as u64;
+            chain_state.current_target =
+                crate::consensus::types::Target::from_difficulty(block.difficulty);
 
             // Log the updated chain state
             info!(
@@ -412,32 +423,25 @@ impl ConsensusEngine {
             chain_state.clone()
         };
 
-        // Update the block producer with the cloned chain state in a separate task
-        // to avoid potential deadlocks
-        let block_producer_clone = self.block_producer.clone();
-        let updated_chain_state_clone = updated_chain_state.clone();
+        info!("Updating block producer chain state...");
+        let mut block_producer = self.block_producer.lock().await;
+        let producer_height_before = block_producer.get_chain_state_height();
+        let producer_hash_before = block_producer.get_chain_state_tip_hash();
+        info!(
+            "Block producer chain state before update: height={}, tip_hash={}",
+            producer_height_before,
+            hex::encode(&producer_hash_before)
+        );
 
-        tokio::spawn(async move {
-            info!("Updating block producer chain state...");
-            let mut block_producer = block_producer_clone.lock().await;
-            let producer_height_before = block_producer.get_chain_state_height();
-            let producer_hash_before = block_producer.get_chain_state_tip_hash();
-            info!(
-                "Block producer chain state before update: height={}, tip_hash={}",
-                producer_height_before,
-                hex::encode(&producer_hash_before)
-            );
+        block_producer.update_chain_state(updated_chain_state);
 
-            block_producer.update_chain_state(updated_chain_state_clone);
-
-            let producer_height_after = block_producer.get_chain_state_height();
-            let producer_hash_after = block_producer.get_chain_state_tip_hash();
-            info!(
-                "Block producer chain state after update: height={}, tip_hash={}",
-                producer_height_after,
-                hex::encode(&producer_hash_after)
-            );
-        });
+        let producer_height_after = block_producer.get_chain_state_height();
+        let producer_hash_after = block_producer.get_chain_state_tip_hash();
+        info!(
+            "Block producer chain state after update: height={}, tip_hash={}",
+            producer_height_after,
+            hex::encode(&producer_hash_after)
+        );
     }
 
     /// Handle a new transaction
@@ -474,20 +478,24 @@ impl ConsensusEngine {
             hex::encode(&current_hash)
         );
 
-        // Get the block producer
-        let block_producer = self.block_producer.lock().await;
+        let mined_block = {
+            // Lock only long enough to snapshot producer state and mine the next block.
+            let block_producer = self.block_producer.lock().await;
 
-        // Check the block producer's chain state
-        let producer_height = block_producer.get_chain_state_height();
-        let producer_hash = block_producer.get_chain_state_tip_hash();
-        info!(
-            "Block producer chain state: height={}, tip_hash={}",
-            producer_height,
-            hex::encode(&producer_hash)
-        );
+            // Check the block producer's chain state
+            let producer_height = block_producer.get_chain_state_height();
+            let producer_hash = block_producer.get_chain_state_tip_hash();
+            info!(
+                "Block producer chain state: height={}, tip_hash={}",
+                producer_height,
+                hex::encode(&producer_hash)
+            );
+
+            block_producer.mine_block().await
+        };
 
         // Mine a block
-        if let Some(block) = block_producer.mine_block().await {
+        if let Some(block) = mined_block {
             info!("Mined new block at height {}", block.height);
             {
                 let mut telemetry = self.telemetry.write().await;
@@ -529,16 +537,50 @@ impl ConsensusEngine {
 mod tests {
     use super::*;
     use crate::consensus::telemetry::new_consensus_telemetry;
+    use crate::consensus::validation::BlockValidationResult;
+    use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
+    use tokio::time::{sleep, Duration};
+
+    struct SharedTestStore(&'static RocksDBStore);
+
+    impl KVStore for SharedTestStore {
+        fn put(&self, key: &[u8], value: &[u8]) -> Result<(), KVStoreError> {
+            self.0.put(key, value)
+        }
+
+        fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, KVStoreError> {
+            self.0.get(key)
+        }
+
+        fn delete(&self, key: &[u8]) -> Result<(), KVStoreError> {
+            self.0.delete(key)
+        }
+
+        fn exists(&self, key: &[u8]) -> Result<bool, KVStoreError> {
+            self.0.exists(key)
+        }
+
+        fn write_batch(&self, operations: Vec<WriteBatchOperation>) -> Result<(), KVStoreError> {
+            self.0.write_batch(operations)
+        }
+
+        fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>, KVStoreError> {
+            self.0.scan_prefix(prefix)
+        }
+
+        fn flush(&self) -> Result<(), KVStoreError> {
+            self.0.flush()
+        }
+    }
 
     #[tokio::test]
     async fn test_consensus_engine_creation() {
         // Create a temporary directory for the database
         let temp_dir = tempdir().unwrap();
         let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
-        let manager_store: Arc<dyn KVStore> =
-            Arc::new(RocksDBStore::new(&temp_dir.path().join("manager")).unwrap());
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
 
         // Create the stores
         let block_store = Arc::new(BlockStore::new(shared_store));
@@ -565,5 +607,56 @@ mod tests {
 
         // Check that the engine was created successfully
         assert_eq!(engine.config.target_block_time, 15);
+    }
+
+    #[tokio::test]
+    async fn mined_blocks_advance_chain_without_invalidating_previous_state() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        config.initial_difficulty = 1;
+        config.target_block_time = 1;
+        config.mining_threads = 1;
+        let telemetry = new_consensus_telemetry(false);
+
+        let engine = ConsensusEngine::new(
+            config,
+            manager_store,
+            block_store.clone(),
+            tx_store,
+            state_store,
+            network_tx,
+            telemetry,
+        );
+
+        let block = {
+            let producer = engine.block_producer.lock().await;
+            producer.mine_block().await.expect("expected mined block")
+        };
+        let chain_state = engine.chain_state.lock().await.clone();
+        let validation = engine
+            .block_validator
+            .validate_block(&block, &chain_state.current_target);
+        assert_eq!(validation, BlockValidationResult::Valid);
+        let result = engine
+            .block_processor
+            .process_block(&block, &chain_state.current_target, &chain_state)
+            .await;
+        assert_eq!(result, BlockProcessingResult::Success);
+        engine.update_chain_state(&block).await;
+        sleep(Duration::from_millis(50)).await;
+        assert_eq!(block_store.get_latest_height(), Some(1));
+
+        engine.mine_block().await;
+        sleep(Duration::from_millis(50)).await;
+        assert_eq!(block_store.get_latest_height(), Some(2));
     }
 }

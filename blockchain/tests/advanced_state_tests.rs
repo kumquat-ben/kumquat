@@ -91,42 +91,44 @@ fn test_state_pruning() {
     let state_store = StateStore::new(&kv_store);
 
     // Create test blocks and state
-    for i in 0..10 {
+    for i in 0u8..10u8 {
         let block = Block {
-            height: i,
-            hash: [i as u8; 32],
-            prev_hash: if i == 0 { [0; 32] } else { [(i - 1) as u8; 32] },
-            timestamp: 12345 + i * 10,
-            transactions: vec![[i as u8 + 100; 32]],
+            height: i as u64,
+            hash: [i; 32],
+            prev_hash: if i == 0 { [0; 32] } else { [i - 1; 32] },
+            timestamp: 12345 + (i as u64) * 10,
+            transactions: vec![[i + 100; 32]],
             miner: [0u8; 32],
+            pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
-            state_root: [i as u8 + 50; 32],
-            tx_root: [i as u8 + 60; 32],
+            result_commitment: [0; 32],
+            state_root: [i + 50; 32],
+            tx_root: [i + 60; 32],
             nonce: 42,
-            poh_seq: 100 + i,
-            poh_hash: [i as u8 + 70; 32],
+            poh_seq: 100 + i as u64,
+            poh_hash: [i + 70; 32],
             difficulty: 1000,
-            total_difficulty: 1000 + i * 100,
+            total_difficulty: 1000 + (i as u128) * 100,
         };
 
         block_store.put_block(&block).unwrap();
 
         // Create a state root for this block
-        let state_root = StateRoot::new([i as u8 + 50; 32], i, 12345 + i * 10);
+        let state_root = StateRoot::new([i + 50; 32], i as u64, 12345 + (i as u64) * 10);
         state_store.put_state_root(&state_root).unwrap().unwrap();
 
         // Create some accounts for this block
-        let address1 = [i as u8; 32];
-        let account1 = AccountState::new_user(1000 + i * 100, i);
+        let address1 = [i; 32];
+        let account1 = AccountState::new_user(1000 + (i as u64) * 100, i as u64);
         state_store
-            .put_account(&address1, &account1, i)
+            .put_account(&address1, &account1, i as u64)
             .unwrap()
             .unwrap();
 
-        let address2 = [i as u8 + 10; 32];
-        let account2 = AccountState::new_user(2000 + i * 100, i);
+        let address2 = [i + 10; 32];
+        let account2 = AccountState::new_user(2000 + (i as u64) * 100, i as u64);
         state_store
-            .put_account(&address2, &account2, i)
+            .put_account(&address2, &account2, i as u64)
             .unwrap()
             .unwrap();
     }
@@ -134,6 +136,7 @@ fn test_state_pruning() {
     // Create a pruner with KeepLastNBlocks mode
     let config = PrunerConfig {
         mode: PruningMode::KeepLastNBlocks(5),
+        keep_heights: None,
         max_batch_size: 100,
         compact_after_pruning: true,
     };
@@ -188,32 +191,32 @@ fn test_state_sharding() {
     manager.init().unwrap();
 
     // Create test accounts with different address prefixes
-    for i in 0..8 {
+    for i in 0u8..8u8 {
         let mut address = [0; 32];
         address[0] = i;
 
-        let account = AccountState::new_user(1000 + i * 100, 100);
+        let account = AccountState::new_user(1000 + (i as u64) * 100, 100);
 
         // Put account in the appropriate shard
         manager.put_account(&address, &account).unwrap();
     }
 
     // Verify accounts were stored in the correct shards
-    for i in 0..8 {
+    for i in 0u8..8u8 {
         let mut address = [0; 32];
         address[0] = i;
 
         // Get account from the sharding manager
         let account = manager.get_account(&address).unwrap().unwrap();
-        assert_eq!(account.balance, 1000 + i * 100);
+        assert_eq!(account.balance, 1000 + (i as u64) * 100);
 
         // Get the shard for this address
-        let shard_id = i % 4;
+        let shard_id = (i % 4) as u32;
         let shard = manager.get_shard(shard_id).unwrap();
 
         // Verify the account is in this shard
         let shard_account = shard.get_account(&address).unwrap().unwrap();
-        assert_eq!(shard_account.balance, 1000 + i * 100);
+        assert_eq!(shard_account.balance, 1000 + (i as u64) * 100);
     }
 
     // Get shard info
@@ -265,7 +268,7 @@ fn test_state_indexing() {
     let height = 100;
 
     // Create accounts with different balances and types
-    for i in 0..10 {
+    for i in 0u8..10u8 {
         let mut address = [0; 32];
         address[0] = i;
 
@@ -276,13 +279,15 @@ fn test_state_indexing() {
         };
 
         let account = match account_type {
-            AccountType::User => AccountState::new_user(1000 * (i + 1), height),
+            AccountType::User => AccountState::new_user(1000 * ((i as u64) + 1), height),
             AccountType::Contract => {
                 let code = vec![1, 2, 3, 4]; // Dummy code
-                AccountState::new_contract(1000 * (i + 1), code, height)
+                AccountState::new_contract(1000 * ((i as u64) + 1), code, height)
             }
-            AccountType::Validator => AccountState::new_validator(1000 * (i + 1), 1000, height),
-            _ => AccountState::new_user(1000 * (i + 1), height),
+            AccountType::Validator => {
+                AccountState::new_validator(1000 * ((i as u64) + 1), 1000, height)
+            }
+            _ => AccountState::new_user(1000 * ((i as u64) + 1), height),
         };
 
         // Store the account

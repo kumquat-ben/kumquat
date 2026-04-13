@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::storage::block_store::{BlockStore, Hash};
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
+use crate::storage::state::StateRoot;
 use crate::storage::state_store::{StateStore, StateStoreError};
 
 /// Error type for state pruning operations
@@ -287,7 +288,7 @@ impl<'a> StatePruner<'a> {
                 // Add account states deletion to batch
                 let accounts = self.get_accounts_at_height(*height, root)?;
                 for address in accounts {
-                    let key = format!("account:{}:{}", hex::encode(address), height);
+                    let key = format!("state:account:{}:{}", hex::encode(address), height);
                     batch.push(WriteBatchOperation::Delete {
                         key: key.as_bytes().to_vec(),
                     });
@@ -328,12 +329,13 @@ impl<'a> StatePruner<'a> {
             let key_str = String::from_utf8_lossy(&key);
             let height_str = key_str.strip_prefix(prefix).unwrap_or("");
             if let Ok(height) = height_str.parse::<u64>() {
-                // Extract root hash from value
-                if value.len() == 32 {
-                    let mut root = [0u8; 32];
-                    root.copy_from_slice(&value);
-                    state_roots.insert(height, root);
-                }
+                let state_root: StateRoot = bincode::deserialize(&value).map_err(|e| {
+                    PruningError::InvalidStateRoot(format!(
+                        "Failed to deserialize state root at height {}: {}",
+                        height, e
+                    ))
+                })?;
+                state_roots.insert(height, state_root.root_hash);
             }
         }
 
@@ -344,8 +346,8 @@ impl<'a> StatePruner<'a> {
     fn get_accounts_at_height(&self, height: u64, _root: &Hash) -> PruningResult<Vec<Hash>> {
         let mut accounts = Vec::new();
 
-        // Scan all account keys for this height
-        let prefix = format!("account:*:{}", height);
+        // Scan all account keys and filter by the requested historical height.
+        let prefix = "state:account:";
         let results = self
             .store
             .scan_prefix(prefix.as_bytes())
@@ -355,8 +357,8 @@ impl<'a> StatePruner<'a> {
             // Extract address from key
             let key_str = String::from_utf8_lossy(&key);
             let parts: Vec<&str> = key_str.split(':').collect();
-            if parts.len() == 3 {
-                if let Ok(address) = hex::decode(parts[1]) {
+            if parts.len() == 4 && parts[3] == height.to_string() {
+                if let Ok(address) = hex::decode(parts[2]) {
                     if address.len() == 32 {
                         let mut addr = [0u8; 32];
                         addr.copy_from_slice(&address);

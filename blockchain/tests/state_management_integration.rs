@@ -19,7 +19,7 @@ fn test_state_management_integration() {
     let height = 100;
 
     // Create accounts with different balances and types
-    for i in 0..10 {
+    for i in 0u8..10u8 {
         let mut address = [0; 32];
         address[0] = i;
 
@@ -30,13 +30,15 @@ fn test_state_management_integration() {
         };
 
         let account = match account_type {
-            AccountType::User => AccountState::new_user(1000 * (i + 1), height),
+            AccountType::User => AccountState::new_user(1000 * ((i as u64) + 1), height),
             AccountType::Contract => {
                 let code = vec![1, 2, 3, 4]; // Dummy code
-                AccountState::new_contract(1000 * (i + 1), code, height)
+                AccountState::new_contract(1000 * ((i as u64) + 1), code, height)
             }
-            AccountType::Validator => AccountState::new_validator(1000 * (i + 1), 1000, height),
-            _ => AccountState::new_user(1000 * (i + 1), height),
+            AccountType::Validator => {
+                AccountState::new_validator(1000 * ((i as u64) + 1), 1000, height)
+            }
+            _ => AccountState::new_user(1000 * ((i as u64) + 1), height),
         };
 
         // Store the account
@@ -52,6 +54,7 @@ fn test_state_management_integration() {
     // Test state pruning
     let pruner_config = PrunerConfig {
         mode: PruningMode::KeepLastNBlocks(5),
+        keep_heights: None,
         max_batch_size: 100,
         compact_after_pruning: true,
     };
@@ -99,7 +102,7 @@ fn test_state_management_integration() {
         .unwrap();
 
     // Index all accounts
-    for i in 0..10 {
+    for i in 0u8..10u8 {
         let mut address = [0; 32];
         address[0] = i;
 

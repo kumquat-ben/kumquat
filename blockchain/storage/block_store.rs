@@ -294,33 +294,34 @@ impl<'a> BlockStore<'a> {
 
     /// Get the latest block height
     pub fn get_latest_height(&self) -> Option<u64> {
-        // Check the cache first
-        {
-            let latest_height = self.latest_height.read().unwrap();
-            if latest_height.is_some() {
-                return *latest_height;
-            }
+        if let Some(height) = *self.latest_height.read().unwrap() {
+            return Some(height);
         }
 
-        // Scan for the highest height
-        let prefix = b"block:height:";
-        match self.store.scan_prefix(prefix) {
+        if let Ok(Some(bytes)) = self.store.get(b"meta:latest_block_height") {
+            if bytes.len() == 8 {
+                let mut height_arr = [0u8; 8];
+                height_arr.copy_from_slice(&bytes);
+                let height = u64::from_be_bytes(height_arr);
+                self.note_committed_height(height);
+                return Some(height);
+            }
+            error!("Invalid latest block height format");
+        }
+
+        match self.store.scan_prefix(b"block:") {
             Ok(entries) => {
                 let height = entries
                     .iter()
                     .filter_map(|(key, _)| {
                         let key_str = std::str::from_utf8(key).ok()?;
-                        let height_str = key_str.strip_prefix("block:height:")?;
+                        let height_str = key_str.strip_prefix("block:")?;
                         height_str.parse::<u64>().ok()
                     })
                     .max();
-
-                // Update the cache
-                if height.is_some() {
-                    let mut latest_height = self.latest_height.write().unwrap();
-                    *latest_height = height;
+                if let Some(height) = height {
+                    self.note_committed_height(height);
                 }
-
                 height
             }
             Err(e) => {
@@ -328,6 +329,18 @@ impl<'a> BlockStore<'a> {
                 None
             }
         }
+    }
+
+    pub fn note_committed_height(&self, height: u64) {
+        let mut latest_height = self.latest_height.write().unwrap();
+        if latest_height.is_none_or(|current| height > current) {
+            *latest_height = Some(height);
+        }
+    }
+
+    pub fn note_rolled_back_height(&self, height: Option<u64>) {
+        let mut latest_height = self.latest_height.write().unwrap();
+        *latest_height = height;
     }
 
     // This method is already defined above
@@ -488,5 +501,31 @@ mod tests {
         assert_eq!(blocks[0].height, 1);
         assert_eq!(blocks[1].height, 2);
         assert_eq!(blocks[2].height, 3);
+    }
+
+    #[test]
+    fn test_get_latest_height_reads_metadata_when_cache_is_empty() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let block = test_block(3);
+        let block_bytes = bincode::serialize(&block).unwrap();
+
+        kv_store
+            .write_batch(vec![
+                WriteBatchOperation::Put {
+                    key: b"meta:latest_block_height".to_vec(),
+                    value: block.height.to_be_bytes().to_vec(),
+                },
+                WriteBatchOperation::Put {
+                    key: format!("block:{}", block.height).into_bytes(),
+                    value: block_bytes,
+                },
+            ])
+            .unwrap();
+
+        let block_store = BlockStore::new(&kv_store);
+        assert_eq!(block_store.get_latest_height(), Some(3));
+        let latest = block_store.get_latest_block().unwrap().unwrap();
+        assert_eq!(latest.height, 3);
     }
 }

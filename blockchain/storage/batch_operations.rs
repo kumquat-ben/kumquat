@@ -90,6 +90,7 @@ mod regression_tests {
 
         let stored_root = state_store.get_state_root_at_height(block.height).unwrap();
         assert!(stored_root.is_some());
+        assert_eq!(batch_manager.block_store.get_latest_height(), Some(block.height));
     }
 
     #[test]
@@ -316,6 +317,7 @@ impl<'a> BatchOperationManager<'a> {
             .write_batch(batch)
             .map_err(|e| BatchOperationError::KVStoreError(e))?;
 
+        self.block_store.note_committed_height(block.height);
         self.state_store.clear_cache();
         self.state_store.set_state_root(state_root);
 
@@ -419,6 +421,12 @@ impl<'a> BatchOperationManager<'a> {
         self.store
             .write_batch(batch)
             .map_err(|e| BatchOperationError::KVStoreError(e))?;
+
+        self.block_store.note_rolled_back_height(if block_height > 0 {
+            Some(block_height - 1)
+        } else {
+            None
+        });
 
         info!(
             "Rolled back block {} with {} transactions",

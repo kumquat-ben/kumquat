@@ -483,8 +483,8 @@ impl<'a> StateIndex<'a> {
                     // Extract address from key
                     let key_str = String::from_utf8_lossy(&key);
                     let parts: Vec<&str> = key_str.split(':').collect();
-                    if parts.len() >= 5 {
-                        if let Ok(address) = hex::decode(parts[4]) {
+                    if parts.len() >= 6 {
+                        if let Ok(address) = hex::decode(parts[5]) {
                             if let Some(account) = self.state_store.get_account(&address, height)? {
                                 results.push((address, account));
                             }
@@ -513,8 +513,8 @@ impl<'a> StateIndex<'a> {
                     // Extract address from key
                     let key_str = String::from_utf8_lossy(&key);
                     let parts: Vec<&str> = key_str.split(':').collect();
-                    if parts.len() >= 4 {
-                        if let Ok(address) = hex::decode(parts[3]) {
+                    if parts.len() >= 5 {
+                        if let Ok(address) = hex::decode(parts[4]) {
                             if let Some(account) = self.state_store.get_latest_account(&address)? {
                                 results.push((address, account));
                             }
@@ -573,8 +573,8 @@ impl<'a> StateIndex<'a> {
                 // Extract address from key
                 let key_str = String::from_utf8_lossy(&key);
                 let parts: Vec<&str> = key_str.split(':').collect();
-                if parts.len() >= 5 {
-                    if let Ok(address) = hex::decode(parts[4]) {
+                if parts.len() >= 6 {
+                    if let Ok(address) = hex::decode(parts[5]) {
                         if let Some(account) = self.state_store.get_account(&address, height)? {
                             results.push((address, account));
                         }
@@ -597,8 +597,8 @@ impl<'a> StateIndex<'a> {
                 // Extract address from key
                 let key_str = String::from_utf8_lossy(&key);
                 let parts: Vec<&str> = key_str.split(':').collect();
-                if parts.len() >= 4 {
-                    if let Ok(address) = hex::decode(parts[3]) {
+                if parts.len() >= 5 {
+                    if let Ok(address) = hex::decode(parts[4]) {
                         if let Some(account) = self.state_store.get_latest_account(&address)? {
                             results.push((address, account));
                         }

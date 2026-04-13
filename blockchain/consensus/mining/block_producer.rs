@@ -144,7 +144,7 @@ impl<'a> BlockProducer<'a> {
             poh_seq,      // Use the current PoH sequence
             prev_poh_seq, // Use the previous block's PoH sequence
             poh_hash,     // Use the current PoH hash
-            target: Target::from_difficulty(self.chain_state.total_difficulty),
+            target: self.chain_state.current_target,
             total_difficulty: self.chain_state.total_difficulty as u128,
             miner: self.config.miner_address,
         }
