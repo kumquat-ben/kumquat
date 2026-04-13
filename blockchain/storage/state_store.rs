@@ -57,6 +57,68 @@ pub enum StateStoreError {
     BalanceOverflow(String),
 }
 
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+    use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::TransactionStatus;
+    use tempfile::tempdir;
+
+    fn sample_tx(
+        sender: Hash,
+        recipient: Hash,
+        transfer_token_ids: Vec<Hash>,
+        fee_token_id: Hash,
+        block_height: u64,
+    ) -> TransactionRecord {
+        TransactionRecord {
+            tx_id: [9; 32],
+            sender,
+            recipient,
+            transfer_token_ids,
+            fee_token_id: Some(fee_token_id),
+            value: 100,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 21_000,
+            nonce: 0,
+            timestamp: 1_234_567,
+            block_height,
+            data: None,
+            status: TransactionStatus::Pending,
+        }
+    }
+
+    #[test]
+    fn projected_state_root_does_not_mutate_canonical_state() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let sender = [1; 32];
+        let recipient = [2; 32];
+        let miner = [3; 32];
+
+        state_store
+            .create_account(&sender, 101, AccountType::User)
+            .unwrap();
+        let before_sender = state_store.get_account_state(&sender).unwrap();
+        let transfer_token_id = before_sender.tokens[0].token_id;
+        let fee_token_id = before_sender.tokens[1].token_id;
+
+        let tx = sample_tx(sender, recipient, vec![transfer_token_id], fee_token_id, 1);
+
+        let _ = state_store
+            .calculate_projected_state_root(1, 1_234_567, &[tx], &miner)
+            .unwrap();
+
+        let after_sender = state_store.get_account_state(&sender).unwrap();
+        assert_eq!(after_sender, before_sender);
+        assert!(state_store.get_account_state(&recipient).is_none());
+        assert!(state_store.get_account_state(&miner).is_none());
+    }
+}
+
 // StateRoot is now imported from the state module
 
 /// Store for account states
@@ -616,7 +678,7 @@ impl<'a> StateStore<'a> {
         &self,
         height: u64,
     ) -> Result<Option<StateRoot>, StateStoreError> {
-        let key = format!("state:root:{}", height);
+        let key = format!("state_root:{}", height);
 
         match self.store.get(key.as_bytes())? {
             Some(value) => match bincode::deserialize(&value) {
@@ -629,7 +691,7 @@ impl<'a> StateStore<'a> {
 
     /// Put a state root
     pub fn put_state_root(&self, root: &StateRoot) -> Result<StateResult<()>, StateStoreError> {
-        let key = format!("state:root:{}", root.block_height);
+        let key = format!("state_root:{}", root.block_height);
 
         let value = bincode::serialize(root)
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
@@ -758,13 +820,9 @@ impl<'a> StateStore<'a> {
         transactions: &[TransactionRecord],
         miner: &Hash,
     ) -> Result<StateRoot, StateStoreError> {
-        let temp_state = self.clone_for_validation();
-
-        for tx in transactions {
-            temp_state.apply_token_transaction(tx, miner, block_height)?;
-        }
-
-        temp_state.calculate_state_root(block_height, timestamp)
+        let projected_accounts =
+            self.project_state_changes(block_height, transactions, miner, None)?;
+        self.calculate_state_root_with_overrides(block_height, timestamp, &projected_accounts)
     }
 
     pub fn calculate_projected_state_root_with_block_reward(
@@ -775,14 +833,164 @@ impl<'a> StateStore<'a> {
         miner: &Hash,
         block_hash: &Hash,
     ) -> Result<StateRoot, StateStoreError> {
-        let temp_state = self.clone_for_validation();
+        let projected_accounts =
+            self.project_state_changes(block_height, transactions, miner, Some(block_hash))?;
+        self.calculate_state_root_with_overrides(block_height, timestamp, &projected_accounts)
+    }
+
+    pub fn project_state_changes(
+        &self,
+        block_height: u64,
+        transactions: &[TransactionRecord],
+        miner: &Hash,
+        block_hash: Option<&Hash>,
+    ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
+        let mut modified_accounts: HashMap<Hash, AccountState> = HashMap::new();
 
         for tx in transactions {
-            temp_state.apply_token_transaction(tx, miner, block_height)?;
+            let fee_token_id = tx.fee_token_id.ok_or_else(|| {
+                StateStoreError::Other(format!(
+                    "transaction {} missing fee token",
+                    hex::encode(tx.tx_id)
+                ))
+            })?;
+
+            if tx.transfer_token_ids.is_empty() {
+                return Err(StateStoreError::Other(format!(
+                    "transaction {} has no transfer tokens",
+                    hex::encode(tx.tx_id)
+                )));
+            }
+
+            if tx
+                .transfer_token_ids
+                .iter()
+                .any(|token_id| *token_id == fee_token_id)
+            {
+                return Err(StateStoreError::Other(format!(
+                    "transaction {} reuses fee token as payment token",
+                    hex::encode(tx.tx_id)
+                )));
+            }
+
+            let mut sender = modified_accounts
+                .get(&tx.sender)
+                .cloned()
+                .or_else(|| self.get_account_state(&tx.sender))
+                .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
+
+            let payment_total = tx
+                .transfer_token_ids
+                .iter()
+                .try_fold(0u64, |acc, token_id| {
+                    sender
+                        .token_value(token_id)
+                        .map(|value| acc + value)
+                        .ok_or_else(|| {
+                            StateStoreError::Other(format!(
+                                "sender does not own transfer token {}",
+                                hex::encode(token_id)
+                            ))
+                        })
+                })?;
+
+            let fee_value = sender.token_value(&fee_token_id).ok_or_else(|| {
+                StateStoreError::Other(format!(
+                    "sender does not own fee token {}",
+                    hex::encode(fee_token_id)
+                ))
+            })?;
+
+            let mut recipient = modified_accounts
+                .get(&tx.recipient)
+                .cloned()
+                .or_else(|| self.get_account_state(&tx.recipient))
+                .unwrap_or_else(|| AccountState::new_user(0, block_height));
+            let mut fee_account = if *miner == tx.recipient {
+                recipient.clone()
+            } else {
+                modified_accounts
+                    .get(miner)
+                    .cloned()
+                    .or_else(|| self.get_account_state(miner))
+                    .unwrap_or_else(|| AccountState::new_user(0, block_height))
+            };
+
+            let moved_tokens = sender
+                .remove_tokens_by_id(&tx.transfer_token_ids)
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
+            let fee_tokens = sender
+                .remove_tokens_by_id(&[fee_token_id])
+                .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
+            sender.nonce += 1;
+            sender.last_updated = block_height;
+            sender.assign_token_owner(tx.sender);
+            sender.sync_balance_from_tokens();
+
+            recipient.deposit_tokens(tx.recipient, moved_tokens);
+            recipient.last_updated = block_height;
+
+            fee_account.deposit_tokens(*miner, fee_tokens);
+            fee_account.last_updated = block_height;
+
+            modified_accounts.insert(tx.sender, sender);
+            modified_accounts.insert(tx.recipient, recipient);
+            modified_accounts.insert(*miner, fee_account);
+
+            debug!(
+                "Projected token transaction {} transferring {} cents and fee {} cents",
+                hex::encode(tx.tx_id),
+                payment_total,
+                fee_value,
+            );
         }
 
-        temp_state.apply_block_reward(miner, block_height, block_hash)?;
-        temp_state.calculate_state_root(block_height, timestamp)
+        if let Some(block_hash) = block_hash {
+            let mut miner_state = modified_accounts
+                .get(miner)
+                .cloned()
+                .or_else(|| self.get_account_state(miner))
+                .unwrap_or_else(|| AccountState::new_user(0, block_height));
+
+            let minted_tokens =
+                crate::storage::block_store::reward_outcome(*miner, block_height, block_hash);
+            miner_state.tokens.extend(minted_tokens);
+            miner_state.sync_balance_from_tokens();
+            miner_state.last_updated = block_height;
+            miner_state.assign_token_owner(*miner);
+            modified_accounts.insert(*miner, miner_state);
+        }
+
+        Ok(modified_accounts.into_iter().collect())
+    }
+
+    pub fn calculate_state_root_with_overrides(
+        &self,
+        block_height: u64,
+        timestamp: u64,
+        overrides: &[(Hash, AccountState)],
+    ) -> Result<StateRoot, StateStoreError> {
+        let mut accounts: HashMap<Hash, AccountState> = self.get_all_accounts().into_iter().collect();
+        for (address, state) in overrides {
+            accounts.insert(*address, state.clone());
+        }
+
+        let mut trie = MerklePatriciaTrie::new();
+        let mut sorted_accounts = accounts.into_iter().collect::<Vec<_>>();
+        sorted_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        for (addr, state) in sorted_accounts {
+            let state_bytes = bincode::serialize(&state)
+                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            trie.insert(&addr, state_bytes);
+        }
+
+        Ok(StateRoot {
+            root_hash: trie.root_hash(),
+            block_height,
+            timestamp,
+        })
     }
 
     pub fn apply_token_transaction(

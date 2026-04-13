@@ -32,6 +32,118 @@ pub enum BatchOperationError {
     Other(String),
 }
 
+#[cfg(test)]
+mod regression_tests {
+    use super::*;
+    use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::{AccountType, TransactionStatus};
+    use tempfile::tempdir;
+
+    #[test]
+    fn commit_block_persists_account_states_under_state_store_keys() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Arc::new(RocksDBStore::new(temp_dir.path()).unwrap());
+        let block_store = Arc::new(BlockStore::new(kv_store.as_ref()));
+        let tx_store = Arc::new(TxStore::new(kv_store.as_ref()));
+        let state_store = Arc::new(StateStore::new(kv_store.as_ref()));
+        let batch_manager = BatchOperationManager::new(
+            kv_store.clone(),
+            block_store,
+            tx_store,
+            state_store.clone(),
+        );
+
+        let address = [7; 32];
+        let mut account = AccountState::new_user(100, 1);
+        account.assign_token_owner(address);
+        account.nonce = 1;
+        account.last_updated = 1;
+
+        let block = Block {
+            height: 1,
+            hash: [1; 32],
+            prev_hash: [0; 32],
+            timestamp: 12345,
+            transactions: vec![],
+            miner: [8; 32],
+            pre_reward_state_root: [0; 32],
+            reward_token_ids: vec![],
+            result_commitment: [0; 32],
+            state_root: [0; 32],
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 42,
+            poh_seq: 1,
+            poh_hash: [0; 32],
+            difficulty: 1,
+            total_difficulty: 1,
+        };
+
+        let txs: Vec<TransactionRecord> = vec![];
+        let state_changes = vec![(address, account.clone())];
+
+        batch_manager
+            .commit_block(&block, &txs, &state_changes)
+            .unwrap();
+
+        let stored_account = state_store.get_account_state(&address).unwrap();
+        assert_eq!(stored_account, account);
+
+        let stored_root = state_store.get_state_root_at_height(block.height).unwrap();
+        assert!(stored_root.is_some());
+    }
+
+    #[test]
+    fn projected_root_with_reward_matches_override_root() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let sender = [1; 32];
+        let recipient = [2; 32];
+        let miner = [3; 32];
+        let block_hash = [4; 32];
+
+        state_store
+            .create_account(&sender, 101, AccountType::User)
+            .unwrap();
+        let sender_state = state_store.get_account_state(&sender).unwrap();
+        let tx = TransactionRecord {
+            tx_id: [5; 32],
+            sender,
+            recipient,
+            transfer_token_ids: vec![sender_state.tokens[0].token_id],
+            fee_token_id: Some(sender_state.tokens[1].token_id),
+            value: 100,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 21_000,
+            nonce: 0,
+            timestamp: 12345,
+            block_height: 1,
+            data: None,
+            status: TransactionStatus::Pending,
+        };
+
+        let projected = state_store
+            .calculate_projected_state_root_with_block_reward(
+                1,
+                12345,
+                &[tx.clone()],
+                &miner,
+                &block_hash,
+            )
+            .unwrap();
+        let overrides = state_store
+            .project_state_changes(1, &[tx], &miner, Some(&block_hash))
+            .unwrap();
+        let recomputed = state_store
+            .calculate_state_root_with_overrides(1, 12345, &overrides)
+            .unwrap();
+
+        assert_eq!(projected.root_hash, recomputed.root_hash);
+    }
+}
+
 /// Batch operations manager for atomic updates
 pub struct BatchOperationManager<'a> {
     /// KV store
@@ -172,7 +284,7 @@ impl<'a> BatchOperationManager<'a> {
 
         // Add state changes to batch
         for (address, state) in state_changes {
-            let state_key = format!("state:{}", hex::encode(address));
+            let state_key = format!("state:account:{}", hex::encode(address));
             let state_value = bincode::serialize(state).map_err(|e| {
                 BatchOperationError::Other(format!("Failed to serialize state: {}", e))
             })?;
@@ -186,7 +298,7 @@ impl<'a> BatchOperationManager<'a> {
         // Calculate and store state root
         let state_root = self
             .state_store
-            .calculate_state_root(block.height, block.timestamp)
+            .calculate_state_root_with_overrides(block.height, block.timestamp, state_changes)
             .map_err(|e| BatchOperationError::StateStoreError(e))?;
 
         let state_root_key = format!("state_root:{}", block.height);
@@ -203,6 +315,9 @@ impl<'a> BatchOperationManager<'a> {
         self.store
             .write_batch(batch)
             .map_err(|e| BatchOperationError::KVStoreError(e))?;
+
+        self.state_store.clear_cache();
+        self.state_store.set_state_root(state_root);
 
         info!(
             "Committed block {} with {} transactions and {} state changes",

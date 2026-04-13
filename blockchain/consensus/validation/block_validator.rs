@@ -343,24 +343,29 @@ impl<'a> BlockValidator<'a> {
             }
         };
 
-        // Create a temporary state store for validation
-        let temp_state = self.state_store.clone_for_validation();
+        let transactions = match self.load_block_transactions(block) {
+            Ok(transactions) => transactions,
+            Err(err) => {
+                error!("Failed to load block transactions for state root validation: {}", err);
+                return false;
+            }
+        };
 
-        // Apply all transactions from the block to the temporary state
-        if let Err(e) = temp_state.apply_block(block, &self.tx_store) {
-            error!("Failed to apply block to temporary state: {}", e);
-            return false;
-        }
-
-        // Calculate the state root after applying transactions
-        let calculated_state_root =
-            match temp_state.calculate_state_root(block.height, block.timestamp) {
-                Ok(root) => root.root_hash,
-                Err(e) => {
-                    error!("Failed to calculate state root: {}", e);
-                    return false;
-                }
-            };
+        let calculated_state_root = match self
+            .state_store
+            .calculate_projected_state_root_with_block_reward(
+                block.height,
+                block.timestamp,
+                &transactions,
+                &block.miner,
+                &block.hash,
+            ) {
+            Ok(root) => root.root_hash,
+            Err(e) => {
+                error!("Failed to calculate state root: {}", e);
+                return false;
+            }
+        };
 
         // Compare the calculated state root with the one in the block
         if calculated_state_root != block.state_root {

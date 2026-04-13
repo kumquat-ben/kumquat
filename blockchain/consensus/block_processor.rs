@@ -261,71 +261,9 @@ impl<'a> BlockProcessor<'a> {
         block: &Block,
         transactions: &[TransactionRecord],
     ) -> Result<Vec<(Hash, AccountState)>, String> {
-        let mut state_changes = Vec::new();
-
-        // Create a temporary state store for validation
-        let temp_state = self.state_store.clone_for_validation();
-
-        // Apply all transactions to the temporary state
-        for tx in transactions {
-            match temp_state.apply_token_transaction(tx, &block.miner, block.height) {
-                Ok(changes) => state_changes.extend(changes),
-                Err(e) => return Err(format!("Failed to apply token transaction: {}", e)),
-            }
-        }
-
-        if block.height > 0 {
-            let expected_reward_token_ids =
-                crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash)
-                    .iter()
-                    .map(|token| token.token_id)
-                    .collect::<Vec<_>>();
-            if !block.reward_token_ids.is_empty()
-                && block.reward_token_ids != expected_reward_token_ids
-            {
-                return Err(format!(
-                    "reward token ids mismatch for block {}",
-                    block.height
-                ));
-            }
-
-            let mut miner = match temp_state.get_account_state(&block.miner) {
-                Some(account) => account,
-                None => {
-                    match temp_state.create_account(
-                        &block.miner,
-                        0,
-                        crate::storage::state::AccountType::User,
-                    ) {
-                        Ok(()) => temp_state.get_account_state(&block.miner).ok_or_else(|| {
-                            format!(
-                                "Failed to create miner account: {}",
-                                hex::encode(&block.miner)
-                            )
-                        })?,
-                        Err(e) => return Err(format!("Failed to create miner account: {}", e)),
-                    }
-                }
-            };
-
-            miner
-                .tokens
-                .extend(crate::storage::block_store::reward_outcome(
-                    block.miner,
-                    block.height,
-                    &block.hash,
-                ));
-            miner.sync_balance_from_tokens();
-            miner.last_updated = block.height;
-            miner.assign_token_owner(block.miner);
-
-            state_changes.push((block.miner, miner.clone()));
-            temp_state
-                .update_account(&block.miner, &miner)
-                .map_err(|e| format!("Failed to update miner account: {}", e))?;
-        }
-
-        Ok(state_changes)
+        self.state_store
+            .project_state_changes(block.height, transactions, &block.miner, Some(&block.hash))
+            .map_err(|e| format!("Failed to project state changes: {}", e))
     }
 
     /// Update mempool to remove transactions included in the block
