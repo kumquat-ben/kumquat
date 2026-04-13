@@ -27,6 +27,21 @@ pub fn compute_block_pow_hash(
     crate::crypto::hash::sha256(&preimage)
 }
 
+pub fn compute_block_result_commitment(
+    block_hash: &Hash,
+    state_root: &Hash,
+    reward_token_ids: &[Hash],
+) -> Hash {
+    let mut preimage = Vec::with_capacity(32 + 32 + 8 + (reward_token_ids.len() * 32));
+    preimage.extend_from_slice(block_hash);
+    preimage.extend_from_slice(state_root);
+    preimage.extend_from_slice(&(reward_token_ids.len() as u64).to_be_bytes());
+    for token_id in reward_token_ids {
+        preimage.extend_from_slice(token_id);
+    }
+    crate::crypto::hash::sha256(&preimage)
+}
+
 /// Block structure representing a block in the blockchain
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Block {
@@ -50,6 +65,9 @@ pub struct Block {
 
     /// IDs of denomination tokens minted as this block reward.
     pub reward_token_ids: Vec<Hash>,
+
+    /// Commitment to the final reward result and post-reward state root.
+    pub result_commitment: Hash,
 
     /// State root hash (Merkle root of the state trie)
     pub state_root: Hash,

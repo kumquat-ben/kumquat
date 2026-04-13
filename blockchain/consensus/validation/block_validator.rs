@@ -2,7 +2,7 @@ use std::sync::Arc;
 use log::{error, warn};
 use sha2::Digest;
 
-use crate::storage::block_store::{Block, BlockStore, compute_block_pow_hash};
+use crate::storage::block_store::{Block, BlockStore, compute_block_pow_hash, compute_block_result_commitment};
 use crate::storage::tx_store::TxStore;
 use crate::storage::state_store::StateStore;
 use crate::consensus::types::Target;
@@ -82,6 +82,10 @@ impl<'a> BlockValidator<'a> {
 
         if !self.validate_reward_token_ids(block) {
             return BlockValidationResult::Invalid("Invalid reward token ids".to_string());
+        }
+
+        if !self.validate_result_commitment(block) {
+            return BlockValidationResult::Invalid("Invalid result commitment".to_string());
         }
 
         // Validate PoW
@@ -181,6 +185,26 @@ impl<'a> BlockValidator<'a> {
                 block.height,
                 expected_reward_token_ids.len(),
                 block.reward_token_ids.len(),
+            );
+            return false;
+        }
+
+        true
+    }
+
+    fn validate_result_commitment(&self, block: &Block) -> bool {
+        let expected_commitment = compute_block_result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+        );
+
+        if block.result_commitment != expected_commitment {
+            error!(
+                "Result commitment mismatch at height {}: expected {}, got {}",
+                block.height,
+                hex::encode(expected_commitment),
+                hex::encode(block.result_commitment),
             );
             return false;
         }

@@ -190,6 +190,7 @@ impl<'a> DevelopmentTools<'a> {
             transactions: transactions.iter().map(|tx| tx.tx_id).collect(),
             miner: [0u8; 32],
             reward_token_ids: vec![],
+            result_commitment: [0; 32],
             state_root: [0; 32], // Will be calculated later
             tx_root: [0; 32], // Will be calculated later
             nonce: 0, // Will be set during mining
@@ -203,6 +204,11 @@ impl<'a> DevelopmentTools<'a> {
         let block_data = bincode::serialize(&block).unwrap();
         let hash = crate::crypto::hash::sha256(&block_data);
         block.hash.copy_from_slice(&hash);
+        block.result_commitment = crate::storage::block_store::compute_block_result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+        );
 
         info!("Generated test block: height={}, hash={:?}", block.height, hex::encode(&block.hash));
         Some(block)

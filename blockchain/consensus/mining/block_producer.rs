@@ -3,7 +3,7 @@ use tokio::sync::{mpsc, Mutex};
 use log::{error, info, warn};
 use sha2::Digest;
 
-use crate::storage::block_store::{Block, BlockStore};
+use crate::storage::block_store::{Block, BlockStore, compute_block_result_commitment};
 use crate::storage::tx_store::TxStore;
 use crate::storage::state_store::StateStore;
 use crate::consensus::types::{ChainState, BlockTemplate, Target};
@@ -219,6 +219,11 @@ impl<'a> BlockProducer<'a> {
                         return None;
                     }
                 }
+                block.result_commitment = compute_block_result_commitment(
+                    &block.hash,
+                    &block.state_root,
+                    &block.reward_token_ids,
+                );
 
                 // Mark transactions as included
                 for tx_id in &block.transactions {

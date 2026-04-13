@@ -4,7 +4,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time;
 use log::{debug, error, info, warn};
 
-use crate::storage::block_store::{Block, BlockStore};
+use crate::storage::block_store::{Block, BlockStore, compute_block_result_commitment};
 use crate::storage::tx_store::{TransactionRecord, TxStore};
 use crate::storage::state_store::StateStore;
 use crate::storage::{BatchOperationManager, KVStore};
@@ -22,6 +22,7 @@ fn create_genesis_block(config: &ConsensusConfig) -> Block {
         transactions: vec![],
         miner: [0u8; 32],
         reward_token_ids: vec![],
+        result_commitment: compute_block_result_commitment(&[0u8; 32], &[0u8; 32], &[]),
         state_root: [0u8; 32],
         tx_root: [0u8; 32],
         nonce: 0,

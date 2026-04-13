@@ -115,6 +115,7 @@ impl BlockTemplate {
                 .into_iter()
                 .map(|token| token.token_id)
                 .collect(),
+            result_commitment: [0u8; 32],
             state_root: self.state_root,
             tx_root: self.tx_root,
             nonce,
