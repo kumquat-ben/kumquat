@@ -1,7 +1,7 @@
 FROM rust:1.85-slim-bookworm AS builder
 
 WORKDIR /usr/src/kumquat
-ENV CARGO_BUILD_JOBS=1
+ARG CARGO_BUILD_JOBS=4
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -15,7 +15,7 @@ RUN apt-get update && \
 
 COPY . .
 
-RUN cargo build --locked --release --bin kumquat
+RUN cargo build --locked --release --jobs "${CARGO_BUILD_JOBS}" --bin kumquat
 
 FROM debian:bookworm-slim
 

@@ -30,7 +30,9 @@ env:
     NODE_LAUNCHER_ENABLED: "true"
     NODE_LAUNCHER_DOCKER_HOST: "tcp://127.0.0.1:2375"
     NODE_LAUNCHER_ROOT: "/var/lib/kumquat-node-launcher"
-    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260409-1"
+    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260413-033512-bd80ecd"
+    NODE_LAUNCHER_IMAGE_PULL_POLICY: "IfNotPresent"
+    NODE_LAUNCHER_REGISTRY_AUTH_FILE: "/var/run/secrets/kumquat-node-launcher/.dockerconfigjson"
     NODE_LAUNCHER_NETWORK: "dev"
     NODE_LAUNCHER_CHAIN_ID: "1337"
     NODE_LAUNCHER_BASE_API_PORT: "18545"
@@ -81,6 +83,7 @@ podSecurityContext:
   fsGroup: 10001
 
 nodeLauncher:
+  registryAuthSecretName: ecr-pull-secret
   dind:
     enabled: true
     image: docker:27.5-dind

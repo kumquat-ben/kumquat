@@ -49,6 +49,11 @@ spec:
           volumeMounts:
             - name: node-launcher-data
               mountPath: /var/lib/kumquat-node-launcher
+            {{- if .Values.nodeLauncher.registryAuthSecretName }}
+            - name: node-launcher-registry-auth
+              mountPath: /var/run/secrets/kumquat-node-launcher
+              readOnly: true
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           readinessProbe:
@@ -85,6 +90,11 @@ spec:
       volumes:
         - name: node-launcher-data
           emptyDir: {}
+        {{- if .Values.nodeLauncher.registryAuthSecretName }}
+        - name: node-launcher-registry-auth
+          secret:
+            secretName: {{ .Values.nodeLauncher.registryAuthSecretName }}
+        {{- end }}
         {{- if .Values.nodeLauncher.dind.enabled }}
         - name: node-launcher-docker-graph
           emptyDir:

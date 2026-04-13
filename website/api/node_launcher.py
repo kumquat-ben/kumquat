@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+import base64
 import json
 from pathlib import Path
 from typing import Optional
@@ -153,6 +154,90 @@ def dashboard_proxy_path(node: ManagedNode) -> str:
     return f"/nodes/{node.id}/proxy/dashboard"
 
 
+def _split_image_reference(image: str):
+    registry, remainder = image.split("/", 1)
+    repository = remainder
+    tag = None
+    if ":" in remainder.rsplit("/", 1)[-1]:
+        repository, tag = remainder.rsplit(":", 1)
+    return registry, repository, tag
+
+
+def _docker_auth_candidates(registry: str):
+    normalized = registry.rstrip("/")
+    return (
+        normalized,
+        f"https://{normalized}",
+        f"https://{normalized}/v1/",
+    )
+
+
+def _decode_auth_entry(entry: dict):
+    username = entry.get("username")
+    password = entry.get("password")
+    auth = entry.get("auth")
+    if (not username or not password) and auth:
+        try:
+            decoded = base64.b64decode(auth).decode("utf-8")
+            username, password = decoded.split(":", 1)
+        except (ValueError, UnicodeDecodeError, base64.binascii.Error):
+            return None
+    if username and password:
+        return {"username": username, "password": password}
+    return None
+
+
+def _registry_auth_config(image: str):
+    auth_path = (settings.NODE_LAUNCHER_REGISTRY_AUTH_FILE or "").strip()
+    if not auth_path:
+        return None
+    auth_file = Path(auth_path)
+    if not auth_file.exists():
+        raise NodeLauncherError(f"Registry auth file is missing: {auth_file}")
+
+    try:
+        config = json.loads(auth_file.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise NodeLauncherError(f"Registry auth file could not be read: {exc}") from exc
+
+    registry, _, _ = _split_image_reference(image)
+    auths = config.get("auths") or {}
+    for candidate in _docker_auth_candidates(registry):
+        auth_entry = auths.get(candidate)
+        if not isinstance(auth_entry, dict):
+            continue
+        auth_config = _decode_auth_entry(auth_entry)
+        if auth_config:
+            auth_config["serveraddress"] = registry
+            return auth_config
+    return None
+
+
+def ensure_image_available(client, image: str):
+    pull_policy = getattr(settings, "NODE_LAUNCHER_IMAGE_PULL_POLICY", "ifnotpresent")
+    if pull_policy == "never":
+        return
+
+    if pull_policy != "always":
+        try:
+            client.images.get(image)
+            return
+        except NotFound:
+            pass
+        except DockerException as exc:
+            raise NodeLauncherError(f"Failed to inspect node image {image}: {exc}") from exc
+
+    registry, repository, tag = _split_image_reference(image)
+    try:
+        client.images.pull(
+            f"{registry}/{repository}",
+            tag=tag,
+            auth_config=_registry_auth_config(image),
+        )
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to pull node image {image}: {exc}") from exc
+
+
 def fetch_container(node: ManagedNode):
     client = docker_client()
     if node.container_id:
@@ -198,6 +283,7 @@ def launch_node(node: ManagedNode) -> ManagedNode:
             except DockerException:
                 pass
 
+        ensure_image_available(client, node.image)
         container = client.containers.run(
             node.image,
             command=command,
