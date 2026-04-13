@@ -94,6 +94,78 @@ pub struct ConsensusEngine {
 }
 
 impl ConsensusEngine {
+    fn committed_chain_state(&self) -> Result<ChainState, String> {
+        let Some(tip_height) = self.block_store.get_latest_height() else {
+            return Err("No committed tip found in block store".to_string());
+        };
+
+        let tip_block = self
+            .block_store
+            .get_block_by_height(tip_height)
+            .map_err(|err| format!("Failed to load committed tip at height {}: {}", tip_height, err))?
+            .ok_or_else(|| format!("Committed tip height {} missing from block store", tip_height))?;
+
+        let persisted_root = self
+            .state_store
+            .get_state_root_at_height(tip_height)
+            .map_err(|err| format!("Failed to load persisted state root at height {}: {}", tip_height, err))?;
+        let calculated_root = self
+            .state_store
+            .calculate_state_root(tip_height, tip_block.timestamp)
+            .map_err(|err| format!("Failed to calculate state root at height {}: {}", tip_height, err))?;
+
+        let selected_root = match persisted_root {
+            Some(root) => {
+                if root.root_hash != calculated_root.root_hash {
+                    return Err(format!(
+                        "Committed state root mismatch at height {}: persisted={}, calculated={}",
+                        tip_height,
+                        hex::encode(root.root_hash),
+                        hex::encode(calculated_root.root_hash),
+                    ));
+                }
+                root
+            }
+            None => calculated_root,
+        };
+
+        if tip_block.state_root != selected_root.root_hash {
+            return Err(format!(
+                "Committed tip block root mismatch at height {}: block_store={}, state_store={}",
+                tip_height,
+                hex::encode(tip_block.state_root),
+                hex::encode(selected_root.root_hash),
+            ));
+        }
+
+        let mut chain_state = ChainState::new(
+            tip_block.height,
+            tip_block.hash,
+            selected_root,
+            tip_block.total_difficulty as u64,
+            0,
+            [0u8; 32],
+        );
+        chain_state.current_target =
+            crate::consensus::types::Target::from_difficulty(tip_block.difficulty);
+        chain_state.latest_timestamp = tip_block.timestamp;
+
+        Ok(chain_state)
+    }
+
+    async fn sync_chain_state_with_committed_tip(&self) -> Result<(), String> {
+        let committed_state = self.committed_chain_state()?;
+
+        {
+            let mut chain_state = self.chain_state.lock().await;
+            *chain_state = committed_state.clone();
+        }
+
+        let mut block_producer = self.block_producer.lock().await;
+        block_producer.update_chain_state(committed_state);
+        Ok(())
+    }
+
     /// Create a new consensus engine
     pub fn new(
         config: ConsensusConfig,
@@ -411,61 +483,28 @@ impl ConsensusEngine {
 
     /// Update the chain state with a new block
     async fn update_chain_state(&self, block: &Block) {
-        // Create a clone of the chain state to avoid holding the lock for too long
-        let updated_chain_state = {
-            // Update the chain state
-            let mut chain_state = self.chain_state.lock().await;
-            info!(
-                "Updating chain state: height {} -> {}, hash {} -> {}",
-                chain_state.height,
-                block.height,
-                hex::encode(&chain_state.tip_hash),
-                hex::encode(&block.hash)
-            );
-            chain_state.height = block.height;
-            chain_state.tip_hash = block.hash;
-            chain_state.latest_hash = block.hash;
-            chain_state.latest_timestamp = block.timestamp;
-            chain_state.state_root = crate::storage::state::StateRoot::new(
-                block.state_root,
-                block.height,
-                block.timestamp,
-            );
-            chain_state.total_difficulty = block.total_difficulty as u64;
-            chain_state.current_target =
-                crate::consensus::types::Target::from_difficulty(block.difficulty);
-
-            // Log the updated chain state
-            info!(
-                "Chain state updated: height={}, tip_hash={}, total_difficulty={}",
-                chain_state.height,
-                hex::encode(&chain_state.tip_hash),
-                chain_state.total_difficulty
-            );
-
-            // Clone the chain state before releasing the lock
-            chain_state.clone()
-        };
-
-        info!("Updating block producer chain state...");
-        let mut block_producer = self.block_producer.lock().await;
-        let producer_height_before = block_producer.get_chain_state_height();
-        let producer_hash_before = block_producer.get_chain_state_tip_hash();
+        let previous_state = self.chain_state.lock().await.clone();
         info!(
-            "Block producer chain state before update: height={}, tip_hash={}",
-            producer_height_before,
-            hex::encode(&producer_hash_before)
+            "Synchronizing chain state after block {} (previous height={}, previous tip={})",
+            block.height,
+            previous_state.height,
+            hex::encode(previous_state.tip_hash),
         );
 
-        block_producer.update_chain_state(updated_chain_state);
-
-        let producer_height_after = block_producer.get_chain_state_height();
-        let producer_hash_after = block_producer.get_chain_state_tip_hash();
-        info!(
-            "Block producer chain state after update: height={}, tip_hash={}",
-            producer_height_after,
-            hex::encode(&producer_hash_after)
-        );
+        match self.sync_chain_state_with_committed_tip().await {
+            Ok(()) => {
+                let chain_state = self.chain_state.lock().await.clone();
+                info!(
+                    "Chain state synchronized to committed tip: height={}, tip_hash={}, total_difficulty={}",
+                    chain_state.height,
+                    hex::encode(chain_state.tip_hash),
+                    chain_state.total_difficulty
+                );
+            }
+            Err(err) => {
+                error!("Failed to synchronize chain state after block {}: {}", block.height, err);
+            }
+        }
     }
 
     /// Handle a new transaction
@@ -488,6 +527,14 @@ impl ConsensusEngine {
             telemetry.mining_attempts += 1;
             telemetry.last_mining_attempt_at = Some(unix_timestamp_now());
             telemetry.last_error = None;
+        }
+
+        if let Err(err) = self.sync_chain_state_with_committed_tip().await {
+            error!("Refusing to mine with inconsistent committed tip state: {}", err);
+            let mut telemetry = self.telemetry.write().await;
+            telemetry.failed_mining_attempts += 1;
+            telemetry.last_error = Some(err);
+            return;
         }
 
         // Get the current chain state height
@@ -682,5 +729,95 @@ mod tests {
         engine.mine_block().await;
         sleep(Duration::from_millis(50)).await;
         assert_eq!(block_store.get_latest_height(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn nonempty_genesis_state_stays_consistent_across_single_node_mining() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let genesis_address = [7u8; 32];
+        state_store
+            .create_account(&genesis_address, 500, crate::storage::AccountType::User)
+            .unwrap();
+        let genesis_root = state_store.calculate_state_root(0, 1).unwrap();
+        state_store.put_state_root(&genesis_root).unwrap().unwrap();
+
+        let genesis_block = Block {
+            height: 0,
+            hash: [9u8; 32],
+            prev_hash: [0u8; 32],
+            timestamp: 1,
+            transactions: vec![],
+            miner: [0u8; 32],
+            pre_reward_state_root: genesis_root.root_hash,
+            reward_token_ids: vec![],
+            result_commitment: result_commitment(&[9u8; 32], &genesis_root.root_hash, &[]),
+            state_root: genesis_root.root_hash,
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 1,
+            total_difficulty: 1,
+        };
+        block_store.put_block(&genesis_block).unwrap();
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        config.initial_difficulty = 1;
+        config.target_block_time = 1;
+        config.mining_threads = 1;
+        let telemetry = new_consensus_telemetry(false);
+
+        let engine = ConsensusEngine::new(
+            config,
+            manager_store,
+            block_store.clone(),
+            tx_store,
+            state_store.clone(),
+            network_tx,
+            telemetry,
+        );
+
+        let first_block = {
+            let producer = engine.block_producer.lock().await;
+            producer.mine_block().await.expect("expected first mined block")
+        };
+        assert_eq!(first_block.pre_reward_state_root, genesis_root.root_hash);
+        let first_state = engine.chain_state.lock().await.clone();
+        assert_eq!(
+            engine
+                .block_validator
+                .validate_block(&first_block, &first_state.current_target),
+            BlockValidationResult::Valid
+        );
+        assert_eq!(
+            engine
+                .block_processor
+                .process_block(&first_block, &first_state.current_target, &first_state)
+                .await,
+            BlockProcessingResult::Success
+        );
+        engine.update_chain_state(&first_block).await;
+
+        let second_block = {
+            let producer = engine.block_producer.lock().await;
+            producer.mine_block().await.expect("expected second mined block")
+        };
+        assert_eq!(second_block.pre_reward_state_root, first_block.state_root);
+        let second_state = engine.chain_state.lock().await.clone();
+        assert_eq!(
+            engine
+                .block_validator
+                .validate_block(&second_block, &second_state.current_target),
+            BlockValidationResult::Valid
+        );
     }
 }
