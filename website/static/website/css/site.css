@@ -251,6 +251,17 @@ input:focus {
   color: var(--orange);
 }
 
+.button-danger {
+  border-color: rgba(156, 47, 26, 0.24);
+  background: rgba(156, 47, 26, 0.1);
+  color: #9c2f1a;
+}
+
+.button-danger:hover {
+  border-color: rgba(156, 47, 26, 0.34);
+  color: #7d2110;
+}
+
 .body-copy-strong {
   color: var(--ink-mid);
 }

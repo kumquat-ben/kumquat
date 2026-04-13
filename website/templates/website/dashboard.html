@@ -19,6 +19,7 @@
     <div class="dashboard-panel">
       <div class="dashboard-toolbar">
         <a class="button button-secondary" href="/">Back home</a>
+        <a class="button button-secondary" href="/containers">Manage containers</a>
         <a class="button button-secondary" href="/sms">Open SMS inbox</a>
       </div>
 
@@ -68,44 +69,22 @@
         {% endif %}
       </section>
 
-      <section class="managed-node-grid">
-        {% for node in dashboard.managed_nodes %}
-          <article class="dashboard-card managed-node-card">
-            <div class="dashboard-card-header">
-              <div>
-                <p class="section-eyebrow">Managed Node</p>
-                <h3>{{ node.display_name }}</h3>
-              </div>
-              <span class="managed-node-status managed-node-status-{{ node.status }}">{{ node.status }}</span>
-            </div>
-            <div class="managed-node-meta">
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Node Name</span><p>{{ node.name }}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">API Port</span><p>{{ node.api_port }}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">P2P Port</span><p>{{ node.p2p_port }}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Mining</span><p>{% if node.enable_mining %}On ({{ node.mining_threads }} threads){% else %}Off{% endif %}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Launched</span><p>{{ node.launched_at|default:"Unavailable" }}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Last status</span><p>{{ node.last_status_at|default:"Unavailable" }}</p></div>
-            </div>
-            <div class="managed-node-actions">
-              <a class="button button-secondary" href="{{ node.dashboard_proxy_url }}" rel="noreferrer" target="_blank">Open node GUI</a>
-              <form action="/nodes/{{ node.id }}/stop" class="inline-form" method="post">
-                {% csrf_token %}
-                <button class="button button-secondary" {% if node.status != "running" %}disabled{% endif %} type="submit">Stop node</button>
-              </form>
-            </div>
-            {% if node.last_error %}
-              <p class="dashboard-message dashboard-message-error">{{ node.last_error }}</p>
-            {% endif %}
-            <div class="managed-node-log">
-              <p class="section-eyebrow">Recent logs</p>
-              <pre>{{ node.logs_tail|default:"No logs captured yet." }}</pre>
-            </div>
-          </article>
-        {% empty %}
-          <section class="dashboard-card managed-node-card managed-node-empty">
-            <p class="body-copy">No managed nodes have been launched from the admin dashboard yet.</p>
-          </section>
-        {% endfor %}
+      <section class="dashboard-card managed-node-card managed-node-empty">
+        <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Container Operations</p>
+            <h3>Manage running deployments on a separate page</h3>
+          </div>
+          <span class="managed-node-status managed-node-status-{{ dashboard.stats.running_nodes|yesno:'running,stopped' }}">
+            {{ dashboard.stats.running_nodes }} running
+          </span>
+        </div>
+        <p class="body-copy">
+          Restart containers, delete containers, and delete deployments from the dedicated container management page.
+        </p>
+        <div class="managed-node-actions">
+          <a class="button button-primary" href="/containers">Open container management</a>
+        </div>
       </section>
 
       <section class="dashboard-card">

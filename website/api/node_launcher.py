@@ -2,6 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 import base64
 import json
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -344,6 +345,57 @@ def stop_node(node: ManagedNode) -> ManagedNode:
     node.last_status_at = timezone.now()
     node.save(update_fields=["status", "stopped_at", "last_status_at", "updated_at"])
     return refresh_node(node)
+
+
+def restart_node(node: ManagedNode) -> ManagedNode:
+    container = fetch_container(node)
+    if container is None:
+        return launch_node(node)
+
+    try:
+        container.restart(timeout=10)
+    except DockerException as exc:
+        raise NodeLauncherError(f"Failed to restart node container: {exc}") from exc
+
+    node.stopped_at = None
+    node.last_error = ""
+    node.last_status_at = timezone.now()
+    node.save(update_fields=["stopped_at", "last_error", "last_status_at", "updated_at"])
+    return refresh_node(node)
+
+
+def delete_container(node: ManagedNode) -> ManagedNode:
+    container = fetch_container(node)
+    if container is not None:
+        try:
+            container.remove(force=True)
+        except DockerException as exc:
+            raise NodeLauncherError(f"Failed to delete node container: {exc}") from exc
+
+    node.container_name = ""
+    node.container_id = ""
+    node.status = ManagedNode.STATUS_STOPPED
+    node.stopped_at = timezone.now()
+    node.last_status_at = timezone.now()
+    node.save(
+        update_fields=[
+            "container_name",
+            "container_id",
+            "status",
+            "stopped_at",
+            "last_status_at",
+            "updated_at",
+        ]
+    )
+    return node
+
+
+def delete_deployment(node: ManagedNode):
+    delete_container(node)
+    root = node_root(node)
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=False)
+    node.delete()
 
 
 def tail_logs(node: ManagedNode, lines: int = 120) -> str:

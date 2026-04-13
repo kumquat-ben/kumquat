@@ -33,11 +33,14 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import EarlyAccessSignup, ManagedNode, UserWallet, VonageInboundSms
 from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
+    delete_container,
+    delete_deployment,
     NodeLauncherError,
     dashboard_proxy_path,
     launch_node,
     launcher_enabled,
     refresh_node,
+    restart_node,
     stop_node,
     tail_logs,
 )
@@ -485,6 +488,31 @@ def admin_dashboard_page_view(request):
                 title="Dashboard | Kumquat",
                 description="Internal Kumquat administration dashboard.",
                 path=reverse("dashboard"),
+                index=False,
+            ),
+        },
+    )
+
+
+def admin_containers_page_view(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    dashboard = _build_dashboard_context()
+    return render(
+        request,
+        "website/containers.html",
+        {
+            "auth_user": _current_user_context(request),
+            "dashboard": dashboard,
+            **_seo_context(
+                request,
+                title="Containers | Kumquat",
+                description="Internal Kumquat container and deployment management.",
+                path=reverse("containers"),
                 index=False,
             ),
         },
@@ -1934,19 +1962,110 @@ def admin_node_stop_view(request, node_id):
         if _is_json_request(request):
             return JsonResponse({"error": "Managed node not found."}, status=404)
         messages.error(request, "Managed node not found.")
-        return HttpResponseRedirect("/dashboard")
+        return HttpResponseRedirect("/containers")
 
     try:
         node = stop_node(node)
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
         messages.success(request, f"Managed node '{node.display_name}' stop requested successfully.")
-        return HttpResponseRedirect("/dashboard")
+        return HttpResponseRedirect("/containers")
     except NodeLauncherError as exc:
         if _is_json_request(request):
             return JsonResponse({"error": str(exc)}, status=502)
         messages.error(request, str(exc))
-        return HttpResponseRedirect("/dashboard")
+        return HttpResponseRedirect("/containers")
+
+
+@csrf_exempt
+def admin_node_restart_view(request, node_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        if _is_json_request(request):
+            return JsonResponse({"error": "Managed node not found."}, status=404)
+        messages.error(request, "Managed node not found.")
+        return HttpResponseRedirect("/containers")
+
+    try:
+        node = restart_node(node)
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
+        messages.success(request, f"Managed node '{node.display_name}' restarted successfully.")
+        return HttpResponseRedirect("/containers")
+    except NodeLauncherError as exc:
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc)}, status=502)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/containers")
+
+
+@csrf_exempt
+def admin_node_delete_container_view(request, node_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        if _is_json_request(request):
+            return JsonResponse({"error": "Managed node not found."}, status=404)
+        messages.error(request, "Managed node not found.")
+        return HttpResponseRedirect("/containers")
+
+    try:
+        node = delete_container(node)
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
+        messages.success(request, f"Container for '{node.display_name}' deleted successfully.")
+        return HttpResponseRedirect("/containers")
+    except NodeLauncherError as exc:
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc)}, status=502)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/containers")
+
+
+@csrf_exempt
+def admin_node_delete_deployment_view(request, node_id):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        node = ManagedNode.objects.get(pk=node_id)
+    except ManagedNode.DoesNotExist:
+        if _is_json_request(request):
+            return JsonResponse({"error": "Managed node not found."}, status=404)
+        messages.error(request, "Managed node not found.")
+        return HttpResponseRedirect("/containers")
+
+    display_name = node.display_name
+    try:
+        delete_deployment(node)
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "deleted": True, "node_id": node_id})
+        messages.success(request, f"Deployment '{display_name}' deleted successfully.")
+        return HttpResponseRedirect("/containers")
+    except (NodeLauncherError, OSError) as exc:
+        if _is_json_request(request):
+            return JsonResponse({"error": str(exc)}, status=502)
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/containers")
 
 
 def admin_node_logs_view(request, node_id):
