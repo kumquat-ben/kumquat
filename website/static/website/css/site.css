@@ -1484,7 +1484,57 @@ code {
 }
 
 .identity-wallet-copy {
-  overflow-wrap: anywhere;
+  margin-top: 0.6rem;
+}
+
+.identity-wallet-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--ink-mid);
+}
+
+.identity-wallet-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.identity-wallet-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 0.5px solid rgba(216, 90, 48, 0.14);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink-mid);
+  font-family: "DM Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.identity-wallet-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.2rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 0.5px solid var(--border);
+  background: rgba(250, 236, 231, 0.68);
+  color: var(--orange-mid);
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.identity-wallet-copy-button:hover {
+  border-color: rgba(216, 90, 48, 0.42);
+  color: var(--orange);
+  background: rgba(250, 236, 231, 0.82);
 }
 
 .wallet-generator-card .body-copy,

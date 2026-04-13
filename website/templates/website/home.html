@@ -117,9 +117,22 @@
               {% endif %}
             </div>
             {% if wallet %}
-              <p class="body-copy identity-wallet-copy">
-                Wallet address: <code>{{ wallet.address }}</code>
-              </p>
+              <div class="identity-wallet-copy">
+                <span class="identity-wallet-label">Wallet address</span>
+                <div class="identity-wallet-actions">
+                  <code
+                    class="identity-wallet-pill"
+                    title="{{ wallet.address }}"
+                  >{{ wallet.address|slice:":4" }}...{{ wallet.address|slice:"-4:" }}</code>
+                  <button
+                    class="identity-wallet-copy-button"
+                    data-copy-text="{{ wallet.address }}"
+                    type="button"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
               <a class="button button-secondary button-block" href="#wallet">Open wallet</a>
             {% else %}
               <a class="button button-secondary button-block" href="#wallet">Create wallet</a>
@@ -338,4 +351,27 @@
       <p>Copyright © Benjamin Levin. All rights reserved.</p>
     </footer>
   </div>
+
+  <script>
+    (() => {
+      const copyButtons = document.querySelectorAll("[data-copy-text]");
+      copyButtons.forEach((button) => {
+        const originalLabel = button.textContent;
+        button.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(button.dataset.copyText || "");
+            button.textContent = "Copied";
+            window.setTimeout(() => {
+              button.textContent = originalLabel;
+            }, 1200);
+          } catch (_error) {
+            button.textContent = "Unavailable";
+            window.setTimeout(() => {
+              button.textContent = originalLabel;
+            }, 1200);
+          }
+        });
+      });
+    })();
+  </script>
 {% endblock %}
