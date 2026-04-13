@@ -148,15 +148,39 @@ impl ConsensusEngine {
             }
         };
 
-        // Create the chain state
-        let mut initial_chain_state = ChainState::new(
-            latest_block.height,
-            latest_block.hash,
+        let persisted_state_root = state_store
+            .get_state_root_at_height(latest_block.height)
+            .ok()
+            .flatten()
+            .or_else(|| {
+                state_store
+                    .calculate_state_root(latest_block.height, latest_block.timestamp)
+                    .ok()
+            });
+
+        let selected_state_root = if let Some(root) = persisted_state_root {
+            if root.root_hash != latest_block.state_root {
+                warn!(
+                    "Consensus bootstrap root mismatch at height {}: block_store={}, state_store={}. Preferring state store root.",
+                    latest_block.height,
+                    hex::encode(latest_block.state_root),
+                    hex::encode(root.root_hash),
+                );
+            }
+            root
+        } else {
             crate::storage::state::StateRoot::new(
                 latest_block.state_root,
                 latest_block.height,
                 latest_block.timestamp,
-            ),
+            )
+        };
+
+        // Create the chain state
+        let mut initial_chain_state = ChainState::new(
+            latest_block.height,
+            latest_block.hash,
+            selected_state_root,
             latest_block.total_difficulty as u64,
             0,         // finalized_height
             [0u8; 32], // finalized_hash

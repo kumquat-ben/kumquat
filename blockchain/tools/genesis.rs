@@ -11,6 +11,7 @@ use crate::storage::state::{
     assignment_index_for_denomination, AccountState, AccountType, Denomination,
     DenominationToken, TokenMintSource,
 };
+use crate::storage::MerklePatriciaTrie;
 
 /// Genesis configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +182,41 @@ impl GenesisConfig {
         block
     }
 
+    pub fn finalize_genesis_block(
+        &self,
+        mut block: Block,
+        account_states: &[(Hash, AccountState)],
+    ) -> Result<Block, String> {
+        let mut trie = MerklePatriciaTrie::new();
+        let mut sorted_accounts = account_states.to_vec();
+        sorted_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        for (address, state) in sorted_accounts {
+            let state_bytes = bincode::serialize(&state)
+                .map_err(|e| format!("Failed to serialize genesis account state: {}", e))?;
+            trie.insert(&address, state_bytes);
+        }
+
+        let genesis_root = trie.root_hash();
+        block.pre_reward_state_root = genesis_root;
+        block.state_root = genesis_root;
+
+        let block_data = format!(
+            "{}:{}:{}:{}:{}:{}",
+            block.height,
+            hex::encode(&block.prev_hash),
+            block.timestamp,
+            hex::encode(&block.state_root),
+            hex::encode(&block.tx_root),
+            block.nonce
+        );
+        block.hash = sha256(block_data.as_bytes());
+        block.result_commitment =
+            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+
+        Ok(block)
+    }
+
     /// Generate initial account states from the configuration
     pub fn generate_account_states(&self) -> Vec<(Hash, AccountState)> {
         let mut account_states = Vec::new();
@@ -293,10 +329,11 @@ pub fn generate_genesis<P: AsRef<Path>>(
     let config = GenesisConfig::load(config_path)?;
 
     // Generate the genesis block
-    let block = config.generate_block();
-
     // Generate the initial account states
     let account_states = config.generate_account_states();
+
+    // Generate the finalized genesis block using the real initial state root.
+    let block = config.finalize_genesis_block(config.generate_block(), &account_states)?;
 
     Ok((block, account_states))
 }

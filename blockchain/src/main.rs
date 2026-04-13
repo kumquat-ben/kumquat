@@ -16,7 +16,7 @@ use kumquat::network::{start_enhanced_network, EnhancedNetworkHandle};
 use kumquat::node_runtime::NodeRuntime;
 use kumquat::storage::state::AccountState;
 use kumquat::storage::Block;
-use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateStore, TxStore};
+use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore};
 use kumquat::tools::genesis::generate_genesis;
 
 const NETWORK_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -128,6 +128,39 @@ fn ensure_local_genesis(
                 );
                 std::process::exit(1);
             }
+
+            let persisted_root = match state_store.get_state_root_at_height(0) {
+                Ok(root) => root,
+                Err(err) => {
+                    error!("Failed to inspect persisted genesis state root: {}", err);
+                    std::process::exit(1);
+                }
+            };
+
+            let current_root = match state_store.calculate_state_root(0, existing_genesis.timestamp) {
+                Ok(root) => root,
+                Err(err) => {
+                    error!("Failed to calculate current genesis state root: {}", err);
+                    std::process::exit(1);
+                }
+            };
+
+            if existing_genesis.state_root != current_root.root_hash
+                || persisted_root
+                    .as_ref()
+                    .is_some_and(|root| root.root_hash != current_root.root_hash)
+            {
+                error!(
+                    "Local genesis root mismatch. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start. Reinitialize local data to repair the chain root.",
+                    hex::encode(existing_genesis.state_root),
+                    persisted_root
+                        .as_ref()
+                        .map(|root| hex::encode(root.root_hash))
+                        .unwrap_or_else(|| "missing".to_string()),
+                    hex::encode(current_root.root_hash),
+                );
+                std::process::exit(1);
+            }
             info!(
                 "Verified local genesis block hash matches expected chain root: {}",
                 hex::encode(existing_genesis.hash)
@@ -147,6 +180,7 @@ fn ensure_local_genesis(
         }
     }
 
+    let mut genesis_block = genesis_block;
     info!(
         "Initializing local genesis block with hash: {}",
         hex::encode(genesis_block.hash)
@@ -172,6 +206,26 @@ fn ensure_local_genesis(
         }
     }
 
+    let genesis_state_root = match state_store.calculate_state_root(0, genesis_block.timestamp) {
+        Ok(root) => root,
+        Err(err) => {
+            error!("Failed to calculate genesis state root: {}", err);
+            std::process::exit(1);
+        }
+    };
+    if let Err(err) = state_store.put_state_root(&genesis_state_root) {
+        error!("Failed to persist genesis state root: {}", err);
+        std::process::exit(1);
+    }
+
+    genesis_block.pre_reward_state_root = genesis_state_root.root_hash;
+    genesis_block.state_root = genesis_state_root.root_hash;
+    genesis_block.result_commitment = kumquat::storage::block_store::result_commitment(
+        &genesis_block.hash,
+        &genesis_block.state_root,
+        &genesis_block.reward_token_ids,
+    );
+
     if let Err(err) = block_store.put_block(&genesis_block) {
         error!("Failed to store genesis block: {}", err);
         std::process::exit(1);
@@ -181,6 +235,65 @@ fn ensure_local_genesis(
         "Stored local genesis block as chain root: {}",
         hex::encode(genesis_block.hash)
     );
+}
+
+fn ensure_tip_state_root_consistency(
+    block_store: &BlockStore<'static>,
+    state_store: &StateStore<'static>,
+) {
+    let Some(tip_height) = block_store.get_latest_height() else {
+        return;
+    };
+
+    let tip_block = match block_store.get_block_by_height(tip_height) {
+        Ok(Some(block)) => block,
+        Ok(None) => {
+            error!("Latest block height {} is missing from block store", tip_height);
+            std::process::exit(1);
+        }
+        Err(err) => {
+            error!("Failed to load latest block at height {}: {}", tip_height, err);
+            std::process::exit(1);
+        }
+    };
+
+    let persisted_root = match state_store.get_state_root_at_height(tip_height) {
+        Ok(root) => root,
+        Err(err) => {
+            error!("Failed to load persisted state root at height {}: {}", tip_height, err);
+            std::process::exit(1);
+        }
+    };
+
+    let calculated_root = match state_store.calculate_state_root(tip_height, tip_block.timestamp) {
+        Ok(root) => root,
+        Err(err) => {
+            error!("Failed to calculate state root at height {}: {}", tip_height, err);
+            std::process::exit(1);
+        }
+    };
+
+    let persisted_root_hash = persisted_root
+        .as_ref()
+        .map(|root| root.root_hash)
+        .unwrap_or(calculated_root.root_hash);
+
+    if tip_block.state_root != persisted_root_hash || tip_block.state_root != calculated_root.root_hash {
+        error!(
+            "Tip state root mismatch at height {}. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start.",
+            tip_height,
+            hex::encode(tip_block.state_root),
+            hex::encode(persisted_root_hash),
+            hex::encode(calculated_root.root_hash),
+        );
+        std::process::exit(1);
+    }
+
+    state_store.set_state_root(StateRoot::new(
+        calculated_root.root_hash,
+        tip_height,
+        tip_block.timestamp,
+    ));
 }
 
 async fn attempt_network_bootstrap(
@@ -558,6 +671,7 @@ async fn main() {
         &block_store,
         &state_store,
     );
+    ensure_tip_state_root_consistency(&block_store, &state_store);
 
     // Initialize consensus
     info!("Initializing consensus...");
