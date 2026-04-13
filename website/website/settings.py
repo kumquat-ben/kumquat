@@ -96,6 +96,8 @@ NODE_LAUNCHER_BASE_METRICS_PORT = int(env("NODE_LAUNCHER_BASE_METRICS_PORT", "19
 VONAGE_ACCOUNT_SECRET = env("VONAGE_ACCOUNT_SECRET", "")
 VONAGE_SMS_SIGNATURE_SECRET = env("VONAGE_SMS_SIGNATURE_SECRET", "")
 VONAGE_SMS_SIGNATURE_ALGORITHM = env("VONAGE_SMS_SIGNATURE_ALGORITHM", "md5hash").lower()
+SITE_URL = env("SITE_URL", "https://kumquat.info").rstrip("/")
+SITE_NAME = env("SITE_NAME", "Kumquat")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -103,6 +105,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "django.contrib.sitemaps",
     "django.contrib.staticfiles",
     "api",
 ]

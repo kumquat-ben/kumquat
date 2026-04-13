@@ -22,6 +22,8 @@ from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.db import IntegrityError, connection
 from django.db.models import Max
+from django.templatetags.static import static
+from django.urls import reverse
 from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect, JsonResponse
@@ -52,6 +54,11 @@ WALLET_PRIVATE_KEY_SESSION_KEY = "wallet_private_key"
 WALLET_GENERATION_ERROR_SESSION_KEY = "wallet_generation_error"
 WALLET_GENERATION_SUCCESS_SESSION_KEY = "wallet_generation_success"
 WALLET_GENERATION_STATUS_SESSION_KEY = "wallet_generation_status"
+DEFAULT_SEO_IMAGE_PATH = "website/img/og-card.svg"
+DEFAULT_SEO_KEYWORDS = (
+    "kumquat, kumquat chain, digital cash, blockchain wallet, object-based money, "
+    "digital denominations, wallet software, crypto wallet, parallel ledger"
+)
 
 BILL_ITEMS = [
     {"label": "$100", "kind": "bill", "id": "KMQ-00100000"},
@@ -114,6 +121,21 @@ WALLET_ROWS = [
     {"label": "$0.01", "kind": "coin", "detail": "Coin example", "amount": 0.01},
 ]
 
+SEO_FAQ_ITEMS = [
+    {
+        "question": "What is Kumquat?",
+        "answer": "Kumquat is digital cash software that models value as visible units such as bills and coins instead of hiding everything behind one abstract balance.",
+    },
+    {
+        "question": "How does the Kumquat wallet work?",
+        "answer": "The website can generate an Ed25519 wallet, derive a Kumquat-compatible address from the public key, and store the encrypted private key for the signed-in user.",
+    },
+    {
+        "question": "Why does Kumquat focus on denominations?",
+        "answer": "Denominations make transfers and balances easier to inspect because the interface shows the composition of value, not just a final number after the transaction is complete.",
+    },
+]
+
 
 def _database_state():
     try:
@@ -123,6 +145,115 @@ def _database_state():
         return "ok"
     except Exception as exc:  # pragma: no cover - defensive runtime guard
         return f"error: {exc}"
+
+
+def _site_origin():
+    return settings.SITE_URL.rstrip("/")
+
+
+def _absolute_url(path_or_url):
+    if path_or_url.startswith(("http://", "https://")):
+        return path_or_url
+    return f"{_site_origin()}{path_or_url}"
+
+
+def _structured_data_json(structured_data):
+    return [json.dumps(item, separators=(",", ":"), ensure_ascii=False) for item in structured_data]
+
+
+def _seo_context(
+    request,
+    *,
+    title,
+    description,
+    path=None,
+    keywords=DEFAULT_SEO_KEYWORDS,
+    index=True,
+    og_type="website",
+    image_path=None,
+    structured_data=None,
+):
+    canonical_path = path or request.path
+    image_url = _absolute_url(static(image_path or DEFAULT_SEO_IMAGE_PATH))
+    structured_data = structured_data or []
+    return {
+        "seo": {
+            "title": title,
+            "description": description,
+            "keywords": keywords,
+            "canonical_url": _absolute_url(canonical_path),
+            "robots": (
+                "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+                if index
+                else "noindex,nofollow"
+            ),
+            "og_type": og_type,
+            "site_name": settings.SITE_NAME,
+            "site_url": _site_origin(),
+            "image_url": image_url,
+            "locale": "en_US",
+            "theme_color": "#d85a30",
+            "author": "Benjamin Levin",
+            "structured_data_json": _structured_data_json(structured_data),
+        }
+    }
+
+
+def _home_structured_data():
+    homepage_url = _site_origin()
+    image_url = _absolute_url(static(DEFAULT_SEO_IMAGE_PATH))
+    return [
+        {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": settings.SITE_NAME,
+            "url": homepage_url,
+            "logo": image_url,
+            "founder": {
+                "@type": "Person",
+                "name": "Benjamin Levin",
+            },
+            "sameAs": [
+                "https://github.com/kumquat-ben/kumquat",
+                "https://x.com/kumquatben",
+            ],
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": settings.SITE_NAME,
+            "url": homepage_url,
+            "description": "Object-based digital cash software with visible denominations, wallets, and transfers.",
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "Kumquat Chain",
+            "applicationCategory": "FinanceApplication",
+            "operatingSystem": "Web",
+            "url": homepage_url,
+            "description": "A blockchain wallet and transfer interface built around visible digital denominations and object-based cash logic.",
+            "creator": {
+                "@type": "Organization",
+                "name": settings.SITE_NAME,
+            },
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": item["question"],
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": item["answer"],
+                    },
+                }
+                for item in SEO_FAQ_ITEMS
+            ],
+        },
+    ]
 
 
 def _is_json_request(request):
@@ -291,8 +422,19 @@ def home_page_view(request):
         "denomination_grid": DENOMINATION_GRID,
         "wallet_rows": WALLET_ROWS,
         "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
+        "seo_faq_items": SEO_FAQ_ITEMS,
         **_home_signup_context(request),
         **_home_wallet_context(request),
+        **_seo_context(
+            request,
+            title="Kumquat | Object-Based Digital Cash, Wallet, and Denomination Software",
+            description=(
+                "Kumquat is object-based digital cash software with a blockchain wallet, "
+                "visible denominations, and transfer flows designed to feel like physical money."
+            ),
+            path=reverse("home"),
+            structured_data=_home_structured_data(),
+        ),
     }
     return render(request, "website/home.html", context)
 
@@ -304,6 +446,13 @@ def sign_in_page_view(request):
         {
             "auth_user": _current_user_context(request),
             "oauth_configured": _oauth_is_configured(),
+            **_seo_context(
+                request,
+                title="Sign In | Kumquat",
+                description="Sign in to Kumquat to create a wallet, access early product releases, and manage your account.",
+                path=reverse("sign-in"),
+                index=False,
+            ),
         },
     )
 
@@ -331,6 +480,13 @@ def admin_dashboard_page_view(request):
             "active_tab": active_tab,
             "page_obj": page_obj,
             "page_numbers": _pagination_window(page_obj),
+            **_seo_context(
+                request,
+                title="Dashboard | Kumquat",
+                description="Internal Kumquat administration dashboard.",
+                path=reverse("dashboard"),
+                index=False,
+            ),
         },
     )
 
@@ -377,6 +533,13 @@ def admin_vonage_sms_page_view(request):
             "page_obj": page_obj,
             "page_numbers": _pagination_window(page_obj),
             "selected_message": selected_message,
+            **_seo_context(
+                request,
+                title="SMS Inbox | Kumquat",
+                description="Internal Kumquat SMS inbox.",
+                path=reverse("sms"),
+                index=False,
+            ),
         },
     )
 
@@ -1425,8 +1588,36 @@ def google_oauth_callback_view(request):
             "status": status,
             "message": message,
             "resolved_user": resolved_user,
+            **_seo_context(
+                request,
+                title="Authentication | Kumquat",
+                description="Google authentication callback for Kumquat.",
+                path=reverse("auth-google-callback"),
+                index=False,
+            ),
         },
     )
+
+
+def robots_txt_view(_request):
+    sitemap_url = _absolute_url(reverse("sitemap"))
+    content = "\n".join(
+        [
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /auth/",
+            "Disallow: /dashboard",
+            "Disallow: /sms",
+            "Disallow: /nodes/",
+            "Disallow: /messages",
+            "Disallow: /wallets/",
+            "Disallow: /webhooks/",
+            "Disallow: /admin/",
+            f"Sitemap: {sitemap_url}",
+            "",
+        ]
+    )
+    return HttpResponse(content, content_type="text/plain")
 
 
 @csrf_exempt

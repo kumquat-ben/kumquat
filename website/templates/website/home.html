@@ -1,7 +1,5 @@
 {% extends "website/base.html" %}
 
-{% block title %}Kumquat{% endblock %}
-
 {% block content %}
   <header class="site-nav" id="top">
     <a class="site-mark" href="#top">
@@ -34,8 +32,9 @@
       <p class="hero-eyebrow">Object-based transfer interface for the internet</p>
       <h1 class="hero-title">It's Not an Apple. It's Not Bitcoin. <em>It's Better.</em></h1>
       <p class="hero-copy">
-        Kumquat Chain is a ledger that processes in parallel. Every unit is
-        traceable. It doesn't slow down as it scales.
+        Kumquat Chain is object-based digital cash software with a blockchain wallet,
+        visible denominations, and transfer flows that behave more like physical money
+        than an abstract account balance.
       </p>
       <div class="hero-actions">
         <a class="button button-primary" href="{% if auth_user %}#wallet{% else %}/auth/sign-in{% endif %}">
@@ -70,6 +69,11 @@
           Kumquat is building software for object-based digital units. Bills, coins,
           and wallet rows are interface primitives that help people inspect what is
           in a wallet and what moves in a transfer.
+        </p>
+        <p class="body-copy body-copy-strong">
+          The goal is a digital cash interface where a blockchain wallet can show bills,
+          coins, and denomination mix directly, so users can inspect value composition
+          instead of reverse-engineering it from transaction history.
         </p>
         <div class="story-links" aria-label="Project links">
           <a class="story-link" href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">
@@ -344,6 +348,26 @@
           <article class="denomination-card denomination-card-{{ item.type }}">
             <p class="denomination-kind">{{ item.type }}</p>
             <p class="denomination-value">{{ item.label }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="seo-section" aria-labelledby="seo-faq-title">
+      <div class="seo-section-copy">
+        <p class="section-eyebrow">Search Overview</p>
+        <h2 class="section-title" id="seo-faq-title">What Kumquat means in <em>plain language.</em></h2>
+        <p class="body-copy">
+          Kumquat is a blockchain and wallet software project focused on denomination-first
+          digital cash. The product combines visible units, wallet generation, and
+          transfer interfaces that make balances easier to read at a glance.
+        </p>
+      </div>
+      <div class="faq-grid">
+        {% for item in seo_faq_items %}
+          <article class="faq-card">
+            <h3>{{ item.question }}</h3>
+            <p class="body-copy">{{ item.answer }}</p>
           </article>
         {% endfor %}
       </div>

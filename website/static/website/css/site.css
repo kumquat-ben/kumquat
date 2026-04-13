@@ -251,6 +251,10 @@ input:focus {
   color: var(--orange);
 }
 
+.body-copy-strong {
+  color: var(--ink-mid);
+}
+
 .button-block {
   width: 100%;
 }
@@ -258,6 +262,7 @@ input:focus {
 .hero-section,
 .story-section,
 .how-section,
+.seo-section,
 .denomination-section,
 .utility-copy,
 .utility-card,
@@ -815,6 +820,35 @@ input:focus {
   color: var(--ink-soft);
 }
 
+.seo-section {
+  display: grid;
+  gap: 2rem;
+  padding-top: 5rem;
+}
+
+.seo-section-copy {
+  max-width: 42rem;
+}
+
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.faq-card {
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--shadow);
+}
+
+.faq-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+
 .legal-note {
   margin: 2rem 0 0;
   padding-top: 1rem;
@@ -1284,6 +1318,10 @@ code {
     inset: 0.55rem 1.25rem auto;
     height: 7rem;
     border-radius: 1.25rem;
+  }
+
+  .faq-grid {
+    grid-template-columns: 1fr;
   }
 }
 

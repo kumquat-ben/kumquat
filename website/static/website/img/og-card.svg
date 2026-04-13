@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Kumquat</title>
+  <desc id="desc">Object-based digital cash software with visible denominations and a blockchain wallet.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#faf7f2" />
+      <stop offset="100%" stop-color="#f5efe6" />
+    </linearGradient>
+    <linearGradient id="fruit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef9f27" />
+      <stop offset="100%" stop-color="#d85a30" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <circle cx="990" cy="120" r="180" fill="#ef9f27" opacity="0.1" />
+  <circle cx="170" cy="540" r="220" fill="#d85a30" opacity="0.08" />
+  <rect x="84" y="84" width="1032" height="462" rx="28" fill="#fffaf4" stroke="#e6c7b7" />
+  <circle cx="960" cy="315" r="108" fill="url(#fruit)" />
+  <circle cx="918" cy="275" r="24" fill="#f7c668" opacity="0.85" />
+  <path d="M1015 230c8 31-13 56-45 68" fill="none" stroke="#4a1b0c" stroke-linecap="round" stroke-width="16" />
+  <text x="144" y="220" fill="#d85a30" font-family="DM Mono, monospace" font-size="26" letter-spacing="5">KUMQUAT</text>
+  <text x="144" y="320" fill="#1a1208" font-family="DM Serif Display, Georgia, serif" font-size="78">Object-based digital cash</text>
+  <text x="144" y="400" fill="#3d2e1a" font-family="DM Sans, Arial, sans-serif" font-size="38">Blockchain wallet software with visible denominations and transfers.</text>
+  <text x="144" y="485" fill="#1a1208" font-family="DM Sans, Arial, sans-serif" font-size="28">kumquat.info</text>
+</svg>

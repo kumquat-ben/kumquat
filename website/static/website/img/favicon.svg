@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Kumquat</title>
+  <defs>
+    <linearGradient id="kumquatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef9f27" />
+      <stop offset="100%" stop-color="#d85a30" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#faf7f2" />
+  <circle cx="32" cy="32" r="18" fill="url(#kumquatGradient)" />
+  <circle cx="25" cy="25" r="4" fill="#f6c56a" opacity="0.8" />
+  <path d="M41 18c1 5-2 9-7 11" fill="none" stroke="#4a1b0c" stroke-linecap="round" stroke-width="3" />
+</svg>

@@ -4,11 +4,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}Kumquat{% endblock %}</title>
-    <meta
-      name="description"
-      content="Kumquat is a digital money product built around a physical cash mental model."
-    />
+    <title>{{ seo.title|default:"Kumquat" }}</title>
+    <meta name="description" content="{{ seo.description|default:'Kumquat is a digital money product built around a physical cash mental model.' }}" />
+    <meta name="keywords" content="{{ seo.keywords|default:'' }}" />
+    <meta name="author" content="{{ seo.author|default:'Benjamin Levin' }}" />
+    <meta name="robots" content="{{ seo.robots|default:'index,follow' }}" />
+    <meta name="theme-color" content="{{ seo.theme_color|default:'#d85a30' }}" />
+    {% if seo.canonical_url %}
+      <link rel="canonical" href="{{ seo.canonical_url }}" />
+      <link rel="alternate" hreflang="en-US" href="{{ seo.canonical_url }}" />
+      <link rel="alternate" hreflang="x-default" href="{{ seo.canonical_url }}" />
+    {% endif %}
+    <link rel="icon" href="{% static 'website/img/favicon.svg' %}" type="image/svg+xml" />
+    <meta property="og:locale" content="{{ seo.locale|default:'en_US' }}" />
+    <meta property="og:type" content="{{ seo.og_type|default:'website' }}" />
+    <meta property="og:site_name" content="{{ seo.site_name|default:'Kumquat' }}" />
+    <meta property="og:title" content="{{ seo.title|default:'Kumquat' }}" />
+    <meta property="og:description" content="{{ seo.description|default:'Kumquat is a digital money product built around a physical cash mental model.' }}" />
+    {% if seo.canonical_url %}
+      <meta property="og:url" content="{{ seo.canonical_url }}" />
+    {% endif %}
+    {% if seo.image_url %}
+      <meta property="og:image" content="{{ seo.image_url }}" />
+      <meta property="og:image:alt" content="Kumquat brand card" />
+    {% endif %}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ seo.title|default:'Kumquat' }}" />
+    <meta name="twitter:description" content="{{ seo.description|default:'Kumquat is a digital money product built around a physical cash mental model.' }}" />
+    {% if seo.image_url %}
+      <meta name="twitter:image" content="{{ seo.image_url }}" />
+    {% endif %}
     <script
       async
       src="https://www.googletagmanager.com/gtag/js?id=G-9CSN4VQC4H"
@@ -21,6 +46,9 @@
       gtag("js", new Date());
       gtag("config", "G-9CSN4VQC4H");
     </script>
+    {% for json_ld in seo.structured_data_json %}
+      <script type="application/ld+json">{{ json_ld|safe }}</script>
+    {% endfor %}
     <link rel="stylesheet" href="{% static 'website/css/site.css' %}" />
   </head>
   <body>

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+from django.contrib.sitemaps.views import sitemap
 from django.urls import path, re_path
 from django.views.generic import RedirectView
 
+from .sitemaps import sitemaps
 from .views import (
     admin_dashboard_view,
     admin_dashboard_page_view,
@@ -20,6 +22,7 @@ from .views import (
     healthz_view,
     home_page_view,
     messages_view,
+    robots_txt_view,
     sign_in_page_view,
     vonage_sms_callback_view,
     wallet_generate_view,
@@ -28,6 +31,8 @@ from .views import (
 
 urlpatterns = [
     path("", home_page_view, name="home"),
+    path("robots.txt", robots_txt_view, name="robots-txt"),
+    path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("auth/sign-in", sign_in_page_view, name="sign-in"),
     path("auth/google/start", google_oauth_start_view, name="auth-google-start"),
     path("auth/google/callback", google_oauth_callback_view, name="auth-google-callback"),
