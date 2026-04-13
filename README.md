@@ -18,6 +18,14 @@ Infrastructure for the AWS private container platform lives in [infra/aws-secure
 
 The repository is organized so application code and infrastructure code stay separate, but the deployment flow remains repo-native: build images, publish to ECR, apply the website manifests to k3s, and update the backend platform add-on through Terraform and Helm from the same codebase.
 
+## Genesis Seed
+
+The derivative work of art recorded for Kumquat's genesis block seed is:
+
+`X3Fjvip33ETuahoPbOO0Z2yZSveX6eT57I1DbD83F0s=`
+
+This seed plays the same anchoring role for Kumquat's genesis block that the embedded genesis text played for Bitcoin.
+
 ## Kumquat Farm
 
 A single running instance of this repository should be understood as a **Kumquat Farm**: one self-contained node running the farm services together.
