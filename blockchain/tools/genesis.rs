@@ -42,6 +42,42 @@ pub struct GenesisAccount {
     pub account_type: String,
 }
 
+/// Auditable genesis ceremony artifact derived from a genesis config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenesisCeremonyRecord {
+    /// Chain ID for the resulting chain identity.
+    pub chain_id: u64,
+
+    /// Genesis config path used to derive the ceremony record.
+    pub genesis_config_path: String,
+
+    /// Genesis block hash that operators must pin.
+    pub genesis_hash: String,
+
+    /// Fully-qualified chain identity.
+    pub chain_identity: String,
+
+    /// Finalized genesis state root.
+    pub state_root: String,
+
+    /// Genesis timestamp from the config.
+    pub timestamp: u64,
+
+    /// Genesis difficulty from the config.
+    pub initial_difficulty: u64,
+
+    /// Deterministically sorted account summaries included in the genesis state.
+    pub accounts: Vec<GenesisCeremonyAccount>,
+}
+
+/// Account summary included in a genesis ceremony record.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GenesisCeremonyAccount {
+    pub address: String,
+    pub balance: u64,
+    pub token_count: usize,
+}
+
 impl Default for GenesisConfig {
     fn default() -> Self {
         let mut initial_accounts = HashMap::new();
@@ -221,8 +257,10 @@ impl GenesisConfig {
     pub fn generate_account_states(&self) -> Vec<(Hash, AccountState)> {
         let mut account_states = Vec::new();
         let mut denomination_ordinals = HashMap::new();
+        let mut sorted_accounts = self.initial_accounts.iter().collect::<Vec<_>>();
+        sorted_accounts.sort_by(|(address_a, _), (address_b, _)| address_a.cmp(address_b));
 
-        for (address_text, account) in &self.initial_accounts {
+        for (address_text, account) in sorted_accounts {
             let address = decode_address(address_text)
                 .unwrap_or_else(|_| panic!("Invalid address '{}' in genesis config", address_text));
 
@@ -336,4 +374,54 @@ pub fn generate_genesis<P: AsRef<Path>>(
     let block = config.finalize_genesis_block(config.generate_block(), &account_states)?;
 
     Ok((block, account_states))
+}
+
+/// Build a deterministic ceremony record for operator verification and signing.
+pub fn build_genesis_ceremony_record<P: AsRef<Path>>(
+    config_path: P,
+) -> Result<GenesisCeremonyRecord, String> {
+    let config_path = config_path.as_ref();
+    let config = GenesisConfig::load(config_path)?;
+    let (block, account_states) = generate_genesis(config_path)?;
+
+    let mut accounts = account_states
+        .iter()
+        .map(|(address, state)| GenesisCeremonyAccount {
+            address: encode_address(address),
+            balance: state.balance,
+            token_count: state.tokens.len(),
+        })
+        .collect::<Vec<_>>();
+    accounts.sort_by(|a, b| a.address.cmp(&b.address));
+
+    Ok(GenesisCeremonyRecord {
+        chain_id: config.chain_id,
+        genesis_config_path: config_path.display().to_string(),
+        genesis_hash: hex::encode(block.hash),
+        chain_identity: format!("chain-{}:{}", config.chain_id, hex::encode(block.hash)),
+        state_root: hex::encode(block.state_root),
+        timestamp: config.timestamp,
+        initial_difficulty: config.initial_difficulty,
+        accounts,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn genesis_derivation_is_deterministic_across_runs() {
+        let dir = tempdir().unwrap();
+        let genesis_path = dir.path().join("genesis.toml");
+        GenesisConfig::default().save(&genesis_path).unwrap();
+
+        let first = build_genesis_ceremony_record(&genesis_path).unwrap();
+        let second = build_genesis_ceremony_record(&genesis_path).unwrap();
+
+        assert_eq!(first.genesis_hash, second.genesis_hash);
+        assert_eq!(first.state_root, second.state_root);
+        assert_eq!(first.accounts, second.accounts);
+    }
 }

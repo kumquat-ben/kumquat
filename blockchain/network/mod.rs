@@ -209,6 +209,7 @@ pub async fn start_enhanced_network(
                 peer_registry.clone(),
                 broadcaster.clone(),
             )
+            .with_consensus_opt(consensus.clone())
             .with_advanced_registry(advanced_registry.clone())
             .with_event_bus(event_bus.clone())
             .with_reputation(reputation.clone()),

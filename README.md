@@ -116,6 +116,8 @@ Production runs on k3s behind `kumquat.info`.
 
 For blockchain-specific chain/runtime details, use [blockchain/README.md](blockchain/README.md).
 
+For deterministic chain bootstrapping and operator verification, use [blockchain/docs/genesis_ceremony.md](blockchain/docs/genesis_ceremony.md).
+
 For the detailed rollout procedure, including Google OAuth secret injection for the backend, use [infra/aws-secure-platform/README.md](infra/aws-secure-platform/README.md).
 
 For the operator VPN connection procedure used to reach the private k3s API, use [infra/aws-secure-platform/VPN.md](infra/aws-secure-platform/VPN.md).

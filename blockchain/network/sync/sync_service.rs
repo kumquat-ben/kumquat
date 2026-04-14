@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 
+use crate::consensus::engine::ConsensusEngine;
 use crate::network::events::event_bus::EventBus;
 use crate::network::events::event_types::{NetworkEvent, SyncResult};
 use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
@@ -108,6 +109,9 @@ pub struct SyncService {
     /// Block store
     block_store: Arc<BlockStore<'static>>,
 
+    /// Consensus engine used to process synced blocks when available.
+    consensus: Option<Arc<ConsensusEngine>>,
+
     /// Peer registry
     peer_registry: Arc<PeerRegistry>,
 
@@ -148,6 +152,7 @@ impl SyncService {
     ) -> Self {
         Self {
             block_store,
+            consensus: None,
             peer_registry,
             advanced_registry: None,
             broadcaster,
@@ -176,6 +181,17 @@ impl SyncService {
     /// Set the reputation system
     pub fn with_reputation(mut self, reputation: Arc<ReputationSystem>) -> Self {
         self.reputation = Some(reputation);
+        self
+    }
+
+    /// Route synced blocks through consensus so state is updated alongside blocks.
+    pub fn with_consensus(mut self, consensus: Arc<ConsensusEngine>) -> Self {
+        self.consensus = Some(consensus);
+        self
+    }
+
+    pub fn with_consensus_opt(mut self, consensus: Option<Arc<ConsensusEngine>>) -> Self {
+        self.consensus = consensus;
         self
     }
 
@@ -291,6 +307,7 @@ impl SyncService {
 
         if let Some(mut block_rx) = block_rx_option {
             let block_store = self.block_store.clone();
+            let consensus = self.consensus.clone();
             let sync_state = self.sync_state.clone();
             let running = self.running.clone();
             let event_bus = self.event_bus.clone();
@@ -310,8 +327,17 @@ impl SyncService {
                                 peer_id, block.height
                             );
 
-                            // Store the block
-                            let _ = block_store.put_block(&block);
+                            if let Some(consensus) = &consensus {
+                                if let Err(err) = consensus.block_channel().send(block.clone()).await {
+                                    error!(
+                                        "Failed to forward synced block {} to consensus: {}",
+                                        block.height, err
+                                    );
+                                    continue;
+                                }
+                            } else {
+                                let _ = block_store.put_block(&block);
+                            }
 
                             // Update sync state
                             {
@@ -369,6 +395,7 @@ impl SyncService {
 
         if let Some(mut block_range_rx) = block_range_rx_option {
             let block_store = self.block_store.clone();
+            let consensus = self.consensus.clone();
             let sync_state = self.sync_state.clone();
             let running = self.running.clone();
             let event_bus = self.event_bus.clone();
@@ -385,9 +412,21 @@ impl SyncService {
                         Some((blocks, peer_id)) => {
                             debug!("Received {} blocks from peer {}", blocks.len(), peer_id);
 
-                            // Store the blocks
-                            for block in &blocks {
-                                let _ = block_store.put_block(block);
+                            if let Some(consensus) = &consensus {
+                                let block_tx = consensus.block_channel();
+                                for block in &blocks {
+                                    if let Err(err) = block_tx.send(block.clone()).await {
+                                        error!(
+                                            "Failed to forward synced block {} to consensus: {}",
+                                            block.height, err
+                                        );
+                                        break;
+                                    }
+                                }
+                            } else {
+                                for block in &blocks {
+                                    let _ = block_store.put_block(block);
+                                }
                             }
 
                             // Update sync state

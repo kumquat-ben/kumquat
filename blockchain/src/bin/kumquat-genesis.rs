@@ -1,7 +1,10 @@
 use kumquat::crypto::encode_address;
 use kumquat::init_logger;
-use kumquat::tools::genesis::{generate_genesis, GenesisConfig};
+use kumquat::tools::genesis::{
+    build_genesis_ceremony_record, generate_genesis, GenesisConfig,
+};
 use log::{error, info, warn};
+use std::fs;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -19,6 +22,10 @@ struct Opt {
     /// Input file
     #[structopt(long, parse(from_os_str))]
     input: Option<PathBuf>,
+
+    /// Write a JSON genesis ceremony record derived from the input/output genesis file
+    #[structopt(long, parse(from_os_str))]
+    ceremony_output: Option<PathBuf>,
 
     /// Network (dev, testnet, mainnet)
     #[structopt(long)]
@@ -112,6 +119,10 @@ fn main() {
                                 hex::encode(&block.hash)
                             );
                             info!("Initial accounts: {}", account_states.len());
+
+                            if let Some(ceremony_output) = &opt.ceremony_output {
+                                write_ceremony_record(&output, ceremony_output);
+                            }
                         }
                         Err(e) => {
                             error!("Failed to generate genesis block: {}", e);
@@ -183,6 +194,10 @@ fn main() {
                         state.tokens.len()
                     );
                 }
+
+                if let Some(ceremony_output) = &opt.ceremony_output {
+                    write_ceremony_record(&input, ceremony_output);
+                }
             }
             Err(e) => {
                 error!("Failed to generate genesis block: {}", e);
@@ -192,5 +207,33 @@ fn main() {
     } else {
         // Print help
         println!("{}", Opt::clap().to_string());
+    }
+}
+
+fn write_ceremony_record(input: &PathBuf, ceremony_output: &PathBuf) {
+    match build_genesis_ceremony_record(input) {
+        Ok(record) => match serde_json::to_string_pretty(&record) {
+            Ok(json) => {
+                if let Err(err) = fs::write(ceremony_output, json) {
+                    error!(
+                        "Failed to write genesis ceremony record to {:?}: {}",
+                        ceremony_output, err
+                    );
+                    std::process::exit(1);
+                }
+                info!(
+                    "Genesis ceremony record written to {:?}",
+                    ceremony_output
+                );
+            }
+            Err(err) => {
+                error!("Failed to serialize genesis ceremony record: {}", err);
+                std::process::exit(1);
+            }
+        },
+        Err(err) => {
+            error!("Failed to build genesis ceremony record: {}", err);
+            std::process::exit(1);
+        }
     }
 }

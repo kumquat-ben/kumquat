@@ -620,50 +620,6 @@ async fn main() {
         chain_identity(config.consensus.chain_id, expected_genesis_hash)
     );
 
-    // Initialize network before creating a fresh local genesis so the node can
-    // prefer syncing from peers when a usable chain is already available.
-    info!("Initializing network...");
-    let (network_tx, _network_rx) =
-        mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
-
-    let network_config = NetworkConfig {
-        bind_addr: format!(
-            "{}:{}",
-            config.network.listen_addr, config.network.listen_port
-        )
-        .parse()
-        .unwrap(),
-        seed_peers: config
-            .network
-            .bootstrap_nodes
-            .iter()
-            .filter_map(|addr| addr.parse().ok())
-            .collect(),
-        max_outbound: config.network.max_peers / 2,
-        max_inbound: config.network.max_peers,
-        node_id: config.node.node_name.clone(),
-    };
-
-    // Create a mempool
-    let mempool = Arc::new(Mempool::new().with_state_store(state_store.clone()));
-
-    // Use enhanced network service with block synchronization
-    let network = start_enhanced_network(
-        network_config,
-        Some(block_store.clone()),
-        Some(tx_store.clone()),
-        Some(mempool.clone()),
-        None, // No consensus yet
-    )
-    .await;
-
-    if block_store.get_block_by_height(0).ok().flatten().is_none() {
-        let bootstrapped_from_network = attempt_network_bootstrap(&network, &block_store).await;
-        if bootstrapped_from_network {
-            info!("Using network-synchronized chain root instead of generating local genesis.");
-        }
-    }
-
     ensure_local_genesis(
         expected_genesis_hash,
         genesis_block,
@@ -675,6 +631,9 @@ async fn main() {
 
     // Initialize consensus
     info!("Initializing consensus...");
+    let (network_tx, _network_rx) =
+        mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
+
     // Convert config.consensus to ConsensusConfig
     let consensus_config = ConsensusConfig {
         enable_mining: config.consensus.enable_mining,
@@ -697,6 +656,39 @@ async fn main() {
         tx_store.clone(),
         state_store.clone(),
         network_tx.clone(),
+    )
+    .await;
+
+    info!("Initializing network...");
+    let network_config = NetworkConfig {
+        bind_addr: format!(
+            "{}:{}",
+            config.network.listen_addr, config.network.listen_port
+        )
+        .parse()
+        .unwrap(),
+        seed_peers: config
+            .network
+            .bootstrap_nodes
+            .iter()
+            .filter_map(|addr| addr.parse().ok())
+            .collect(),
+        max_outbound: config.network.max_peers / 2,
+        max_inbound: config.network.max_peers,
+        node_id: config.node.node_name.clone(),
+    };
+
+    // Create a mempool
+    let mempool = Arc::new(Mempool::new().with_state_store(state_store.clone()));
+
+    // Start the network only after consensus exists so inbound blocks are routed
+    // through validation and state application instead of bypassing consensus.
+    let network = start_enhanced_network(
+        network_config,
+        Some(block_store.clone()),
+        Some(tx_store.clone()),
+        Some(mempool.clone()),
+        Some(consensus.clone()),
     )
     .await;
 
