@@ -289,6 +289,7 @@ pub enum TokenMintSource {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct DenominationToken {
     pub token_id: [u8; 32],
+    pub version: u64,
     pub assignment_index: u64,
     pub owner: [u8; 32],
     pub minted_at_block: u64,
@@ -311,6 +312,7 @@ impl DenominationToken {
 
         Self {
             token_id,
+            version: 0,
             assignment_index,
             owner,
             minted_at_block,
@@ -380,7 +382,7 @@ impl AccountState {
             tokens: Vec::new(),
         };
         account
-            .remint_tokens_from_balance(
+            .rebuild_tokens_from_balance_compat(
                 [0; 32],
                 block_height,
                 TokenMintSource::LegacyBalanceBootstrap,
@@ -404,7 +406,7 @@ impl AccountState {
             tokens: Vec::new(),
         };
         account
-            .remint_tokens_from_balance(
+            .rebuild_tokens_from_balance_compat(
                 [0; 32],
                 block_height,
                 TokenMintSource::LegacyBalanceBootstrap,
@@ -428,7 +430,7 @@ impl AccountState {
             tokens: Vec::new(),
         };
         account
-            .remint_tokens_from_balance(
+            .rebuild_tokens_from_balance_compat(
                 [0; 32],
                 block_height,
                 TokenMintSource::LegacyBalanceBootstrap,
@@ -452,7 +454,7 @@ impl AccountState {
             tokens: Vec::new(),
         };
         account
-            .remint_tokens_from_balance(
+            .rebuild_tokens_from_balance_compat(
                 [0; 32],
                 block_height,
                 TokenMintSource::LegacyBalanceBootstrap,
@@ -498,22 +500,28 @@ impl AccountState {
         self.nonce += 1;
     }
 
-    /// Add balance to the account
-    pub fn add_balance(&mut self, amount: u64) -> StateResult<()> {
+    /// Compatibility helper for balance-first code paths.
+    ///
+    /// This should not be used by token execution. It exists only for bootstrap and
+    /// legacy tests that still start from an aggregate balance.
+    pub fn add_balance_compat(&mut self, amount: u64) -> StateResult<()> {
         let new_total = self
             .total_token_value()
             .checked_add(amount)
             .ok_or_else(|| StateError::Other("Balance overflow".to_string()))?;
         self.balance = new_total;
-        self.remint_tokens_from_balance(
+        self.rebuild_tokens_from_balance_compat(
             self.current_owner(),
             self.last_updated,
             TokenMintSource::TransferChange,
         )
     }
 
-    /// Subtract balance from the account
-    pub fn subtract_balance(&mut self, amount: u64) -> StateResult<()> {
+    /// Compatibility helper for balance-first code paths.
+    ///
+    /// This should not be used by token execution. It exists only for bootstrap and
+    /// legacy tests that still start from an aggregate balance.
+    pub fn subtract_balance_compat(&mut self, amount: u64) -> StateResult<()> {
         if !self.has_sufficient_balance(amount) {
             return Err(StateError::InsufficientBalance(
                 amount,
@@ -522,7 +530,7 @@ impl AccountState {
         }
         let new_total = self.total_token_value() - amount;
         self.balance = new_total;
-        self.remint_tokens_from_balance(
+        self.rebuild_tokens_from_balance_compat(
             self.current_owner(),
             self.last_updated,
             TokenMintSource::TransferChange,
@@ -559,6 +567,13 @@ impl AccountState {
             .iter()
             .find(|token| &token.token_id == token_id)
             .map(|token| token.value_cents())
+    }
+
+    pub fn token_version(&self, token_id: &[u8; 32]) -> Option<u64> {
+        self.tokens
+            .iter()
+            .find(|token| &token.token_id == token_id)
+            .map(|token| token.version)
     }
 
     pub fn token_ids_for_amount(&self, amount_cents: AmountCents) -> Option<Vec<[u8; 32]>> {
@@ -617,6 +632,9 @@ impl AccountState {
 
     pub fn deposit_tokens(&mut self, owner: [u8; 32], mut tokens: Vec<DenominationToken>) {
         for token in &mut tokens {
+            if token.owner != owner {
+                token.version += 1;
+            }
             token.owner = owner;
         }
         self.tokens.extend(tokens);
@@ -642,7 +660,7 @@ impl AccountState {
         crate::rewards::reward_tokens_for_block(owner, block_height, block_hash)
     }
 
-    pub fn remint_tokens_from_balance(
+    pub fn rebuild_tokens_from_balance_compat(
         &mut self,
         owner: [u8; 32],
         block_height: u64,
@@ -1093,16 +1111,16 @@ mod tests {
         assert!(account.has_sufficient_balance(500));
         assert!(!account.has_sufficient_balance(1001));
 
-        // Test add_balance
-        account.add_balance(500).unwrap();
+        // Test balance-first compatibility helpers
+        account.add_balance_compat(500).unwrap();
         assert_eq!(account.balance, 1500);
 
-        // Test subtract_balance
-        account.subtract_balance(300).unwrap();
+        // Test subtract_balance_compat
+        account.subtract_balance_compat(300).unwrap();
         assert_eq!(account.balance, 1200);
 
         // Test insufficient balance
-        let result = account.subtract_balance(1500);
+        let result = account.subtract_balance_compat(1500);
         assert!(result.is_err());
         if let Err(StateError::InsufficientBalance(required, available)) = result {
             assert_eq!(required, 1500);
@@ -1110,6 +1128,24 @@ mod tests {
         } else {
             panic!("Expected InsufficientBalance error");
         }
+    }
+
+    #[test]
+    fn test_deposit_tokens_bumps_version_on_transfer() {
+        let mut sender = AccountState::new_user(500, 1);
+        let token_id = sender.token_ids_for_amount(500).unwrap()[0];
+        let moved = sender.remove_tokens_by_id(&[token_id]).unwrap();
+
+        let mut recipient = AccountState::new_user(0, 1);
+        recipient.deposit_tokens([9; 32], moved);
+
+        let received = recipient
+            .tokens
+            .iter()
+            .find(|token| token.token_id == token_id)
+            .unwrap();
+        assert_eq!(received.owner, [9; 32]);
+        assert_eq!(received.version, 1);
     }
 
     #[test]

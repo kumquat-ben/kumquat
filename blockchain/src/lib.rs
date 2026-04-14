@@ -5,6 +5,7 @@ pub mod api;
 pub mod config;
 pub mod consensus;
 pub mod crypto;
+pub mod executor;
 pub mod mempool;
 pub mod network;
 pub mod node_runtime;

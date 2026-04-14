@@ -179,7 +179,7 @@ fn test_state_store() {
     assert_eq!(account.account_type, AccountType::User);
 
     // Update the account balance
-    state_store.update_balance(&address, 2000).unwrap();
+    state_store.update_balance_compat(&address, 2000).unwrap();
     let updated_account = state_store.get_account_state(&address).unwrap();
     assert_eq!(updated_account.balance, 2000);
 
