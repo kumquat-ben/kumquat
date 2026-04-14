@@ -67,20 +67,25 @@ DEFAULT_SEO_KEYWORDS = (
     "kumquat, kumquat chain, digital cash, blockchain wallet, object-based money, "
     "digital denominations, wallet software, crypto wallet, parallel ledger"
 )
+CURRENCY_SYMBOL = "¤"
+
+
+def _currency_label(amount):
+    return f"{CURRENCY_SYMBOL}{amount}"
 
 BILL_ITEMS = [
-    {"label": "$100", "kind": "bill", "id": "KMQ-00100000"},
-    {"label": "$50", "kind": "bill", "id": "KMQ-00050000"},
-    {"label": "$20", "kind": "bill", "id": "KMQ-00020000"},
-    {"label": "$10", "kind": "bill", "id": "KMQ-00010000"},
-    {"label": "$5", "kind": "bill", "id": "KMQ-00005000"},
-    {"label": "$2", "kind": "bill", "id": "KMQ-00002000"},
-    {"label": "$1", "kind": "bill", "id": "KMQ-00001000"},
-    {"label": "$0.50", "kind": "coin", "id": "KMQ-00000500"},
-    {"label": "$0.25", "kind": "coin", "id": "KMQ-00000250"},
-    {"label": "$0.10", "kind": "coin", "id": "KMQ-00000100"},
-    {"label": "$0.05", "kind": "coin", "id": "KMQ-00000050"},
-    {"label": "$0.01", "kind": "coin", "id": "KMQ-00000010"},
+    {"label": _currency_label("100"), "kind": "bill", "id": "KMQ-00100000"},
+    {"label": _currency_label("50"), "kind": "bill", "id": "KMQ-00050000"},
+    {"label": _currency_label("20"), "kind": "bill", "id": "KMQ-00020000"},
+    {"label": _currency_label("10"), "kind": "bill", "id": "KMQ-00010000"},
+    {"label": _currency_label("5"), "kind": "bill", "id": "KMQ-00005000"},
+    {"label": _currency_label("2"), "kind": "bill", "id": "KMQ-00002000"},
+    {"label": _currency_label("1"), "kind": "bill", "id": "KMQ-00001000"},
+    {"label": _currency_label("0.50"), "kind": "coin", "id": "KMQ-00000500"},
+    {"label": _currency_label("0.25"), "kind": "coin", "id": "KMQ-00000250"},
+    {"label": _currency_label("0.10"), "kind": "coin", "id": "KMQ-00000100"},
+    {"label": _currency_label("0.05"), "kind": "coin", "id": "KMQ-00000050"},
+    {"label": _currency_label("0.01"), "kind": "coin", "id": "KMQ-00000010"},
 ]
 
 HOW_IT_WORKS_STEPS = [
@@ -102,31 +107,31 @@ HOW_IT_WORKS_STEPS = [
 ]
 
 DENOMINATION_GRID = [
-    {"label": "$100", "type": "bill"},
-    {"label": "$50", "type": "bill"},
-    {"label": "$20", "type": "bill"},
-    {"label": "$10", "type": "bill"},
-    {"label": "$5", "type": "bill"},
-    {"label": "$2", "type": "bill"},
-    {"label": "$1", "type": "bill"},
-    {"label": "$0.50", "type": "coin"},
-    {"label": "$0.25", "type": "coin"},
-    {"label": "$0.10", "type": "coin"},
-    {"label": "$0.05", "type": "coin"},
-    {"label": "$0.01", "type": "coin"},
+    {"label": _currency_label("100"), "type": "bill"},
+    {"label": _currency_label("50"), "type": "bill"},
+    {"label": _currency_label("20"), "type": "bill"},
+    {"label": _currency_label("10"), "type": "bill"},
+    {"label": _currency_label("5"), "type": "bill"},
+    {"label": _currency_label("2"), "type": "bill"},
+    {"label": _currency_label("1"), "type": "bill"},
+    {"label": _currency_label("0.50"), "type": "coin"},
+    {"label": _currency_label("0.25"), "type": "coin"},
+    {"label": _currency_label("0.10"), "type": "coin"},
+    {"label": _currency_label("0.05"), "type": "coin"},
+    {"label": _currency_label("0.01"), "type": "coin"},
 ]
 
 WALLET_ROWS = [
-    {"label": "$100.00", "kind": "bill", "detail": "Large-format unit", "amount": 100.0},
-    {"label": "$50.00", "kind": "bill", "detail": "Transfer example", "amount": 50.0},
-    {"label": "$20.00", "kind": "bill", "detail": "Wallet row sample", "amount": 20.0},
-    {"label": "$10.00", "kind": "bill", "detail": "Interface unit", "amount": 10.0},
-    {"label": "$5.00", "kind": "bill", "detail": "Smaller-format unit", "amount": 5.0},
-    {"label": "$2.00", "kind": "bill", "detail": "Lower bill example", "amount": 2.0},
-    {"label": "$1.00", "kind": "bill", "detail": "Lowest bill example", "amount": 1.0},
-    {"label": "$0.25", "kind": "coin", "detail": "Coin example", "amount": 0.25},
-    {"label": "$0.10", "kind": "coin", "detail": "Coin example", "amount": 0.1},
-    {"label": "$0.01", "kind": "coin", "detail": "Coin example", "amount": 0.01},
+    {"label": _currency_label("100.00"), "kind": "bill", "detail": "Large-format unit", "amount": 100.0},
+    {"label": _currency_label("50.00"), "kind": "bill", "detail": "Transfer example", "amount": 50.0},
+    {"label": _currency_label("20.00"), "kind": "bill", "detail": "Wallet row sample", "amount": 20.0},
+    {"label": _currency_label("10.00"), "kind": "bill", "detail": "Interface unit", "amount": 10.0},
+    {"label": _currency_label("5.00"), "kind": "bill", "detail": "Smaller-format unit", "amount": 5.0},
+    {"label": _currency_label("2.00"), "kind": "bill", "detail": "Lower bill example", "amount": 2.0},
+    {"label": _currency_label("1.00"), "kind": "bill", "detail": "Lowest bill example", "amount": 1.0},
+    {"label": _currency_label("0.25"), "kind": "coin", "detail": "Coin example", "amount": 0.25},
+    {"label": _currency_label("0.10"), "kind": "coin", "detail": "Coin example", "amount": 0.1},
+    {"label": _currency_label("0.01"), "kind": "coin", "detail": "Coin example", "amount": 0.01},
 ]
 
 SEO_FAQ_ITEMS = [

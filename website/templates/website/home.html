@@ -233,7 +233,7 @@
       <div class="wallet-card">
         <div class="wallet-card-head">
           <p class="section-eyebrow">Wallet Preview</p>
-          <p class="wallet-total">${{ wallet_total|floatformat:2 }}</p>
+          <p class="wallet-total">¤{{ wallet_total|floatformat:2 }}</p>
         </div>
         <div class="wallet-rows">
           {% for row in wallet_rows %}
