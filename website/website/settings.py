@@ -86,9 +86,9 @@ NODE_LAUNCHER_DOCKER_HOST = env("NODE_LAUNCHER_DOCKER_HOST", "")
 NODE_LAUNCHER_ROOT = env("NODE_LAUNCHER_ROOT", "/var/lib/kumquat-node-launcher")
 NODE_LAUNCHER_IMAGE = env(
     "NODE_LAUNCHER_IMAGE",
-    "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260413-132124-91cc84b",
+    "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260414-033139-2cdb0fc",
 )
-NODE_LAUNCHER_IMAGE_PULL_POLICY = env("NODE_LAUNCHER_IMAGE_PULL_POLICY", "Always").strip().lower()
+NODE_LAUNCHER_IMAGE_PULL_POLICY = env("NODE_LAUNCHER_IMAGE_PULL_POLICY", "IfNotPresent").strip().lower()
 NODE_LAUNCHER_REGISTRY_AUTH_FILE = env("NODE_LAUNCHER_REGISTRY_AUTH_FILE", "")
 NODE_LAUNCHER_NETWORK = env("NODE_LAUNCHER_NETWORK", "dev")
 NODE_LAUNCHER_CHAIN_ID = int(env("NODE_LAUNCHER_CHAIN_ID", "1337"))
