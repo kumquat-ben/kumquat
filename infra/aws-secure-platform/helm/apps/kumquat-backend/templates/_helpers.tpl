@@ -23,3 +23,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/name: {{ include "kumquat-backend.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
+
+{{- define "kumquat-backend.serviceAccountName" -}}
+{{- if .Values.nodeLauncher.serviceAccount.name -}}
+{{- .Values.nodeLauncher.serviceAccount.name -}}
+{{- else -}}
+{{- printf "%s-launcher" (include "kumquat-backend.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}

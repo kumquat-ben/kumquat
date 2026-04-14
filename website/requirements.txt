@@ -4,3 +4,4 @@ whitenoise==6.9.0
 PyMySQL==1.1.1
 cryptography==46.0.7
 docker==7.1.0
+kubernetes==30.1.0

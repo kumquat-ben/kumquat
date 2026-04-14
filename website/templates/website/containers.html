@@ -4,12 +4,12 @@
   <section class="dashboard-layout">
     <div class="dashboard-hero">
       <p class="section-eyebrow">Admin</p>
-      <h1 class="utility-title">Container management.</h1>
-      <p class="body-copy">Operate managed blockchain containers and remove stale deployments without leaving the admin area.</p>
+      <h1 class="utility-title">Workload management.</h1>
+      <p class="body-copy">Operate managed blockchain workloads and remove stale deployments without leaving the admin area.</p>
       <div class="stats-grid">
         <article class="stat-card"><p class="section-eyebrow">Managed Nodes</p><h3>{{ dashboard.stats.managed_nodes }}</h3></article>
         <article class="stat-card"><p class="section-eyebrow">Running Nodes</p><h3>{{ dashboard.stats.running_nodes }}</h3></article>
-        <article class="stat-card"><p class="section-eyebrow">Runtime Containers</p><h3>{{ runtime_containers|length }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Runtime Pods</p><h3>{{ runtime_containers|length }}</h3></article>
         <article class="stat-card"><p class="section-eyebrow">Launcher</p><h3>{% if dashboard.launcher.enabled %}Ready{% else %}Off{% endif %}</h3></article>
       </div>
     </div>
@@ -38,7 +38,7 @@
         </div>
         <div class="dashboard-inline-summary">
           <p class="body-copy">
-            Failed launches still appear here even if no runtime container was created yet. Use this section to restart the node, delete its container, or delete the deployment record entirely.
+            Failed launches still appear here even if no runtime pod was created yet. Use this section to restart the node, stop its workload, or delete the deployment record entirely.
           </p>
         </div>
         <div class="managed-node-grid">
@@ -53,7 +53,7 @@
               </div>
               <div class="managed-node-meta">
                 <div class="managed-node-meta-item"><span class="section-eyebrow">Node Name</span><p>{{ node.name }}</p></div>
-                <div class="managed-node-meta-item"><span class="section-eyebrow">Container</span><p>{{ node.container_name|default:"Not present" }}</p></div>
+                <div class="managed-node-meta-item"><span class="section-eyebrow">Pod</span><p>{{ node.container_name|default:"Not present" }}</p></div>
                 <div class="managed-node-meta-item"><span class="section-eyebrow">Image</span><p><code>{{ node.image }}</code></p></div>
                 <div class="managed-node-meta-item"><span class="section-eyebrow">Chain ID</span><p>{{ node.chain_id }}</p></div>
                 <div class="managed-node-meta-item"><span class="section-eyebrow">API Port</span><p>{{ node.api_port }}</p></div>
@@ -71,13 +71,13 @@
                 </form>
                 <form action="/nodes/{{ node.id }}/stop" class="inline-form" method="post">
                   {% csrf_token %}
-                  <button class="button button-secondary" {% if node.status != "running" %}disabled{% endif %} type="submit">Stop container</button>
+                  <button class="button button-secondary" {% if node.status != "running" %}disabled{% endif %} type="submit">Stop workload</button>
                 </form>
-                <form action="/nodes/{{ node.id }}/delete-container" class="inline-form" method="post" onsubmit="return confirm('Delete the container for {{ node.display_name|escapejs }}?');">
+                <form action="/nodes/{{ node.id }}/delete-container" class="inline-form" method="post" onsubmit="return confirm('Stop the workload and clear the current pod for {{ node.display_name|escapejs }}?');">
                   {% csrf_token %}
-                  <button class="button button-secondary button-danger" type="submit">Delete container</button>
+                  <button class="button button-secondary button-danger" type="submit">Stop and clear pod</button>
                 </form>
-                <form action="/nodes/{{ node.id }}/delete-deployment" class="inline-form" method="post" onsubmit="return confirm('Delete the full deployment for {{ node.display_name|escapejs }}? This removes the container, runtime files, and admin record.');">
+                <form action="/nodes/{{ node.id }}/delete-deployment" class="inline-form" method="post" onsubmit="return confirm('Delete the full deployment for {{ node.display_name|escapejs }}? This removes the StatefulSet, services, PVC, and admin record.');">
                   {% csrf_token %}
                   <button class="button button-danger" type="submit">Delete deployment</button>
                 </form>
@@ -97,8 +97,8 @@
       <section class="dashboard-card managed-node-card">
         <div class="dashboard-card-header">
           <div>
-            <p class="section-eyebrow">Runtime Containers</p>
-            <h3>Containers currently visible to the launcher daemon</h3>
+            <p class="section-eyebrow">Runtime Pods</p>
+            <h3>Kubernetes pods currently visible to the launcher</h3>
           </div>
         </div>
       </section>
@@ -107,14 +107,14 @@
           <article class="dashboard-card managed-node-card">
             <div class="dashboard-card-header">
               <div>
-                <p class="section-eyebrow">Runtime Container</p>
+                <p class="section-eyebrow">Runtime Pod</p>
                 <h3>{{ container.managed_node_name|default:container.name }}</h3>
               </div>
               <span class="managed-node-status managed-node-status-{{ container.status }}">{{ container.docker_status|default:container.status }}</span>
             </div>
             <div class="managed-node-meta">
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Container Name</span><p>{{ container.name }}</p></div>
-              <div class="managed-node-meta-item"><span class="section-eyebrow">Container ID</span><p><code>{{ container.short_id }}</code></p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Pod Name</span><p>{{ container.name }}</p></div>
+              <div class="managed-node-meta-item"><span class="section-eyebrow">Pod UID</span><p><code>{{ container.short_id }}</code></p></div>
               <div class="managed-node-meta-item"><span class="section-eyebrow">Image</span><p><code>{{ container.image }}</code></p></div>
               <div class="managed-node-meta-item"><span class="section-eyebrow">Managed Record</span><p>{% if container.managed_node_id %}{{ container.managed_node_name }}{% else %}No managed node record{% endif %}</p></div>
               <div class="managed-node-meta-item"><span class="section-eyebrow">Created</span><p>{{ container.created|default:"Unavailable" }}</p></div>
@@ -127,28 +127,28 @@
               {% if container.managed_node_id %}
               <form action="/nodes/{{ container.managed_node_id }}/restart" class="inline-form" method="post">
                 {% csrf_token %}
-                <button class="button button-secondary" type="submit">Restart container</button>
+                <button class="button button-secondary" type="submit">Restart workload</button>
               </form>
               <form action="/nodes/{{ container.managed_node_id }}/stop" class="inline-form" method="post">
                 {% csrf_token %}
-                <button class="button button-secondary" {% if container.status != "running" %}disabled{% endif %} type="submit">Stop container</button>
+                <button class="button button-secondary" {% if container.status != "running" %}disabled{% endif %} type="submit">Stop workload</button>
               </form>
-              <form action="/nodes/{{ container.managed_node_id }}/delete-container" class="inline-form" method="post" onsubmit="return confirm('Delete the container for {{ container.managed_node_name|escapejs }}?');">
+              <form action="/nodes/{{ container.managed_node_id }}/delete-container" class="inline-form" method="post" onsubmit="return confirm('Stop the workload and clear the current pod for {{ container.managed_node_name|escapejs }}?');">
                 {% csrf_token %}
-                <button class="button button-secondary button-danger" type="submit">Delete container</button>
+                <button class="button button-secondary button-danger" type="submit">Stop and clear pod</button>
               </form>
-              <form action="/nodes/{{ container.managed_node_id }}/delete-deployment" class="inline-form" method="post" onsubmit="return confirm('Delete the full deployment for {{ container.managed_node_name|escapejs }}? This removes the container, runtime files, and admin record.');">
+              <form action="/nodes/{{ container.managed_node_id }}/delete-deployment" class="inline-form" method="post" onsubmit="return confirm('Delete the full deployment for {{ container.managed_node_name|escapejs }}? This removes the StatefulSet, services, PVC, and admin record.');">
                 {% csrf_token %}
                 <button class="button button-danger" type="submit">Delete deployment</button>
               </form>
               {% else %}
               <form action="/containers/runtime/{{ container.id }}/restart" class="inline-form" method="post">
                 {% csrf_token %}
-                <button class="button button-secondary" type="submit">Restart container</button>
+                <button class="button button-secondary" type="submit">Restart pod</button>
               </form>
-              <form action="/containers/runtime/{{ container.id }}/delete" class="inline-form" method="post" onsubmit="return confirm('Delete container {{ container.name|escapejs }}?');">
+              <form action="/containers/runtime/{{ container.id }}/delete" class="inline-form" method="post" onsubmit="return confirm('Delete pod {{ container.name|escapejs }}?');">
                 {% csrf_token %}
-                <button class="button button-danger" type="submit">Delete container</button>
+                <button class="button button-danger" type="submit">Delete pod</button>
               </form>
               {% endif %}
             </div>
@@ -158,7 +158,7 @@
           </article>
         {% empty %}
           <section class="dashboard-card managed-node-card managed-node-empty">
-            <p class="body-copy">No runtime containers are visible in the node launcher daemon.</p>
+            <p class="body-copy">No runtime pods are visible in the Kubernetes launcher.</p>
           </section>
         {% endfor %}
       </section>

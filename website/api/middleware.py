@@ -9,7 +9,7 @@ from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import redirect
 
 from .models import ManagedNode
-from .node_launcher import NodeLauncherError, refresh_node
+from .node_launcher import NodeLauncherError, refresh_node, upstream_rpc_url
 
 
 HOP_BY_HOP_HEADERS = {
@@ -131,7 +131,7 @@ class NodeSubdomainProxyMiddleware:
 
     def _build_upstream_url(self, node, request):
         path = request.get_full_path() or "/"
-        return f"http://127.0.0.1:{node.api_port}{path}"
+        return upstream_rpc_url(node, path)
 
     def _build_upstream_headers(self, request, node):
         headers = {

@@ -38,7 +38,6 @@ from .node_launcher import (
     delete_runtime_container,
     dashboard_subdomain_url,
     list_runtime_containers,
-    map_container_status,
     NodeLauncherError,
     dashboard_proxy_path,
     launch_node,
@@ -48,6 +47,7 @@ from .node_launcher import (
     restart_node,
     stop_node,
     tail_logs,
+    upstream_rpc_url,
 )
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -809,30 +809,6 @@ def _serialize_managed_node(node):
     }
 
 
-def _serialize_runtime_container(container, managed_node=None):
-    attrs = container.attrs or {}
-    state = attrs.get("State") or {}
-    labels = attrs.get("Config", {}).get("Labels") or {}
-    status = map_container_status(state.get("Status") or container.status or "")
-    ports = attrs.get("NetworkSettings", {}).get("Ports") or {}
-    return {
-        "id": container.id,
-        "short_id": container.short_id,
-        "name": container.name,
-        "image": attrs.get("Config", {}).get("Image") or "",
-        "status": status,
-        "docker_status": state.get("Status") or container.status or "",
-        "created": attrs.get("Created"),
-        "labels": labels,
-        "ports": ports,
-        "managed_node_id": managed_node.id if managed_node else None,
-        "managed_node_name": managed_node.display_name if managed_node else "",
-        "dashboard_url": dashboard_subdomain_url(managed_node) if managed_node else "",
-        "dashboard_proxy_url": dashboard_proxy_path(managed_node) if managed_node else "",
-        "last_error": state.get("Error") or "",
-    }
-
-
 def _next_managed_node_ports():
     aggregate = ManagedNode.objects.aggregate(
         max_api_port=Max("api_port"),
@@ -868,29 +844,19 @@ def _load_managed_nodes():
 
 
 def _load_runtime_containers():
-    managed_nodes = {node.id: node for node in _load_managed_nodes()}
-    containers = []
     try:
         runtime = list_runtime_containers()
     except NodeLauncherError:
         return []
-
-    for container in runtime:
-        labels = (container.labels or {})
-        managed_node = None
-        label_id = labels.get("kumquat.managed-node-id")
-        if label_id:
-            try:
-                managed_node = managed_nodes.get(int(label_id))
-            except ValueError:
-                managed_node = None
-        if managed_node is None:
-            managed_node = next(
-                (node for node in managed_nodes.values() if node.container_id == container.id or node.container_name == container.name),
-                None,
-            )
-        containers.append(_serialize_runtime_container(container, managed_node))
-    return sorted(containers, key=lambda item: (item["managed_node_name"] or item["name"]).lower())
+    managed_nodes = {node.id: node for node in _load_managed_nodes()}
+    for item in runtime:
+        node_id = item.get("managed_node_id")
+        managed_node = managed_nodes.get(node_id) if node_id else None
+        if managed_node is not None:
+            item["managed_node_name"] = managed_node.display_name
+            item["dashboard_url"] = dashboard_subdomain_url(managed_node)
+            item["dashboard_proxy_url"] = dashboard_proxy_path(managed_node)
+    return sorted(runtime, key=lambda item: (item["managed_node_name"] or item["name"]).lower())
 
 
 def index_view(_request):
@@ -2087,7 +2053,7 @@ def admin_node_delete_container_view(request, node_id):
         node = delete_container(node)
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
-        messages.success(request, f"Container for '{node.display_name}' deleted successfully.")
+        messages.success(request, f"Pod for '{node.display_name}' cleared successfully.")
         return HttpResponseRedirect("/containers")
     except NodeLauncherError as exc:
         if _is_json_request(request):
@@ -2136,7 +2102,7 @@ def admin_runtime_container_restart_view(request, container_id):
         return HttpResponseNotAllowed(["POST"])
     try:
         restart_runtime_container(container_id)
-        messages.success(request, f"Container '{container_id[:12]}' restarted successfully.")
+        messages.success(request, f"Pod '{container_id[:12]}' restarted successfully.")
     except NodeLauncherError as exc:
         messages.error(request, str(exc))
     return HttpResponseRedirect("/containers")
@@ -2151,7 +2117,7 @@ def admin_runtime_container_delete_view(request, container_id):
         return HttpResponseNotAllowed(["POST"])
     try:
         delete_runtime_container(container_id)
-        messages.success(request, f"Container '{container_id[:12]}' deleted successfully.")
+        messages.success(request, f"Pod '{container_id[:12]}' deleted successfully.")
     except NodeLauncherError as exc:
         messages.error(request, str(exc))
     return HttpResponseRedirect("/containers")
@@ -2198,7 +2164,7 @@ def admin_node_proxy_view(request, node_id, subpath=""):
     if request.GET:
         target_path = f"{target_path}?{request.META.get('QUERY_STRING', '')}"
 
-    upstream_url = f"http://127.0.0.1:{node.api_port}{target_path}"
+    upstream_url = upstream_rpc_url(node, target_path)
 
     try:
         with urlopen(
