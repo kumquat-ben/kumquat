@@ -312,6 +312,7 @@ impl SyncService {
             let running = self.running.clone();
             let event_bus = self.event_bus.clone();
             let reputation = self.reputation.clone();
+            let broadcaster = self.broadcaster.clone();
 
             tokio::spawn(async move {
                 info!("Starting block response handler");
@@ -343,6 +344,49 @@ impl SyncService {
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
+                                    let awaiting_latest_height =
+                                        state.target_height == state.current_height
+                                            && state.blocks_synced == 0;
+
+                                    if awaiting_latest_height && block.height > state.current_height {
+                                        let start_height = state.current_height + 1;
+                                        let end_height = block.height;
+                                        match broadcaster
+                                            .send_to_peer(
+                                                &peer_id,
+                                                NetMessage::RequestBlockRange {
+                                                    start_height,
+                                                    end_height,
+                                                },
+                                            )
+                                            .await
+                                        {
+                                            Ok(true) => {
+                                                info!(
+                                                    "Requested blocks {}..{} from peer {} after latest-height discovery",
+                                                    start_height, end_height, peer_id
+                                                );
+                                                state.target_height = end_height;
+                                                state.sync_peer = Some(peer_id.clone());
+                                            }
+                                            Ok(false) => {
+                                                warn!(
+                                                    "Peer {} did not accept follow-up block range request {}..{}",
+                                                    peer_id, start_height, end_height
+                                                );
+                                                state.in_progress = false;
+                                            }
+                                            Err(err) => {
+                                                warn!(
+                                                    "Failed to request block range {}..{} from peer {}: {}",
+                                                    start_height, end_height, peer_id, err
+                                                );
+                                                state.in_progress = false;
+                                            }
+                                        }
+                                        continue;
+                                    }
+
                                     state.current_height = block.height;
                                     if block.height > state.target_height {
                                         state.target_height = block.height;

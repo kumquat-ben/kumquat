@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::Duration;
 
 use kumquat::api;
 use kumquat::config::Config;
@@ -13,15 +13,12 @@ use kumquat::consensus::start_consensus;
 use kumquat::init_logger;
 use kumquat::mempool::Mempool;
 use kumquat::network::NetworkConfig;
-use kumquat::network::{start_enhanced_network, EnhancedNetworkHandle};
+use kumquat::network::start_enhanced_network;
 use kumquat::node_runtime::NodeRuntime;
 use kumquat::storage::state::AccountState;
 use kumquat::storage::Block;
 use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore};
 use kumquat::tools::genesis::generate_genesis;
-
-const NETWORK_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(15);
-const NETWORK_BOOTSTRAP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 fn parse_bootstrap_target(spec: &str) -> Option<(String, u16)> {
     let spec = spec.trim();
@@ -350,69 +347,6 @@ fn ensure_tip_state_root_consistency(
     ));
 }
 
-async fn attempt_network_bootstrap(
-    network: &EnhancedNetworkHandle,
-    block_store: &BlockStore<'static>,
-) -> bool {
-    let Some(sync_service) = &network.sync_service else {
-        info!("Sync service is unavailable; falling back to local genesis initialization.");
-        return false;
-    };
-
-    info!(
-        "Attempting network bootstrap before local genesis initialization (timeout: {:?}).",
-        NETWORK_BOOTSTRAP_TIMEOUT
-    );
-
-    let deadline = Instant::now() + NETWORK_BOOTSTRAP_TIMEOUT;
-    let mut discovered_peers = false;
-    let mut observed_sync_attempt = false;
-
-    while Instant::now() < deadline {
-        if block_store.get_block_by_height(0).ok().flatten().is_some() {
-            info!("Received chain root from the network during bootstrap.");
-            return true;
-        }
-
-        let connected_peers = network.service.peer_manager().connected_peer_count().await;
-        if connected_peers > 0 {
-            discovered_peers = true;
-        }
-
-        let sync_state = sync_service.get_sync_state().await;
-        if sync_state.in_progress
-            || sync_state.target_height > 0
-            || sync_state.blocks_synced > 0
-            || sync_state.sync_peer.is_some()
-        {
-            observed_sync_attempt = true;
-        }
-
-        if discovered_peers && observed_sync_attempt {
-            info!(
-                "Bootstrap peers discovered and sync path observed (peer: {:?}); waiting for chain root.",
-                sync_state.sync_peer
-            );
-        }
-
-        sleep(NETWORK_BOOTSTRAP_POLL_INTERVAL).await;
-    }
-
-    if discovered_peers {
-        warn!(
-            "Connected to bootstrap peers but did not receive a chain root within {:?}; falling back to local genesis.",
-            NETWORK_BOOTSTRAP_TIMEOUT
-        );
-    } else {
-        info!(
-            "No usable bootstrap peers discovered within {:?}; falling back to local genesis.",
-            NETWORK_BOOTSTRAP_TIMEOUT
-        );
-    }
-
-    false
-}
-
 #[derive(Debug, StructOpt)]
 #[structopt(name = "kumquat", about = "Kumquat blockchain node")]
 struct Opt {
@@ -496,7 +430,6 @@ async fn main() {
                 config.consensus.target_block_time = 5;
                 config.consensus.initial_difficulty = 100;
                 config.consensus.enable_mining = true;
-                config.network.bootstrap_nodes = vec![];
             }
             "testnet" => {
                 config.consensus.chain_id = 2;
@@ -722,6 +655,17 @@ async fn main() {
     .await;
 
     info!("Initializing network...");
+    let resolved_seed_peers = config
+        .network
+        .bootstrap_nodes
+        .iter()
+        .filter_map(|addr| resolve_bootstrap_addr(addr))
+        .collect::<Vec<_>>();
+    info!(
+        "Configured {} bootstrap node specs; resolved {} at startup.",
+        config.network.bootstrap_nodes.len(),
+        resolved_seed_peers.len()
+    );
     let network_config = NetworkConfig {
         bind_addr: format!(
             "{}:{}",
@@ -729,15 +673,13 @@ async fn main() {
         )
         .parse()
         .unwrap(),
-        seed_peers: config
-            .network
-            .bootstrap_nodes
-            .iter()
-            .filter_map(|addr| resolve_bootstrap_addr(addr))
-            .collect(),
+        seed_peers: resolved_seed_peers,
+        seed_peer_specs: config.network.bootstrap_nodes.clone(),
         max_outbound: config.network.max_peers / 2,
         max_inbound: config.network.max_peers,
         node_id: config.node.node_name.clone(),
+        connection_timeout: Duration::from_secs(config.network.connection_timeout),
+        bootstrap_retry_interval: Duration::from_secs(config.network.discovery_interval.max(1)),
     };
 
     // Create a mempool

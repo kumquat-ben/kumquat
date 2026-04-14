@@ -2,7 +2,6 @@ use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Duration};
 
@@ -10,9 +9,11 @@ use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::handler::PeerHandler;
 use crate::network::peer::registry::PeerRegistry;
 use crate::network::peer::state::{ConnectionState, PeerInfo};
+use crate::network::service::dialer;
 use crate::network::service::router::MessageRouter;
 use crate::network::types::message::NetMessage;
 use crate::network::types::node_info::NodeInfo;
+use tokio::net::TcpStream;
 
 /// Manager for peer connections
 pub struct PeerManager {
@@ -40,6 +41,9 @@ pub struct PeerManager {
     /// Maximum number of inbound connections
     max_inbound: usize,
 
+    /// Timeout for outbound connection attempts in seconds.
+    connection_timeout_secs: u64,
+
     /// Shared peer registry for the running network
     peer_registry: Arc<PeerRegistry>,
 
@@ -58,6 +62,7 @@ impl Clone for PeerManager {
             incoming_tx: self.incoming_tx.clone(),
             max_outbound: self.max_outbound,
             max_inbound: self.max_inbound,
+            connection_timeout_secs: self.connection_timeout_secs,
             peer_registry: self.peer_registry.clone(),
             broadcaster: self.broadcaster.clone(),
         }
@@ -72,6 +77,7 @@ impl PeerManager {
         incoming_tx: mpsc::Sender<(String, NetMessage)>,
         max_outbound: usize,
         max_inbound: usize,
+        connection_timeout: Duration,
         peer_registry: Arc<PeerRegistry>,
         broadcaster: Arc<PeerBroadcaster>,
     ) -> Self {
@@ -84,6 +90,7 @@ impl PeerManager {
             incoming_tx,
             max_outbound,
             max_inbound,
+            connection_timeout_secs: connection_timeout.as_secs().max(1),
             peer_registry,
             broadcaster,
         }
@@ -182,31 +189,51 @@ impl PeerManager {
 
     /// Connect to a peer
     pub async fn connect_to_peer(&self, addr: SocketAddr) {
-        // Add the peer
-        if !self.add_peer(addr, true).await {
-            return;
-        }
+        debug!("Attempting outbound connection to peer {}", addr);
 
-        // Update the peer state and get a clone
-        {
-            let mut peers = self.peers.write().await;
-            if let Some(peer_info) = peers.get_mut(&addr) {
-                // Create a mutable PeerInfo to update
-                let mut peer_info_mut = (**peer_info).clone();
-                peer_info_mut.update_state(ConnectionState::Connecting);
-                // Replace the Arc with a new one containing the updated PeerInfo
-                *peer_info = Arc::new(peer_info_mut);
-            }
-        }
-
-        // Get the peer info
         let peer_info = {
-            let peers = self.peers.read().await;
-            peers.get(&addr).unwrap().clone()
+            let mut peers = self.peers.write().await;
+
+            if let Some(existing) = peers.get(&addr) {
+                match existing.state {
+                    ConnectionState::Connecting | ConnectionState::Connected | ConnectionState::Ready => {
+                        debug!(
+                            "Skipping outbound connect to peer {} because state is {:?}",
+                            addr, existing.state
+                        );
+                        return;
+                    }
+                    ConnectionState::Banned => {
+                        warn!("Skipping outbound connect to banned peer {}", addr);
+                        return;
+                    }
+                    ConnectionState::Disconnected | ConnectionState::Failed => {}
+                }
+            } else {
+                let outbound_count = peers
+                    .values()
+                    .filter(|p| p.is_outbound && p.is_active())
+                    .count();
+
+                if outbound_count >= self.max_outbound {
+                    warn!(
+                        "Maximum outbound connections reached ({}); cannot dial {}",
+                        self.max_outbound, addr
+                    );
+                    return;
+                }
+
+                peers.insert(addr, Arc::new(PeerInfo::new_outbound(addr)));
+            }
+
+            let peer_info = peers.get_mut(&addr).expect("peer entry must exist");
+            let mut peer_info_mut = (**peer_info).clone();
+            peer_info_mut.update_state(ConnectionState::Connecting);
+            *peer_info = Arc::new(peer_info_mut);
+            peers.get(&addr).expect("peer entry must exist").clone()
         };
 
-        // Connect to the peer
-        match TcpStream::connect(addr).await {
+        match dialer::connect_to_peer(addr, self.connection_timeout_secs).await {
             Ok(stream) => {
                 info!("Connected to peer {}", addr);
 
@@ -357,6 +384,7 @@ mod tests {
     use crate::network::peer::broadcaster::PeerBroadcaster;
     use crate::network::peer::registry::PeerRegistry;
     use crate::network::service::router::MessageRouter;
+    use tokio::net::TcpListener;
 
     #[tokio::test]
     async fn test_peer_manager() {
@@ -382,6 +410,7 @@ mod tests {
             incoming_tx,
             8,
             32,
+            Duration::from_secs(10),
             peer_registry,
             broadcaster,
         );
@@ -399,5 +428,67 @@ mod tests {
         // Check connected peers
         let connected = peer_manager.connected_peers().await;
         assert_eq!(connected.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_reconnects_failed_peer() {
+        let router = Arc::new(MessageRouter::new());
+        let (incoming_tx, _incoming_rx) = mpsc::channel(100);
+        let local_node_info = NodeInfo::new(
+            "1.0.0".to_string(),
+            "local-node".to_string(),
+            "127.0.0.1:8000".parse().unwrap(),
+        );
+
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
+        let peer_manager = PeerManager::new(
+            local_node_info,
+            router,
+            incoming_tx,
+            8,
+            32,
+            Duration::from_secs(1),
+            peer_registry,
+            broadcaster,
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        peer_manager.connect_to_peer(addr).await;
+        {
+            let peers = peer_manager.peers.read().await;
+            let state = peers.get(&addr).unwrap().state;
+            assert_eq!(state, ConnectionState::Failed);
+        }
+
+        let listener = TcpListener::bind(addr).await.unwrap();
+        tokio::spawn(async move {
+            let _ = listener.accept().await;
+        });
+
+        {
+            let mut peers = peer_manager.peers.write().await;
+            let peer_info = peers.get_mut(&addr).unwrap();
+            let mut peer_info_mut = (**peer_info).clone();
+            peer_info_mut.retry_at = Some(std::time::Instant::now());
+            *peer_info = Arc::new(peer_info_mut);
+        }
+
+        peer_manager.check_reconnects().await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        {
+            let peers = peer_manager.peers.read().await;
+            let state = peers.get(&addr).unwrap().state;
+            assert!(
+                matches!(state, ConnectionState::Connecting | ConnectionState::Connected | ConnectionState::Ready),
+                "expected reconnect attempt to advance peer state, got {:?}",
+                state
+            );
+        }
     }
 }

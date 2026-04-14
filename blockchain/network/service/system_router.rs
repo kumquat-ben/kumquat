@@ -225,7 +225,12 @@ impl SystemRouter {
                         // Process the request in a separate task to avoid lifetime issues
                         tokio::task::spawn(async move {
                             // Get the block from the store
-                            let block_result = block_store_clone.get_block_by_height(height);
+                            let block_result = if height == u64::MAX {
+                                let latest_height = block_store_clone.get_latest_height().unwrap_or(0);
+                                block_store_clone.get_block_by_height(latest_height)
+                            } else {
+                                block_store_clone.get_block_by_height(height)
+                            };
 
                             // Send the response
                             if let Some(ref _broadcaster) = broadcaster_clone {

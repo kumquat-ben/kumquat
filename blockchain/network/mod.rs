@@ -19,6 +19,7 @@ use crate::network::handlers::message_handler::HandlerRegistry;
 use log::error;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 
 use crate::network::service::advanced_router::AdvancedMessageRouter;
@@ -41,6 +42,9 @@ pub struct NetworkConfig {
     /// List of seed peers to connect to
     pub seed_peers: Vec<SocketAddr>,
 
+    /// Raw bootstrap peer specs that should be re-resolved and retried.
+    pub seed_peer_specs: Vec<String>,
+
     /// Maximum number of outbound connections
     pub max_outbound: usize,
 
@@ -49,6 +53,12 @@ pub struct NetworkConfig {
 
     /// Node ID (derived from public key)
     pub node_id: String,
+
+    /// Timeout for outbound connection attempts.
+    pub connection_timeout: Duration,
+
+    /// Interval between bootstrap discovery and reconnect attempts.
+    pub bootstrap_retry_interval: Duration,
 }
 
 impl Default for NetworkConfig {
@@ -56,9 +66,12 @@ impl Default for NetworkConfig {
         Self {
             bind_addr: "127.0.0.1:8765".parse().unwrap(),
             seed_peers: vec![],
+            seed_peer_specs: vec![],
             max_outbound: 8,
             max_inbound: 32,
             node_id: "unknown".to_string(),
+            connection_timeout: Duration::from_secs(10),
+            bootstrap_retry_interval: Duration::from_secs(30),
         }
     }
 }
@@ -203,6 +216,35 @@ pub async fn start_enhanced_network(
         .with_reputation(reputation.clone());
 
         // Create sync service
+        let mut response_block_rx = service_arc.router().create_channel("response_block").await;
+        let mut response_block_range_rx = service_arc
+            .router()
+            .create_channel("response_block_range")
+            .await;
+
+        let (block_tx, block_rx) = mpsc::channel(100);
+        let (block_range_tx, block_range_rx) = mpsc::channel(100);
+
+        tokio::spawn(async move {
+            while let Some((peer_id, message)) = response_block_rx.recv().await {
+                if let NetMessage::ResponseBlock(Some(block)) = message {
+                    if block_tx.send((block, peer_id)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            while let Some((peer_id, message)) = response_block_range_rx.recv().await {
+                if let NetMessage::ResponseBlockRange(blocks) = message {
+                    if block_range_tx.send((blocks, peer_id)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+
         let sync_service = Arc::new(
             sync::sync_service::SyncService::new(
                 block_store_clone.clone(),
@@ -212,7 +254,9 @@ pub async fn start_enhanced_network(
             .with_consensus_opt(consensus.clone())
             .with_advanced_registry(advanced_registry.clone())
             .with_event_bus(event_bus.clone())
-            .with_reputation(reputation.clone()),
+            .with_reputation(reputation.clone())
+            .with_block_channel(block_rx)
+            .with_block_range_channel(block_range_rx),
         );
         sync_service_handle = Some(sync_service.clone());
 

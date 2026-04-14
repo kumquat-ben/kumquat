@@ -7,8 +7,11 @@ pub mod router;
 pub mod system_router;
 
 use log::{debug, error};
+use std::collections::HashSet;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::interval;
 
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::manager::PeerManager;
@@ -55,6 +58,89 @@ impl Clone for NetworkService {
 }
 
 impl NetworkService {
+    fn parse_bootstrap_target(spec: &str) -> Option<(String, u16)> {
+        let spec = spec.trim();
+        if spec.is_empty() {
+            return None;
+        }
+
+        if let Ok(addr) = spec.parse::<SocketAddr>() {
+            return Some((addr.ip().to_string(), addr.port()));
+        }
+
+        let segments = spec
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .collect::<Vec<_>>();
+        if segments.len() >= 4
+            && matches!(segments[0], "dns" | "dns4" | "dns6" | "ip4" | "ip6")
+            && segments[2] == "tcp"
+        {
+            if let Ok(port) = segments[3].parse::<u16>() {
+                return Some((segments[1].to_string(), port));
+            }
+        }
+
+        if let Some((host, port_text)) = spec.rsplit_once(':') {
+            if let Ok(port) = port_text.parse::<u16>() {
+                return Some((host.to_string(), port));
+            }
+        }
+
+        None
+    }
+
+    fn resolve_bootstrap_spec(spec: &str) -> Vec<SocketAddr> {
+        let (host, port) = match Self::parse_bootstrap_target(spec) {
+            Some(target) => target,
+            None => {
+                error!("Ignoring unsupported bootstrap node format: {}", spec);
+                return Vec::new();
+            }
+        };
+
+        match (host.as_str(), port).to_socket_addrs() {
+            Ok(addresses) => {
+                let resolved = addresses.collect::<Vec<_>>();
+                if resolved.is_empty() {
+                    error!("Bootstrap node resolved to no socket addresses: {}", spec);
+                }
+                resolved
+            }
+            Err(err) => {
+                error!("Failed to resolve bootstrap node {}: {}", spec, err);
+                Vec::new()
+            }
+        }
+    }
+
+    async fn bootstrap_once(&self) {
+        let mut attempted = HashSet::new();
+
+        for &addr in &self.config.seed_peers {
+            if attempted.insert(addr) {
+                self.peer_manager.connect_to_peer(addr).await;
+            }
+        }
+
+        for spec in &self.config.seed_peer_specs {
+            for addr in Self::resolve_bootstrap_spec(spec) {
+                if attempted.insert(addr) {
+                    self.peer_manager.connect_to_peer(addr).await;
+                }
+            }
+        }
+    }
+
+    async fn bootstrap_loop(self: Arc<Self>) {
+        let mut ticker = interval(self.config.bootstrap_retry_interval);
+
+        loop {
+            ticker.tick().await;
+            self.bootstrap_once().await;
+        }
+    }
+
     /// Create a new network service
     pub fn new(config: NetworkConfig, message_rx: mpsc::Receiver<NetMessage>) -> Self {
         let peer_registry = Arc::new(PeerRegistry::new());
@@ -89,6 +175,7 @@ impl NetworkService {
             incoming_tx.clone(),
             config.max_outbound,
             config.max_inbound,
+            config.connection_timeout,
             peer_registry,
             broadcaster,
         );
@@ -118,10 +205,17 @@ impl NetworkService {
             }
         });
 
-        // Connect to seed peers
-        for &addr in &self.config.seed_peers {
-            self.peer_manager.connect_to_peer(addr).await;
-        }
+        debug!(
+            "Starting bootstrap with {} pre-resolved peers and {} configured specs",
+            self.config.seed_peers.len(),
+            self.config.seed_peer_specs.len()
+        );
+        self.bootstrap_once().await;
+
+        let bootstrap_service = Arc::new(self.clone());
+        tokio::spawn(async move {
+            bootstrap_service.bootstrap_loop().await;
+        });
 
         // Process messages
         self.process_messages().await;
@@ -172,7 +266,7 @@ impl NetworkService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::SocketAddr;
+    use std::time::Duration;
 
     #[tokio::test]
     async fn test_network_service_creation() {
@@ -180,13 +274,16 @@ mod tests {
         let config = NetworkConfig {
             bind_addr: "127.0.0.1:8000".parse().unwrap(),
             seed_peers: vec!["127.0.0.1:8001".parse().unwrap()],
+            seed_peer_specs: vec!["127.0.0.1:8001".to_string()],
             max_outbound: 8,
             max_inbound: 32,
             node_id: "test-node".to_string(),
+            connection_timeout: Duration::from_secs(10),
+            bootstrap_retry_interval: Duration::from_secs(30),
         };
 
         // Create a message channel
-        let (message_tx, message_rx) = mpsc::channel(100);
+        let (_message_tx, message_rx) = mpsc::channel(100);
 
         // Create the network service
         let service = NetworkService::new(config, message_rx);

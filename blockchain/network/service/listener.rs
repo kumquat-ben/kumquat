@@ -71,6 +71,7 @@ mod tests {
             incoming_tx,
             8,
             32,
+            Duration::from_secs(10),
             peer_registry,
             broadcaster,
         );
