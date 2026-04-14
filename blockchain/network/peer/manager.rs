@@ -329,16 +329,31 @@ impl PeerManager {
 
     /// Get the number of connected peers
     pub async fn connected_peer_count(&self) -> usize {
-        self.peer_registry.active_peer_count()
+        self.connected_peers().await.len()
     }
 
     /// Get a list of connected peer addresses
     pub async fn connected_peers(&self) -> Vec<SocketAddr> {
-        self.peer_registry
-            .get_active_peers()
+        let mut connected = self
+            .broadcaster
+            .peer_ids()
+            .await
             .into_iter()
-            .map(|peer| peer.addr)
-            .collect()
+            .filter_map(|peer_id| self.peer_registry.get_peer_addr(&peer_id))
+            .collect::<Vec<_>>();
+
+        if connected.is_empty() {
+            connected = self
+                .peer_registry
+                .get_active_peers()
+                .into_iter()
+                .map(|peer| peer.addr)
+                .collect();
+        }
+
+        connected.sort();
+        connected.dedup();
+        connected
     }
 
     /// Start the peer manager background tasks
@@ -488,5 +503,41 @@ mod tests {
                 state
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_connected_peers_includes_live_broadcaster_sessions() {
+        let router = Arc::new(MessageRouter::new());
+        let (incoming_tx, _incoming_rx) = mpsc::channel(100);
+        let local_node_info = NodeInfo::new(
+            "1.0.0".to_string(),
+            "local-node".to_string(),
+            "127.0.0.1:8000".parse().unwrap(),
+        );
+
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
+        let peer_manager = PeerManager::new(
+            local_node_info,
+            router,
+            incoming_tx,
+            8,
+            32,
+            Duration::from_secs(1),
+            peer_registry.clone(),
+            broadcaster.clone(),
+        );
+
+        let addr = "127.0.0.1:8001".parse().unwrap();
+        let peer_id = format!("peer-{}", addr);
+        let (tx, _rx) = mpsc::channel(10);
+
+        assert!(peer_registry.register_peer(&peer_id, addr, true));
+        assert!(peer_registry.update_peer_state(&peer_id, ConnectionState::Connected));
+        broadcaster.register_peer(&peer_id, tx).await;
+
+        let connected = peer_manager.connected_peers().await;
+        assert_eq!(connected, vec![addr]);
+        assert_eq!(peer_manager.connected_peer_count().await, 1);
     }
 }
