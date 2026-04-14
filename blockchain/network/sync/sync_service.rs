@@ -98,7 +98,7 @@ impl Default for SyncConfig {
             max_blocks_per_request: 100,
             request_timeout: Duration::from_secs(30),
             max_retries: 3,
-            sync_interval: Duration::from_secs(60),
+            sync_interval: Duration::from_secs(10),
             auto_sync: true,
         }
     }
@@ -550,11 +550,15 @@ impl SyncService {
 
         // Find the best peer to sync from
         let sync_peer = if let Some(registry) = &advanced_registry {
-            // Use the advanced registry to find the best sync peer
+            // Prefer the advanced registry when it actually knows about peers,
+            // otherwise fall back to the basic shared registry used by the
+            // live peer handlers.
             let best_peers = registry.get_best_sync_peers(1);
-            best_peers.first().cloned()
+            best_peers.first().cloned().or_else(|| {
+                let active_peers = peer_registry.get_active_peers();
+                active_peers.first().map(|p| p.node_id.clone())
+            })
         } else {
-            // Use the basic registry to find an active peer
             let active_peers = peer_registry.get_active_peers();
             active_peers.first().map(|p| p.node_id.clone())
         };
@@ -641,11 +645,12 @@ impl SyncService {
 
         // Find the best peer to sync from
         let sync_peer = if let Some(registry) = &self.advanced_registry {
-            // Use the advanced registry to find the best sync peer
             let best_peers = registry.get_best_sync_peers(1);
-            best_peers.first().cloned()
+            best_peers.first().cloned().or_else(|| {
+                let active_peers = self.peer_registry.get_active_peers();
+                active_peers.first().map(|p| p.node_id.clone())
+            })
         } else {
-            // Use the basic registry to find an active peer
             let active_peers = self.peer_registry.get_active_peers();
             active_peers.first().map(|p| p.node_id.clone())
         };

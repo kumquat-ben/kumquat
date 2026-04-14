@@ -16,8 +16,11 @@ use crate::network::types::node_info::NodeInfo;
 /// Timeout for handshake in seconds
 const HANDSHAKE_TIMEOUT: u64 = 10;
 
-/// Timeout for idle connections in seconds
-const IDLE_TIMEOUT: u64 = 60;
+/// Timeout for idle connections in seconds.
+///
+/// Sync retries run on a periodic timer, so the connection needs to stay alive
+/// long enough for a post-handshake sync attempt to use it.
+const IDLE_TIMEOUT: u64 = 300;
 
 /// Timeout for message responses in seconds
 const MESSAGE_TIMEOUT: u64 = 30;

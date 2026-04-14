@@ -329,17 +329,15 @@ impl PeerManager {
 
     /// Get the number of connected peers
     pub async fn connected_peer_count(&self) -> usize {
-        let peers = self.peers.read().await;
-        peers.values().filter(|p| p.is_active()).count()
+        self.peer_registry.active_peer_count()
     }
 
     /// Get a list of connected peer addresses
     pub async fn connected_peers(&self) -> Vec<SocketAddr> {
-        let peers = self.peers.read().await;
-        peers
-            .iter()
-            .filter(|(_, p)| p.is_active())
-            .map(|(addr, _)| *addr)
+        self.peer_registry
+            .get_active_peers()
+            .into_iter()
+            .map(|peer| peer.addr)
             .collect()
     }
 
