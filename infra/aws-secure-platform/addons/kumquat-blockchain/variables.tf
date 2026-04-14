@@ -91,7 +91,7 @@ variable "dht_bootstrap_nodes" {
 
 variable "enable_mining" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "mining_threads" {

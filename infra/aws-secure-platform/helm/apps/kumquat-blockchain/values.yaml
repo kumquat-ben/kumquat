@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
-  tag: blockchain-20260414-063351-7dfa961
+  tag: blockchain-20260414-183619-22d2b86
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -38,7 +38,7 @@ config:
   enableNatPmp: false
   enableDht: true
   chainId: 1337
-  enableMining: false
+  enableMining: true
   miningThreads: 1
   targetBlockTime: 5
   initialDifficulty: 100

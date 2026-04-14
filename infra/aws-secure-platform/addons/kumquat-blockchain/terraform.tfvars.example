@@ -1,6 +1,6 @@
 kubeconfig_path  = "/path/to/kubeconfig"
 image_repository = "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain"
-image_tag        = "blockchain-20260409-1"
+image_tag        = "blockchain-20260414-183619-22d2b86"
 replica_count    = 1
 network_name     = "dev"
 create_storage_class = true
