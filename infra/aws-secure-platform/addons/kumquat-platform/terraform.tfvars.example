@@ -1,7 +1,7 @@
 aws_region               = "us-west-2"
 kubeconfig_path          = "/path/to/kubeconfig"
 backend_image_repository = "351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend"
-backend_image_tag        = "backend-20260413-212844-k8snode-r1"
+backend_image_tag        = "backend-20260413-213327-44b88f4"
 mysql_backup_image_repository = "351381968847.dkr.ecr.us-west-2.amazonaws.com/mysql-backup"
 mysql_backup_image_tag        = "mysql-backup-20260409-1"
 backend_secret_key       = "replace-me"
