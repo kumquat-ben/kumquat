@@ -33,7 +33,7 @@ class NodeLauncherGenesisTests(SimpleTestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 self.assertEqual(render_genesis(self._node()), genesis_text)
@@ -45,12 +45,12 @@ class NodeLauncherGenesisTests(SimpleTestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(self._node())
 
-            self.assertIn('genesis_hash = "49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f"', config_text)
+            self.assertIn('genesis_hash = "1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95"', config_text)
             self.assertIn("chain_id = 1337", config_text)
 
     def test_render_config_rejects_chain_id_mismatch(self):
@@ -60,7 +60,7 @@ class NodeLauncherGenesisTests(SimpleTestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 with self.assertRaisesMessage(NodeLauncherError, "launcher is pinned to shared chain_id=1337"):
@@ -105,7 +105,7 @@ class NodeLauncherBootstrapTests(TestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(follower)
@@ -135,7 +135,7 @@ class NodeLauncherBootstrapTests(TestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
                 NODE_LAUNCHER_GENESIS_SEED_HOST="genesis.node.kumquat.info",
                 NODE_LAUNCHER_GENESIS_SEED_PORT=30333,
@@ -156,7 +156,7 @@ class NodeLauncherBootstrapTests(TestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
                 NODE_LAUNCHER_GENESIS_SEED_SERVICE_NAME="kumquat-blockchain-headless",
                 NODE_LAUNCHER_GENESIS_SEED_PORT=30333,
@@ -181,7 +181,7 @@ class NodeLauncherBootstrapTests(TestCase):
 
             with override_settings(
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(genesis)
