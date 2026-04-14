@@ -153,15 +153,31 @@ impl<'a> TransactionValidator<'a> {
             }
         }
 
-        tx.transfer_token_ids
+        let transfer_tokens_owned = tx
+            .transfer_token_ids
             .iter()
-            .all(|token_id| sender_state.owns_token(token_id))
+            .all(|token_id| sender_state.owns_token(token_id));
+        if !transfer_tokens_owned {
+            return false;
+        }
+
+        let payment_total = tx
+            .transfer_token_ids
+            .iter()
+            .filter_map(|token_id| sender_state.token_value(token_id))
+            .sum::<u64>();
+        let fee_total = tx
+            .fee_token_id
+            .and_then(|token_id| sender_state.token_value(&token_id))
+            .unwrap_or(0);
+
+        payment_total == tx.value && sender_state.total_token_value() >= payment_total + fee_total
     }
 
     /// Check if the transaction nonce is valid
-    fn check_nonce(&self, _tx: &TransactionRecord, sender_address: &[u8; 32]) -> bool {
+    fn check_nonce(&self, tx: &TransactionRecord, sender_address: &[u8; 32]) -> bool {
         // Get the sender's account state
-        let _sender_state = match self.state_store.get_account_state(sender_address) {
+        let sender_state = match self.state_store.get_account_state(sender_address) {
             Some(state) => state,
             None => {
                 // If the account doesn't exist, only nonce 0 is valid
@@ -169,10 +185,7 @@ impl<'a> TransactionValidator<'a> {
             }
         };
 
-        // In a real implementation, we would check that the transaction nonce
-        // matches the sender's current nonce
-        // For now, we'll just return true
-        true
+        tx.nonce == sender_state.nonce
     }
 }
 

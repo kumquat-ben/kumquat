@@ -3,6 +3,7 @@ use log::{debug, error, info, warn};
 use std::collections::HashMap;
 
 use crate::storage::block_store::{Block, Hash};
+use crate::executor::{execute_transaction_batch, ExecutionRejection, ExecutionStatus};
 use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
@@ -338,15 +339,22 @@ impl<'a> StateStore<'a> {
         }
     }
 
-    /// Update account balance
-    pub fn update_balance(&self, address: &Hash, new_balance: u64) -> Result<(), StateStoreError> {
+    /// Compatibility-only balance reset helper.
+    ///
+    /// This rebuilds an account's token inventory from an aggregate balance and must not be used
+    /// by token execution paths.
+    pub fn update_balance_compat(
+        &self,
+        address: &Hash,
+        new_balance: u64,
+    ) -> Result<(), StateStoreError> {
         let addr_str = hex::encode(address);
 
         if let Some(mut state) = self.get_account_state(address) {
             state.balance = new_balance;
             state.last_updated = self.get_current_block_height().unwrap_or(0);
             state
-                .remint_tokens_from_balance(
+                .rebuild_tokens_from_balance_compat(
                     *address,
                     state.last_updated,
                     crate::storage::TokenMintSource::TransferChange,
@@ -376,10 +384,19 @@ impl<'a> StateStore<'a> {
             .get_account_state(from)
             .ok_or_else(|| StateStoreError::AccountNotFound(from_str.clone()))?;
 
-        // Check balance
-        if sender.balance < amount {
-            return Err(StateStoreError::InsufficientBalance(amount, sender.balance));
+        if sender.total_token_value() < amount {
+            return Err(StateStoreError::InsufficientBalance(
+                amount,
+                sender.total_token_value(),
+            ));
         }
+
+        let transfer_token_ids = sender.token_ids_for_amount(amount).ok_or_else(|| {
+            StateStoreError::Other(format!(
+                "sender does not own an exact token set for {} cents",
+                amount
+            ))
+        })?;
 
         // Get recipient account
         let mut recipient = self.get_account_state(to).unwrap_or_else(|| {
@@ -387,25 +404,15 @@ impl<'a> StateStore<'a> {
             AccountState::new_user(0, block_height)
         });
 
-        // Update balances
-        sender.balance -= amount;
-        recipient.balance += amount;
+        let moved_tokens = sender
+            .remove_tokens_by_id(&transfer_token_ids)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
         sender.last_updated = block_height;
         recipient.last_updated = block_height;
-        sender
-            .remint_tokens_from_balance(
-                *from,
-                block_height,
-                crate::storage::TokenMintSource::TransferChange,
-            )
-            .map_err(|e| StateStoreError::Other(e.to_string()))?;
-        recipient
-            .remint_tokens_from_balance(
-                *to,
-                block_height,
-                crate::storage::TokenMintSource::TransferChange,
-            )
-            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+        sender.assign_token_owner(*from);
+        sender.sync_balance_from_tokens();
+        recipient.deposit_tokens(*to, moved_tokens);
 
         // Create a batch operation
         let mut batch = WriteBatchOperation::new();
@@ -845,124 +852,9 @@ impl<'a> StateStore<'a> {
         miner: &Hash,
         block_hash: Option<&Hash>,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
-        let mut modified_accounts: HashMap<Hash, AccountState> = HashMap::new();
-
-        for tx in transactions {
-            let fee_token_id = tx.fee_token_id.ok_or_else(|| {
-                StateStoreError::Other(format!(
-                    "transaction {} missing fee token",
-                    hex::encode(tx.tx_id)
-                ))
-            })?;
-
-            if tx.transfer_token_ids.is_empty() {
-                return Err(StateStoreError::Other(format!(
-                    "transaction {} has no transfer tokens",
-                    hex::encode(tx.tx_id)
-                )));
-            }
-
-            if tx
-                .transfer_token_ids
-                .iter()
-                .any(|token_id| *token_id == fee_token_id)
-            {
-                return Err(StateStoreError::Other(format!(
-                    "transaction {} reuses fee token as payment token",
-                    hex::encode(tx.tx_id)
-                )));
-            }
-
-            let mut sender = modified_accounts
-                .get(&tx.sender)
-                .cloned()
-                .or_else(|| self.get_account_state(&tx.sender))
-                .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
-
-            let payment_total = tx
-                .transfer_token_ids
-                .iter()
-                .try_fold(0u64, |acc, token_id| {
-                    sender
-                        .token_value(token_id)
-                        .map(|value| acc + value)
-                        .ok_or_else(|| {
-                            StateStoreError::Other(format!(
-                                "sender does not own transfer token {}",
-                                hex::encode(token_id)
-                            ))
-                        })
-                })?;
-
-            let fee_value = sender.token_value(&fee_token_id).ok_or_else(|| {
-                StateStoreError::Other(format!(
-                    "sender does not own fee token {}",
-                    hex::encode(fee_token_id)
-                ))
-            })?;
-
-            let mut recipient = modified_accounts
-                .get(&tx.recipient)
-                .cloned()
-                .or_else(|| self.get_account_state(&tx.recipient))
-                .unwrap_or_else(|| AccountState::new_user(0, block_height));
-            let mut fee_account = if *miner == tx.recipient {
-                recipient.clone()
-            } else {
-                modified_accounts
-                    .get(miner)
-                    .cloned()
-                    .or_else(|| self.get_account_state(miner))
-                    .unwrap_or_else(|| AccountState::new_user(0, block_height))
-            };
-
-            let moved_tokens = sender
-                .remove_tokens_by_id(&tx.transfer_token_ids)
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-            let fee_tokens = sender
-                .remove_tokens_by_id(&[fee_token_id])
-                .map_err(|e| StateStoreError::Other(e.to_string()))?;
-
-            sender.nonce += 1;
-            sender.last_updated = block_height;
-            sender.assign_token_owner(tx.sender);
-            sender.sync_balance_from_tokens();
-
-            recipient.deposit_tokens(tx.recipient, moved_tokens);
-            recipient.last_updated = block_height;
-
-            fee_account.deposit_tokens(*miner, fee_tokens);
-            fee_account.last_updated = block_height;
-
-            modified_accounts.insert(tx.sender, sender);
-            modified_accounts.insert(tx.recipient, recipient);
-            modified_accounts.insert(*miner, fee_account);
-
-            debug!(
-                "Projected token transaction {} transferring {} cents and fee {} cents",
-                hex::encode(tx.tx_id),
-                payment_total,
-                fee_value,
-            );
-        }
-
-        if let Some(block_hash) = block_hash {
-            let mut miner_state = modified_accounts
-                .get(miner)
-                .cloned()
-                .or_else(|| self.get_account_state(miner))
-                .unwrap_or_else(|| AccountState::new_user(0, block_height));
-
-            let minted_tokens =
-                crate::storage::block_store::reward_outcome(*miner, block_height, block_hash);
-            miner_state.tokens.extend(minted_tokens);
-            miner_state.sync_balance_from_tokens();
-            miner_state.last_updated = block_height;
-            miner_state.assign_token_owner(*miner);
-            modified_accounts.insert(*miner, miner_state);
-        }
-
-        Ok(modified_accounts.into_iter().collect())
+        let accounts = self.get_all_accounts();
+        let execution = execute_transaction_batch(&accounts, transactions, miner, block_height, block_hash);
+        Ok(execution.accounts)
     }
 
     pub fn calculate_state_root_with_overrides(
@@ -1125,15 +1017,8 @@ impl<'a> StateStore<'a> {
             block.transactions.len()
         );
 
-        // Create a batch operation for all state changes
-        let mut batch = WriteBatchOperation::new();
-
-        // Track modified accounts to update them in one batch
-        let mut modified_accounts: HashMap<Hash, AccountState> = HashMap::new();
-
-        // Process each transaction in the block
+        let mut block_transactions = Vec::with_capacity(block.transactions.len());
         for tx_hash in &block.transactions {
-            // Get the transaction details
             let tx = match tx_store.get_transaction(tx_hash)? {
                 Some(tx) => tx,
                 None => {
@@ -1144,8 +1029,6 @@ impl<'a> StateStore<'a> {
                     )));
                 }
             };
-
-            // Verify transaction block height matches current block
             if tx.block_height != block.height {
                 warn!(
                     "Transaction {} has mismatched block height: {} vs {}",
@@ -1154,86 +1037,50 @@ impl<'a> StateStore<'a> {
                     block.height
                 );
             }
+            block_transactions.push(tx);
+        }
 
-            let sender_state = match modified_accounts.get(&tx.sender) {
-                Some(state) => state.clone(),
-                None => self
-                    .get_account_state(&tx.sender)
-                    .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?,
-            };
+        let accounts = self.get_all_accounts();
+        let execution = execute_transaction_batch(
+            &accounts,
+            &block_transactions,
+            &block.miner,
+            block.height,
+            Some(&block.hash),
+        );
 
-            // Verify nonce
-            if tx.nonce != sender_state.nonce {
-                error!(
-                    "Invalid nonce for tx {}: expected {}, got {}",
-                    hex::encode(&tx.tx_id),
-                    sender_state.nonce,
-                    tx.nonce
-                );
+        let expected_reward_token_ids = crate::storage::block_store::reward_outcome(
+            block.miner,
+            block.height,
+            &block.hash,
+        )
+        .into_iter()
+        .map(|token| token.token_id)
+        .collect::<Vec<_>>();
+        if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids
+        {
+            return Err(StateStoreError::Other(format!(
+                "reward token ids mismatch for block {}",
+                block.height
+            )));
+        }
 
-                // Update transaction status to failed
-                tx_store.update_transaction_status(
-                    &tx.tx_id,
-                    TransactionStatus::Failed(TransactionError::InvalidNonce),
-                )?;
-
-                continue; // Skip this transaction and move to the next
-            }
-
-            match self.apply_token_transaction(&tx, &block.miner, block.height) {
-                Ok(changes) => {
-                    for (address, state) in changes {
-                        modified_accounts.insert(address, state);
-                    }
+        let mut batch = WriteBatchOperation::new();
+        for (tx, outcome) in block_transactions.iter().zip(execution.outcomes.iter()) {
+            match outcome.status {
+                ExecutionStatus::Applied => {
+                    tx_store.update_transaction_status(&tx.tx_id, TransactionStatus::Confirmed)?;
                 }
-                Err(e) => {
-                    error!(
-                        "Failed to apply token transaction {}: {}",
-                        hex::encode(&tx.tx_id),
-                        e
-                    );
+                ExecutionStatus::Rejected(reason) => {
                     tx_store.update_transaction_status(
                         &tx.tx_id,
-                        TransactionStatus::Failed(TransactionError::ExecutionError),
+                        TransactionStatus::Failed(map_rejection_to_tx_error(reason)),
                     )?;
-                    continue;
                 }
             }
-
-            // Update transaction status to confirmed
-            tx_store.update_transaction_status(&tx.tx_id, TransactionStatus::Confirmed)?;
         }
 
-        if block.height > 0 {
-            let mut miner = match modified_accounts.get(&block.miner) {
-                Some(state) => state.clone(),
-                None => self
-                    .get_account_state(&block.miner)
-                    .unwrap_or_else(|| AccountState::new_user(0, block.height)),
-            };
-            let minted_tokens =
-                crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash);
-            let expected_reward_token_ids = minted_tokens
-                .iter()
-                .map(|token| token.token_id)
-                .collect::<Vec<_>>();
-            if !block.reward_token_ids.is_empty()
-                && block.reward_token_ids != expected_reward_token_ids
-            {
-                return Err(StateStoreError::Other(format!(
-                    "reward token ids mismatch for block {}",
-                    block.height
-                )));
-            }
-            miner.tokens.extend(minted_tokens);
-            miner.sync_balance_from_tokens();
-            miner.last_updated = block.height;
-            miner.assign_token_owner(block.miner);
-            modified_accounts.insert(block.miner, miner);
-        }
-
-        // Prepare batch operations for all modified accounts
-        for (address, state) in modified_accounts {
+        for (address, state) in execution.accounts {
             let addr_str = hex::encode(&address);
             let key = format!("state:account:{}", addr_str);
 
@@ -1241,8 +1088,6 @@ impl<'a> StateStore<'a> {
                 .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
             batch.put(key.as_bytes().to_vec(), value);
-
-            // Update the cache
             self.add_to_cache(addr_str, state);
         }
 
@@ -1275,6 +1120,19 @@ impl<'a> StateStore<'a> {
     }
 }
 
+fn map_rejection_to_tx_error(reason: ExecutionRejection) -> TransactionError {
+    match reason {
+        ExecutionRejection::InvalidNonce => TransactionError::InvalidNonce,
+        ExecutionRejection::InsufficientBalance | ExecutionRejection::MissingToken => {
+            TransactionError::InsufficientBalance
+        }
+        ExecutionRejection::LockConflict | ExecutionRejection::StaleVersion => {
+            TransactionError::ExecutionError
+        }
+        _ => TransactionError::Other,
+    }
+}
+
 #[cfg(all(test, feature = "legacy-test-compat"))]
 mod tests {
     use super::*;
@@ -1303,7 +1161,7 @@ mod tests {
         assert_eq!(state.account_type, AccountType::User);
 
         // Update balance
-        state_store.update_balance(&address, 2000).unwrap();
+        state_store.update_balance_compat(&address, 2000).unwrap();
         let state = state_store.get_account_state(&address).unwrap();
         assert_eq!(state.balance, 2000);
 
@@ -1357,29 +1215,36 @@ mod tests {
 
         // Create accounts
         state_store
-            .create_account(&sender, 1000, AccountType::User)
+            .create_account(&sender, 1500, AccountType::User)
             .unwrap();
         state_store
             .create_account(&recipient, 500, AccountType::User)
             .unwrap();
 
+        let sender_before = state_store.get_account_state(&sender).unwrap();
+        let moved_token_id = sender_before
+            .token_ids_for_amount(500)
+            .expect("sender should have an exact 500-cent token")[0];
+
         // Transfer balance
         state_store
-            .transfer_balance(&sender, &recipient, 300, 1)
+            .transfer_balance(&sender, &recipient, 500, 1)
             .unwrap();
 
         // Check balances
         let sender_state = state_store.get_account_state(&sender).unwrap();
         let recipient_state = state_store.get_account_state(&recipient).unwrap();
 
-        assert_eq!(sender_state.balance, 700);
-        assert_eq!(recipient_state.balance, 800);
+        assert_eq!(sender_state.balance, 1000);
+        assert_eq!(recipient_state.balance, 1000);
+        assert!(!sender_state.owns_token(&moved_token_id));
+        assert!(recipient_state.owns_token(&moved_token_id));
 
-        // Test insufficient balance
-        let result = state_store.transfer_balance(&sender, &recipient, 1000, 2);
+        // Exact-token transfers fail when the sender lacks a matching token bundle.
+        let result = state_store.transfer_balance(&sender, &recipient, 300, 2);
         assert!(matches!(
             result,
-            Err(StateStoreError::InsufficientBalance(1000, 700))
+            Err(StateStoreError::Other(_))
         ));
     }
 
@@ -1413,7 +1278,7 @@ mod tests {
         assert_eq!(retrieved_root, state_root);
 
         // Modify state and check that root is invalidated
-        state_store.update_balance(&addr1, 1500).unwrap();
+        state_store.update_balance_compat(&addr1, 1500).unwrap();
 
         // Calculate new root
         let new_root = state_store.calculate_state_root(2, 12346).unwrap();
@@ -1719,7 +1584,7 @@ mod tests {
         assert_eq!(state_root.root_hash, state_root2.root_hash);
 
         // Modify an account
-        state_store2.update_balance(&addr1, 1500).unwrap();
+        state_store2.update_balance_compat(&addr1, 1500).unwrap();
 
         // Calculate the state root again
         let state_root3 = state_store2.calculate_state_root(1, 12345).unwrap();
