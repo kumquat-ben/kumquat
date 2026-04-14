@@ -188,6 +188,7 @@ impl ConsensusEngine {
             block_store.clone(),
             tx_store.clone(),
             state_store.clone(),
+            config.poh_tick_rate,
         ));
 
         let tx_validator = Arc::new(TransactionValidator::new(

@@ -10,11 +10,8 @@ use crate::storage::poh_store::{PoHEntry, PoHStore};
 
 /// Generator for Proof of History sequence
 pub struct PoHGenerator {
-    /// Current PoH state
-    current_hash: [u8; 32],
-
-    /// Current sequence number
-    sequence: u64,
+    /// Current PoH state shared with the background generator task.
+    state: Arc<Mutex<PoHState>>,
 
     /// PoH tick rate (hashes per second)
     tick_rate: u64,
@@ -29,15 +26,20 @@ pub struct PoHGenerator {
     running: Arc<Mutex<bool>>,
 }
 
+#[derive(Clone, Copy)]
+struct PoHState {
+    current_hash: [u8; 32],
+    sequence: u64,
+}
+
 impl PoHGenerator {
     /// Create a new PoH generator
     pub fn new(config: &ConsensusConfig) -> Self {
-        // Start with a zero hash
-        let current_hash = [0u8; 32];
-
         Self {
-            current_hash,
-            sequence: 0,
+            state: Arc::new(Mutex::new(PoHState {
+                current_hash: [0u8; 32],
+                sequence: 0,
+            })),
             tick_rate: config.poh_tick_rate,
             poh_store: None,
             entry_tx: None,
@@ -69,8 +71,7 @@ impl PoHGenerator {
 
         let running_clone = self.running.clone();
         let tick_rate = self.tick_rate;
-        let mut current_hash = self.current_hash;
-        let mut sequence = self.sequence;
+        let state = self.state.clone();
         let poh_store = self.poh_store.clone();
         let entry_tx = self.entry_tx.clone();
 
@@ -90,15 +91,16 @@ impl PoHGenerator {
                 // Wait for the next tick
                 interval.tick().await;
 
-                // Generate the next hash
-                current_hash = sha256(&current_hash);
-                sequence += 1;
+                let entry = {
+                    let mut state = state.lock().unwrap();
+                    state.current_hash = sha256(&state.current_hash);
+                    state.sequence += 1;
 
-                // Create a PoH entry
-                let entry = PoHEntry {
-                    hash: current_hash,
-                    sequence,
-                    timestamp: chrono::Utc::now().timestamp() as u64,
+                    PoHEntry {
+                        hash: state.current_hash,
+                        sequence: state.sequence,
+                        timestamp: chrono::Utc::now().timestamp() as u64,
+                    }
                 };
 
                 // Store the entry if we have a store
@@ -120,7 +122,7 @@ impl PoHGenerator {
                     }
                 }
 
-                trace!("PoH sequence {}: {:?}", sequence, current_hash);
+                trace!("PoH sequence {}: {:?}", entry.sequence, entry.hash);
             }
 
             info!("PoH generator stopped");
@@ -135,12 +137,12 @@ impl PoHGenerator {
 
     /// Get the current PoH hash
     pub fn current_hash(&self) -> [u8; 32] {
-        self.current_hash
+        self.state.lock().unwrap().current_hash
     }
 
     /// Get the current sequence number
     pub fn sequence(&self) -> u64 {
-        self.sequence
+        self.state.lock().unwrap().sequence
     }
 
     /// Verify a PoH sequence
@@ -158,15 +160,17 @@ impl PoHGenerator {
 
     /// Record an event in the PoH sequence
     pub fn record_event(&mut self, data: &[u8]) -> PoHEntry {
+        let mut state = self.state.lock().unwrap();
+
         // Hash the data with the current hash
-        let combined = [&self.current_hash[..], data].concat();
-        self.current_hash = sha256(&combined);
-        self.sequence += 1;
+        let combined = [&state.current_hash[..], data].concat();
+        state.current_hash = sha256(&combined);
+        state.sequence += 1;
 
         // Create a PoH entry
         let entry = PoHEntry {
-            hash: self.current_hash,
-            sequence: self.sequence,
+            hash: state.current_hash,
+            sequence: state.sequence,
             timestamp: chrono::Utc::now().timestamp() as u64,
         };
 
@@ -198,7 +202,6 @@ impl PoHGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -233,6 +236,9 @@ mod tests {
         for i in 1..entries.len() {
             assert!(entries[i].sequence > entries[i - 1].sequence);
         }
+
+        // The externally visible generator state should track the background task.
+        assert!(generator.sequence() >= entries.last().unwrap().sequence);
     }
 
     #[test]

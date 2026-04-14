@@ -321,6 +321,7 @@ mod tests {
             block_store.clone(),
             tx_store.clone(),
             state_store.clone(),
+            100,
         ));
 
         // Create block processor

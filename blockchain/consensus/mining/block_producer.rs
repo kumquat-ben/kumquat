@@ -7,7 +7,7 @@ use crate::consensus::config::ConsensusConfig;
 use crate::consensus::mining::mempool::Mempool;
 use crate::consensus::poh::generator::PoHGenerator;
 use crate::consensus::pow::miner::PoWMiner;
-use crate::consensus::types::{BlockTemplate, ChainState, Target};
+use crate::consensus::types::{BlockTemplate, ChainState};
 use crate::network::types::message::NetMessage;
 use crate::storage::block_store::{result_commitment, Block, BlockStore};
 use crate::storage::state_store::StateStore;
@@ -121,16 +121,16 @@ impl<'a> BlockProducer<'a> {
         };
 
         // Get the previous block's PoH sequence number if this is not the genesis block
-        let prev_poh_seq = if self.chain_state.height > 0 {
+        let (prev_poh_seq, prev_poh_hash) = if self.chain_state.height > 0 {
             match self
                 .block_store
                 .get_block_by_hash(&self.chain_state.tip_hash)
             {
-                Ok(Some(prev_block)) => prev_block.poh_seq,
-                _ => 0, // Default to 0 if we can't get the previous block
+                Ok(Some(prev_block)) => (prev_block.poh_seq, prev_block.poh_hash),
+                _ => (0, [0u8; 32]),
             }
         } else {
-            0 // Genesis block has no previous block
+            (0, [0u8; 32])
         };
 
         // Create the block template
@@ -143,6 +143,7 @@ impl<'a> BlockProducer<'a> {
             tx_root,      // Use the calculated transaction root
             poh_seq,      // Use the current PoH sequence
             prev_poh_seq, // Use the previous block's PoH sequence
+            prev_poh_hash,
             poh_hash,     // Use the current PoH hash
             target: self.chain_state.current_target,
             total_difficulty: self.chain_state.total_difficulty as u128,
@@ -290,6 +291,7 @@ impl<'a> BlockProducer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consensus::types::Target;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::{StateRoot, TransactionRecord, TransactionStatus};
     use tempfile::tempdir;

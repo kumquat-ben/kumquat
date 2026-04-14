@@ -33,6 +33,9 @@ pub struct BlockTemplate {
     /// Previous block's PoH sequence number
     pub prev_poh_seq: u64,
 
+    /// Previous block's PoH hash
+    pub prev_poh_hash: Hash,
+
     /// PoH hash
     pub poh_hash: Hash,
 
@@ -57,6 +60,7 @@ impl BlockTemplate {
         tx_root: Hash,
         poh_seq: u64,
         prev_poh_seq: u64,
+        prev_poh_hash: Hash,
         poh_hash: Hash,
         target: Target,
         total_difficulty: u64,
@@ -71,6 +75,7 @@ impl BlockTemplate {
             tx_root,
             poh_seq,
             prev_poh_seq,
+            prev_poh_hash,
             poh_hash,
             target,
             total_difficulty: total_difficulty.into(),
@@ -100,7 +105,7 @@ impl BlockTemplate {
             // For blocks after the first block, we need to generate the PoH hash
             let seq_diff = poh_seq - self.prev_poh_seq;
             let event_data = seq_diff.to_be_bytes();
-            let combined = [&self.prev_hash[..], &event_data[..]].concat();
+            let combined = [&self.prev_poh_hash[..], &event_data[..]].concat();
             crate::crypto::hash::sha256(&combined)
         };
 

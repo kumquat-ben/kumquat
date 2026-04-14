@@ -39,6 +39,9 @@ pub struct BlockValidator<'a> {
 
     /// PoH verifier
     poh_verifier: PoHVerifier,
+
+    /// Expected PoH tick rate used for warning thresholds.
+    poh_tick_rate: u64,
 }
 
 impl<'a> BlockValidator<'a> {
@@ -47,12 +50,14 @@ impl<'a> BlockValidator<'a> {
         block_store: Arc<BlockStore<'a>>,
         tx_store: Arc<TxStore<'a>>,
         state_store: Arc<StateStore<'a>>,
+        poh_tick_rate: u64,
     ) -> Self {
         Self {
             block_store,
             tx_store,
             state_store,
             poh_verifier: PoHVerifier::new(),
+            poh_tick_rate,
         }
     }
 
@@ -436,7 +441,7 @@ impl<'a> BlockValidator<'a> {
         // Calculate the expected PoH hash
         let seq_diff = block.poh_seq - prev_block.poh_seq;
         let event_data = seq_diff.to_be_bytes();
-        let combined = [&prev_block.hash[..], &event_data[..]].concat();
+        let combined = [&prev_block.poh_hash[..], &event_data[..]].concat();
         let expected_poh_hash = crate::crypto::hash::sha256(&combined);
 
         // Compare with the block's PoH hash
@@ -459,7 +464,7 @@ impl<'a> BlockValidator<'a> {
         // Verify the PoH sequence using the verifier
         if !self
             .poh_verifier
-            .verify_event(&poh_entry, &prev_block.hash, &event_data)
+            .verify_event(&poh_entry, &prev_block.poh_hash, &event_data)
         {
             error!(
                 "Invalid PoH sequence: prev_seq={}, curr_seq={}",
@@ -478,7 +483,7 @@ impl<'a> BlockValidator<'a> {
         }
 
         // Verify that the PoH sequence is within reasonable bounds
-        let expected_ticks = (block.timestamp - prev_block.timestamp) * 100; // 100 ticks per second
+        let expected_ticks = (block.timestamp - prev_block.timestamp) * self.poh_tick_rate;
         let actual_ticks = block.poh_seq - prev_block.poh_seq;
 
         // Allow for some variance (±20%)
@@ -518,7 +523,12 @@ mod tests {
         let tx_store = Arc::new(TxStore::new(kv_store));
         let state_store = Arc::new(StateStore::new(kv_store));
         let validator =
-            BlockValidator::new(block_store.clone(), tx_store.clone(), state_store.clone());
+            BlockValidator::new(
+                block_store.clone(),
+                tx_store.clone(),
+                state_store.clone(),
+                100,
+            );
         std::mem::forget(temp_dir);
         (block_store, tx_store, state_store, validator)
     }
@@ -618,7 +628,7 @@ mod tests {
             result_commitment: result_commitment(&hash, &state_root, &reward_token_ids),
             state_root,
             tx_root,
-            poh_hash: [0u8; 32],
+            poh_hash: crate::crypto::hash::sha256(&(timestamp.to_be_bytes())),
             poh_seq: timestamp,
             nonce: 42,
             difficulty: 1,
