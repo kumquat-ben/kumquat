@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
-  tag: blockchain-20260414-054817-824bbca
+  tag: blockchain-20260414-063351-7dfa961
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
