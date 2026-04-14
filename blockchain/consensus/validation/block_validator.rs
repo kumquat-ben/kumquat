@@ -107,9 +107,48 @@ impl<'a> BlockValidator<'a> {
         BlockValidationResult::Valid
     }
 
+    fn extends_committed_tip(&self, block: &Block) -> bool {
+        if block.height == 0 {
+            return true;
+        }
+
+        match self.block_store.get_latest_block() {
+            Ok(Some(latest_block)) => {
+                latest_block.hash == block.prev_hash && latest_block.height + 1 == block.height
+            }
+            Ok(None) => block.height == 0,
+            Err(err) => {
+                warn!(
+                    "Failed to load committed tip while validating block {}: {}",
+                    block.height, err
+                );
+                false
+            }
+        }
+    }
+
     /// Validate the block hash
     fn validate_block_hash(&self, block: &Block) -> bool {
         if block.height == 0 {
+            return true;
+        }
+
+        let header_hash = pow_hash(&block.canonical_header());
+        if header_hash != block.hash {
+            error!(
+                "Block hash mismatch at height {}: expected {}, got {}",
+                block.height,
+                hex::encode(header_hash),
+                hex::encode(block.hash),
+            );
+            return false;
+        }
+
+        if !self.extends_committed_tip(block) {
+            warn!(
+                "Skipping pre-reward state root recomputation for block {} because it does not extend the committed tip",
+                block.height
+            );
             return true;
         }
 
@@ -146,20 +185,6 @@ impl<'a> BlockValidator<'a> {
                 block.height,
                 hex::encode(pre_reward_state_root),
                 hex::encode(block.pre_reward_state_root),
-            );
-            return false;
-        }
-
-        let mut header = block.canonical_header();
-        header.pre_reward_state_root = pre_reward_state_root;
-        let expected_hash = pow_hash(&header);
-
-        if expected_hash != block.hash {
-            error!(
-                "Block hash mismatch at height {}: expected {}, got {}",
-                block.height,
-                hex::encode(expected_hash),
-                hex::encode(block.hash),
             );
             return false;
         }
@@ -327,6 +352,14 @@ impl<'a> BlockValidator<'a> {
     fn validate_state_root(&self, block: &Block) -> bool {
         // For genesis block, we accept any state root
         if block.height == 0 {
+            return true;
+        }
+
+        if !self.extends_committed_tip(block) {
+            warn!(
+                "Skipping final state root recomputation for block {} because it does not extend the committed tip",
+                block.height
+            );
             return true;
         }
 
@@ -650,5 +683,25 @@ mod tests {
             validator.validate_block(&block, &target),
             BlockValidationResult::Invalid(_)
         ));
+    }
+
+    #[test]
+    fn test_accepts_replayed_height_one_block_after_tip_advances() {
+        let (block_store, tx_store, state_store, validator) = setup_validator();
+        let genesis = genesis_block();
+        block_store.put_block(&genesis).unwrap();
+
+        let block_one = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [21u8; 32]);
+        block_store.put_block(&block_one).unwrap();
+        state_store.apply_block(&block_one, &tx_store).unwrap();
+
+        let competing_block_one =
+            build_block(&state_store, vec![], &[], genesis.hash, 1, 11, [22u8; 32]);
+
+        let target = Target::from_difficulty(1);
+        assert_eq!(
+            validator.validate_block(&competing_block_one, &target),
+            BlockValidationResult::Valid
+        );
     }
 }
