@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
 from pathlib import Path
+import time
 from typing import Optional
 
 from django.conf import settings
@@ -512,6 +513,60 @@ def _delete_pod(name: str):
             raise NodeLauncherError(f"Failed to delete pod {name}: {exc}") from exc
 
 
+def _wait_for_statefulset_absence(name: str, timeout_seconds: int = 60):
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            _apps_api().read_namespaced_stateful_set(name=name, namespace=_launcher_namespace())
+        except ApiException as exc:
+            if exc.status == 404:
+                return
+            raise NodeLauncherError(f"Failed to confirm workload deletion for {name}: {exc}") from exc
+        time.sleep(1)
+    raise NodeLauncherError(f"Timed out waiting for workload {name} to be deleted.")
+
+
+def _list_managed_pvcs(node: ManagedNode):
+    try:
+        pvc_list = _core_api().list_namespaced_persistent_volume_claim(
+            namespace=_launcher_namespace(),
+            label_selector=_managed_label_selector(node),
+        )
+    except ApiException as exc:
+        raise NodeLauncherError(f"Failed to list PVCs for {node.name}: {exc}") from exc
+
+    names = {item.metadata.name for item in pvc_list.items if item.metadata and item.metadata.name}
+    names.add(pvc_name(node))
+    return sorted(names)
+
+
+def _delete_named_pvc(name: str):
+    try:
+        _core_api().delete_namespaced_persistent_volume_claim(
+            name=name,
+            namespace=_launcher_namespace(),
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            raise NodeLauncherError(f"Failed to delete PVC {name}: {exc}") from exc
+
+
+def _wait_for_pvc_absence(name: str, timeout_seconds: int = 60):
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            _core_api().read_namespaced_persistent_volume_claim(
+                name=name,
+                namespace=_launcher_namespace(),
+            )
+        except ApiException as exc:
+            if exc.status == 404:
+                return
+            raise NodeLauncherError(f"Failed to confirm PVC deletion for {name}: {exc}") from exc
+        time.sleep(1)
+    raise NodeLauncherError(f"Timed out waiting for PVC {name} to be deleted.")
+
+
 def _ensure_workload(node: ManagedNode) -> str:
     image = _resolve_node_image(node)
     _create_or_replace_configmap(node)
@@ -619,9 +674,23 @@ def delete_container(node: ManagedNode) -> ManagedNode:
 
 
 def delete_deployment(node: ManagedNode):
+    workload = workload_name(node)
+
+    try:
+        _apps_api().patch_namespaced_stateful_set(
+            name=workload,
+            namespace=_launcher_namespace(),
+            body={"spec": {"replicas": 0}},
+        )
+    except ApiException as exc:
+        if exc.status != 404:
+            raise NodeLauncherError(f"Failed to scale down workload for {node.name}: {exc}") from exc
+
+    _delete_pod(pod_name(node))
+
     try:
         _apps_api().delete_namespaced_stateful_set(
-            name=workload_name(node),
+            name=workload,
             namespace=_launcher_namespace(),
             propagation_policy="Foreground",
         )
@@ -629,18 +698,16 @@ def delete_deployment(node: ManagedNode):
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete workload for {node.name}: {exc}") from exc
 
+    _wait_for_statefulset_absence(workload)
+
     _delete_named_service(rpc_service_name(node))
     _delete_named_service(peer_service_name(node))
     _delete_named_configmap(configmap_name(node))
 
-    try:
-        _core_api().delete_namespaced_persistent_volume_claim(
-            name=pvc_name(node),
-            namespace=_launcher_namespace(),
-        )
-    except ApiException as exc:
-        if exc.status != 404:
-            raise NodeLauncherError(f"Failed to delete PVC for {node.name}: {exc}") from exc
+    for pvc in _list_managed_pvcs(node):
+        _delete_named_pvc(pvc)
+    for pvc in _list_managed_pvcs(node):
+        _wait_for_pvc_absence(pvc)
 
     node.delete()
 
