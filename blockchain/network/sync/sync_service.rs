@@ -57,6 +57,9 @@ pub struct SyncState {
 
     /// The number of failed block requests
     pub failed_requests: u64,
+
+    /// When sync progress last moved forward
+    pub last_progress_at: Option<Instant>,
 }
 
 impl Default for SyncState {
@@ -69,6 +72,7 @@ impl Default for SyncState {
             start_time: None,
             blocks_synced: 0,
             failed_requests: 0,
+            last_progress_at: None,
         }
     }
 }
@@ -144,6 +148,138 @@ pub struct SyncService {
 }
 
 impl SyncService {
+    fn complete_sync_state(state: &mut SyncState) {
+        state.in_progress = false;
+        state.sync_peer = None;
+        state.start_time = None;
+        state.last_progress_at = None;
+    }
+
+    async fn reconcile_sync_state(
+        block_store: &BlockStore<'static>,
+        sync_state: &Arc<RwLock<SyncState>>,
+    ) -> bool {
+        let latest_height = block_store.get_latest_height().unwrap_or(0);
+        let mut state = sync_state.write().await;
+
+        if state.in_progress && latest_height >= state.target_height {
+            state.current_height = latest_height;
+            if latest_height > state.target_height {
+                state.target_height = latest_height;
+            }
+            Self::complete_sync_state(&mut state);
+            return true;
+        }
+
+        if state.current_height != latest_height {
+            state.current_height = latest_height;
+        }
+
+        false
+    }
+
+    async fn retry_stale_sync(
+        block_store: &BlockStore<'static>,
+        broadcaster: &PeerBroadcaster,
+        sync_state: &Arc<RwLock<SyncState>>,
+        reputation: Option<&Arc<ReputationSystem>>,
+        config: &SyncConfig,
+    ) -> Result<bool, String> {
+        let latest_height = block_store.get_latest_height().unwrap_or(0);
+        let (sync_peer, start_height, end_height, failed_requests, stale_for) = {
+            let state = sync_state.read().await;
+
+            if !state.in_progress {
+                return Ok(false);
+            }
+
+            let Some(last_progress_at) = state.last_progress_at.or(state.start_time) else {
+                return Ok(false);
+            };
+
+            let stale_for = last_progress_at.elapsed();
+            if stale_for < config.request_timeout {
+                return Ok(false);
+            }
+
+            let Some(sync_peer) = state.sync_peer.clone() else {
+                return Ok(false);
+            };
+
+            let start_height = latest_height.saturating_add(1);
+            let end_height = state.target_height.max(latest_height);
+
+            (
+                sync_peer,
+                start_height,
+                end_height,
+                state.failed_requests,
+                stale_for,
+            )
+        };
+
+        if failed_requests >= u64::from(config.max_retries) {
+            warn!(
+                "Sync with peer {} stalled for {:?} after {} retries; resetting sync state",
+                sync_peer, stale_for, failed_requests
+            );
+            let mut state = sync_state.write().await;
+            state.current_height = latest_height;
+            Self::complete_sync_state(&mut state);
+            return Ok(false);
+        }
+
+        let message = if start_height <= end_height {
+            NetMessage::RequestBlockRange {
+                start_height,
+                end_height,
+            }
+        } else {
+            NetMessage::RequestBlock(u64::MAX)
+        };
+
+        warn!(
+            "Sync with peer {} stalled for {:?}; retrying request {} of {}",
+            sync_peer,
+            stale_for,
+            failed_requests + 1,
+            config.max_retries
+        );
+
+        match broadcaster.send_to_peer(&sync_peer, message).await {
+            Ok(true) => {
+                let mut state = sync_state.write().await;
+                state.failed_requests += 1;
+                state.current_height = latest_height;
+                state.last_progress_at = Some(Instant::now());
+                if start_height <= end_height {
+                    state.target_height = end_height;
+                }
+                Ok(true)
+            }
+            Ok(false) => {
+                if let Some(reputation) = reputation {
+                    reputation.update_score(&sync_peer, ReputationEvent::Timeout);
+                }
+                let mut state = sync_state.write().await;
+                state.failed_requests += 1;
+                state.current_height = latest_height;
+                state.last_progress_at = Some(Instant::now());
+                Ok(true)
+            }
+            Err(err) => {
+                if let Some(reputation) = reputation {
+                    reputation.update_score(&sync_peer, ReputationEvent::Timeout);
+                }
+                let mut state = sync_state.write().await;
+                state.failed_requests += 1;
+                state.current_height = latest_height;
+                state.last_progress_at = Some(Instant::now());
+                Err(err)
+            }
+        }
+    }
+
     /// Create a new sync service
     pub fn new(
         block_store: Arc<BlockStore<'static>>,
@@ -272,6 +408,22 @@ impl SyncService {
             } {
                 interval.tick().await;
 
+                if Self::reconcile_sync_state(&block_store, &sync_state).await {
+                    debug!("Reconciled stale sync state against committed tip");
+                }
+
+                if let Err(err) = Self::retry_stale_sync(
+                    &block_store,
+                    &broadcaster,
+                    &sync_state,
+                    reputation.as_ref(),
+                    &config,
+                )
+                .await
+                {
+                    warn!("Retrying stale sync failed: {}", err);
+                }
+
                 // Check if we're already syncing
                 let is_syncing = {
                     let state = sync_state.read().await;
@@ -368,20 +520,21 @@ impl SyncService {
                                                 );
                                                 state.target_height = end_height;
                                                 state.sync_peer = Some(peer_id.clone());
+                                                state.last_progress_at = Some(Instant::now());
                                             }
                                             Ok(false) => {
                                                 warn!(
                                                     "Peer {} did not accept follow-up block range request {}..{}",
                                                     peer_id, start_height, end_height
                                                 );
-                                                state.in_progress = false;
+                                                Self::complete_sync_state(&mut state);
                                             }
                                             Err(err) => {
                                                 warn!(
                                                     "Failed to request block range {}..{} from peer {}: {}",
                                                     start_height, end_height, peer_id, err
                                                 );
-                                                state.in_progress = false;
+                                                Self::complete_sync_state(&mut state);
                                             }
                                         }
                                         continue;
@@ -392,10 +545,11 @@ impl SyncService {
                                         state.target_height = block.height;
                                     }
                                     state.blocks_synced += 1;
+                                    state.last_progress_at = Some(Instant::now());
 
                                     // Check if we've reached the target height
                                     if block.height >= state.target_height {
-                                        state.in_progress = false;
+                                        Self::complete_sync_state(&mut state);
 
                                         // Publish sync completed event
                                         if let Some(event_bus) = &event_bus {
@@ -484,11 +638,12 @@ impl SyncService {
                                         }
                                     }
                                     state.blocks_synced += blocks.len() as u64;
+                                    state.last_progress_at = Some(Instant::now());
 
                                     // Check if we've reached the target height
                                     if let Some(last_block) = blocks.last() {
                                         if last_block.height >= state.target_height {
-                                            state.in_progress = false;
+                                            Self::complete_sync_state(&mut state);
 
                                             // Publish sync completed event
                                             if let Some(event_bus) = &event_bus {
@@ -592,6 +747,7 @@ impl SyncService {
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
                     state.failed_requests = 0;
+                    state.last_progress_at = state.start_time;
                 }
 
                 // Publish sync requested event
@@ -694,6 +850,7 @@ impl SyncService {
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
                     state.failed_requests = 0;
+                    state.last_progress_at = state.start_time;
                 }
 
                 // Publish sync requested event
@@ -723,6 +880,7 @@ impl SyncService {
 
     /// Get the current sync state
     pub async fn get_sync_state(&self) -> SyncState {
+        Self::reconcile_sync_state(&self.block_store, &self.sync_state).await;
         let state = self.sync_state.read().await;
         state.clone()
     }
@@ -774,5 +932,55 @@ mod tests {
 
         // Stop the service
         service.stop().await;
+    }
+
+    #[tokio::test]
+    async fn get_sync_state_reconciles_stale_target_against_local_tip() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::new());
+        let service = SyncService::new(
+            block_store.clone(),
+            peer_registry,
+            broadcaster,
+        );
+
+        let block = Block {
+            height: 100,
+            hash: [7u8; 32],
+            prev_hash: [6u8; 32],
+            timestamp: 12345,
+            transactions: vec![],
+            miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            result_commitment: [0u8; 32],
+            state_root: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 100,
+        };
+        block_store.put_block(&block).unwrap();
+
+        {
+            let mut state = service.sync_state.write().await;
+            state.in_progress = true;
+            state.target_height = 62;
+            state.current_height = 62;
+            state.sync_peer = Some("peer1".to_string());
+            state.start_time = Some(Instant::now() - Duration::from_secs(60));
+            state.last_progress_at = state.start_time;
+        }
+
+        let state = service.get_sync_state().await;
+        assert!(!state.in_progress);
+        assert_eq!(state.current_height, 100);
+        assert_eq!(state.target_height, 100);
+        assert!(state.sync_peer.is_none());
     }
 }
