@@ -80,6 +80,14 @@ def peer_service_name(node: ManagedNode) -> str:
     return _suffix_name(node.name, "peer")
 
 
+def peer_service_host(node: ManagedNode) -> str:
+    return f"{peer_service_name(node)}.{_launcher_namespace()}.svc.cluster.local"
+
+
+def _service_host(service_name: str) -> str:
+    return f"{service_name}.{_launcher_namespace()}.svc.cluster.local"
+
+
 def rpc_service_name(node: ManagedNode) -> str:
     return _suffix_name(node.name, "rpc")
 
@@ -191,6 +199,32 @@ def _shared_genesis_contents() -> str:
         raise NodeLauncherError(f"Failed to read shared genesis file: {exc}") from exc
 
 
+def _bootstrap_nodes(node: ManagedNode) -> list[str]:
+    if node.name == "genesis" or not node.pk:
+        return []
+
+    configured_seed_host = (
+        getattr(settings, "NODE_LAUNCHER_GENESIS_SEED_HOST", "") or ""
+    ).strip().lower()
+    configured_seed_port = int(getattr(settings, "NODE_LAUNCHER_GENESIS_SEED_PORT", 30333))
+    if configured_seed_host:
+        return [f"{configured_seed_host}:{configured_seed_port}"]
+
+    seed = (
+        ManagedNode.objects.filter(name="genesis")
+        .exclude(pk=node.pk)
+        .order_by("created_at")
+        .first()
+    )
+    if seed:
+        return [f"{peer_service_host(seed)}:{seed.p2p_port}"]
+
+    service_name = (
+        getattr(settings, "NODE_LAUNCHER_GENESIS_SEED_SERVICE_NAME", "") or "kumquat-blockchain-headless"
+    ).strip()
+    return [f"{_service_host(service_name)}:{configured_seed_port}"]
+
+
 def render_config(node: ManagedNode) -> str:
     data_dir = "/data/kumquat/data"
     node_id_line = f'node_id = "{node.reward_address}"\n' if node.reward_address else ""
@@ -201,6 +235,8 @@ def render_config(node: ManagedNode) -> str:
             f"but the launcher is pinned to shared chain_id={shared_chain_id}."
         )
     genesis_hash = _shared_genesis_hash()
+    bootstrap_nodes = _bootstrap_nodes(node)
+    bootstrap_nodes_block = ",\n".join(f'  "{entry}"' for entry in bootstrap_nodes)
     return f"""[node]
 node_name = "{node.name}"
 {node_id_line}data_dir = "{data_dir}"
@@ -214,7 +250,9 @@ api_host = "0.0.0.0"
 [network]
 listen_addr = "0.0.0.0"
 listen_port = {node.p2p_port}
-bootstrap_nodes = []
+bootstrap_nodes = [
+{bootstrap_nodes_block}
+]
 max_peers = 16
 min_peers = 0
 discovery_interval = 30

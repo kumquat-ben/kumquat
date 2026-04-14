@@ -1,4 +1,5 @@
 use log::{error, info, warn};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use structopt::StructOpt;
@@ -21,6 +22,59 @@ use kumquat::tools::genesis::generate_genesis;
 
 const NETWORK_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(15);
 const NETWORK_BOOTSTRAP_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
+fn parse_bootstrap_target(spec: &str) -> Option<(String, u16)> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return None;
+    }
+
+    if let Ok(addr) = spec.parse::<SocketAddr>() {
+        return Some((addr.ip().to_string(), addr.port()));
+    }
+
+    let segments = spec
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments.len() >= 4
+        && matches!(segments[0], "dns" | "dns4" | "dns6" | "ip4" | "ip6")
+        && segments[2] == "tcp"
+    {
+        if let Ok(port) = segments[3].parse::<u16>() {
+            return Some((segments[1].to_string(), port));
+        }
+    }
+
+    if let Some((host, port_text)) = spec.rsplit_once(':') {
+        if let Ok(port) = port_text.parse::<u16>() {
+            return Some((host.to_string(), port));
+        }
+    }
+
+    None
+}
+
+fn resolve_bootstrap_addr(spec: &str) -> Option<SocketAddr> {
+    let (host, port) = match parse_bootstrap_target(spec) {
+        Some(target) => target,
+        None => {
+            warn!("Ignoring unsupported bootstrap node format: {}", spec);
+            return None;
+        }
+    };
+
+    match (host.as_str(), port).to_socket_addrs() {
+        Ok(mut addresses) => addresses.next().or_else(|| {
+            warn!("Bootstrap node resolved to no socket addresses: {}", spec);
+            None
+        }),
+        Err(err) => {
+            warn!("Failed to resolve bootstrap node {}: {}", spec, err);
+            None
+        }
+    }
+}
 
 fn resolve_miner_address(node_id: Option<&str>, node_name: &str) -> [u8; 32] {
     if let Some(node_id) = node_id {
@@ -477,7 +531,15 @@ async fn main() {
     if let Some(bootstrap) = &opt.bootstrap {
         config.network.bootstrap_nodes = bootstrap
             .split(',')
-            .map(|s| format!("/dns4/{}/tcp/30333", s))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                if s.contains('/') || s.contains(':') {
+                    s.to_string()
+                } else {
+                    format!("{}:30333", s)
+                }
+            })
             .collect();
     }
 
@@ -671,7 +733,7 @@ async fn main() {
             .network
             .bootstrap_nodes
             .iter()
-            .filter_map(|addr| addr.parse().ok())
+            .filter_map(|addr| resolve_bootstrap_addr(addr))
             .collect(),
         max_outbound: config.network.max_peers / 2,
         max_inbound: config.network.max_peers,
@@ -744,4 +806,25 @@ async fn main() {
         .await
         .expect("Failed to listen for ctrl-c");
     info!("Shutting down Kumquat node...");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bootstrap_target;
+
+    #[test]
+    fn parses_dns_multiaddr_bootstrap_targets() {
+        let target = parse_bootstrap_target("/dns4/genesis-peer.kumquat.svc.cluster.local/tcp/30380")
+            .expect("expected bootstrap target");
+        assert_eq!(target.0, "genesis-peer.kumquat.svc.cluster.local");
+        assert_eq!(target.1, 30380);
+    }
+
+    #[test]
+    fn parses_host_port_bootstrap_targets() {
+        let target = parse_bootstrap_target("genesis-peer.kumquat.svc.cluster.local:30380")
+            .expect("expected bootstrap target");
+        assert_eq!(target.0, "genesis-peer.kumquat.svc.cluster.local");
+        assert_eq!(target.1, 30380);
+    }
 }
