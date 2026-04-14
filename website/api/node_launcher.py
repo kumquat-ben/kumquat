@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+from pathlib import Path
 from typing import Optional
 
 from django.conf import settings
@@ -160,13 +161,50 @@ def _node_selector():
     return selector if selector else None
 
 
+def _rust_log() -> str:
+    return (getattr(settings, "NODE_LAUNCHER_RUST_LOG", "") or "info").strip()
+
+
+def _shared_genesis_file() -> Path:
+    genesis_path = (getattr(settings, "NODE_LAUNCHER_GENESIS_FILE", "") or "").strip()
+    if not genesis_path:
+        raise NodeLauncherError("NODE_LAUNCHER_GENESIS_FILE is not configured.")
+    genesis_file = Path(genesis_path)
+    if not genesis_file.exists():
+        raise NodeLauncherError(f"Shared genesis file does not exist: {genesis_file}")
+    if not genesis_file.is_file():
+        raise NodeLauncherError(f"Shared genesis path is not a file: {genesis_file}")
+    return genesis_file
+
+
+def _shared_genesis_hash() -> str:
+    genesis_hash = (getattr(settings, "NODE_LAUNCHER_GENESIS_HASH", "") or "").strip().lower()
+    if not genesis_hash:
+        raise NodeLauncherError("NODE_LAUNCHER_GENESIS_HASH is not configured.")
+    return genesis_hash
+
+
+def _shared_genesis_contents() -> str:
+    try:
+        return _shared_genesis_file().read_text(encoding="utf-8")
+    except OSError as exc:
+        raise NodeLauncherError(f"Failed to read shared genesis file: {exc}") from exc
+
+
 def render_config(node: ManagedNode) -> str:
     data_dir = "/data/kumquat/data"
     node_id_line = f'node_id = "{node.reward_address}"\n' if node.reward_address else ""
+    shared_chain_id = int(getattr(settings, "NODE_LAUNCHER_CHAIN_ID", 1337))
+    if node.chain_id != shared_chain_id:
+        raise NodeLauncherError(
+            f"Managed node {node.name} requested chain_id={node.chain_id}, "
+            f"but the launcher is pinned to shared chain_id={shared_chain_id}."
+        )
+    genesis_hash = _shared_genesis_hash()
     return f"""[node]
 node_name = "{node.name}"
 {node_id_line}data_dir = "{data_dir}"
-log_level = "info"
+log_level = "debug"
 enable_metrics = true
 metrics_port = {node.metrics_port}
 enable_api = true
@@ -189,6 +227,7 @@ dht_bootstrap_nodes = []
 
 [consensus]
 chain_id = {node.chain_id}
+genesis_hash = "{genesis_hash}"
 enable_mining = {"true" if node.enable_mining else "false"}
 mining_threads = {node.mining_threads}
 target_block_time = 5
@@ -223,18 +262,7 @@ pruning_interval = 100
 
 
 def render_genesis(node: ManagedNode) -> str:
-    return f"""chain_id = {node.chain_id}
-timestamp = {int(timezone.now().timestamp())}
-initial_difficulty = 100
-
-[initial_accounts.0000000000000000000000000000000000000000000000000000000000000001]
-denominations = ["100", "50", "20", "10", "5", "2", "1", "0.5", "0.25", "0.1", "0.05", "0.01"]
-account_type = "User"
-
-[initial_accounts.0000000000000000000000000000000000000000000000000000000000000002]
-denominations = ["100", "50", "20", "10", "5", "2", "1", "0.5", "0.25", "0.1", "0.05", "0.01"]
-account_type = "User"
-"""
+    return _shared_genesis_contents()
 
 
 def _managed_labels(node: ManagedNode):
@@ -327,6 +355,9 @@ exec /usr/local/bin/kumquat \
         image_pull_policy=_image_pull_policy(),
         command=["/bin/sh", "-ec"],
         args=[command],
+        env=[
+            k8s_client.V1EnvVar(name="RUST_LOG", value=_rust_log()),
+        ],
         ports=[
             k8s_client.V1ContainerPort(name="p2p", container_port=node.p2p_port),
             k8s_client.V1ContainerPort(name="rpc", container_port=node.api_port),

@@ -14,5 +14,6 @@ pub mod tools;
 
 // Initialize logging
 pub fn init_logger() {
-    env_logger::init();
+    let env = env_logger::Env::default().filter_or("RUST_LOG", "info");
+    env_logger::Builder::from_env(env).format_timestamp_secs().init();
 }

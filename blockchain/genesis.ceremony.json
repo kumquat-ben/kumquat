@@ -1,0 +1,21 @@
+{
+  "chain_id": 1337,
+  "genesis_config_path": "genesis.toml",
+  "genesis_hash": "49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+  "chain_identity": "chain-1337:49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f",
+  "state_root": "ff12d4d943a76fcc3b49d285e1700a0607a7466aaa753831ecf0dc738184a0bb",
+  "timestamp": 1744067299,
+  "initial_difficulty": 100,
+  "accounts": [
+    {
+      "address": "kmq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpq4d3n79",
+      "balance": 18891,
+      "token_count": 12
+    },
+    {
+      "address": "kmq1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqs03k3qs",
+      "balance": 18891,
+      "token_count": 12
+    }
+  ]
+}
