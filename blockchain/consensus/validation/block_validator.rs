@@ -278,6 +278,19 @@ impl<'a> BlockValidator<'a> {
             return false;
         }
 
+        if let Err(err) = self.state_store.validate_conversion_fulfillment_order_ids(
+            block.height,
+            &transactions,
+            &block.miner,
+            &block.conversion_fulfillment_order_ids,
+        ) {
+            error!(
+                "Invalid conversion fulfillment list at height {}: {}",
+                block.height, err
+            );
+            return false;
+        }
+
         true
     }
 

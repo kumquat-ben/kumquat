@@ -291,6 +291,118 @@ mod regression_tests {
             1
         );
     }
+
+    #[test]
+    fn select_conversion_fulfillment_order_ids_skips_unfillable_orders() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let requester_one = [11; 32];
+        let requester_two = [12; 32];
+        let miner = [13; 32];
+
+        state_store
+            .create_account(&requester_one, 100, AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&requester_two, 200, AccountType::User)
+            .unwrap();
+        state_store.create_account(&miner, 0, AccountType::User).unwrap();
+
+        let mut request_one_coins = CoinInventory::default();
+        request_one_coins.add(Denomination::Cents50, 2).unwrap();
+        let mut requester_one_state = state_store.get_account_state(&requester_one).unwrap();
+        requester_one_state.conversion_order = Some(ConversionOrder::new(
+            [21; 32],
+            requester_one,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: request_one_coins.clone(),
+                requested_bill_denominations: vec![Denomination::Dollars1],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&requester_one, &requester_one_state)
+            .unwrap();
+
+        let mut request_two_coins = CoinInventory::default();
+        request_two_coins.add(Denomination::Cents50, 4).unwrap();
+        let mut requester_two_state = state_store.get_account_state(&requester_two).unwrap();
+        requester_two_state.conversion_order = Some(ConversionOrder::new(
+            [22; 32],
+            requester_two,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 200,
+                requested_coin_inventory: request_two_coins,
+                requested_bill_denominations: vec![Denomination::Dollars2],
+            },
+            2,
+        ));
+        state_store
+            .set_account_state(&requester_two, &requester_two_state)
+            .unwrap();
+
+        let mut miner_state = state_store.get_account_state(&miner).unwrap();
+        miner_state.coin_inventory = request_one_coins;
+        miner_state.sync_balance_from_hybrid();
+        state_store.set_account_state(&miner, &miner_state).unwrap();
+
+        let selected = state_store
+            .select_conversion_fulfillment_order_ids(71, &[], &miner)
+            .unwrap();
+        assert_eq!(selected, vec![[21; 32]]);
+    }
+
+    #[test]
+    fn validate_conversion_fulfillment_order_ids_rejects_duplicates() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let requester = [31; 32];
+        let miner = [32; 32];
+        state_store
+            .create_account(&requester, 100, AccountType::User)
+            .unwrap();
+        state_store.create_account(&miner, 0, AccountType::User).unwrap();
+
+        let mut requested_coins = CoinInventory::default();
+        requested_coins.add(Denomination::Cents50, 2).unwrap();
+        let mut requester_state = state_store.get_account_state(&requester).unwrap();
+        requester_state.conversion_order = Some(ConversionOrder::new(
+            [41; 32],
+            requester,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: requested_coins.clone(),
+                requested_bill_denominations: vec![Denomination::Dollars1],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&requester, &requester_state)
+            .unwrap();
+
+        let mut miner_state = state_store.get_account_state(&miner).unwrap();
+        miner_state.coin_inventory = requested_coins;
+        miner_state.sync_balance_from_hybrid();
+        state_store.set_account_state(&miner, &miner_state).unwrap();
+
+        let err = state_store
+            .validate_conversion_fulfillment_order_ids(
+                70,
+                &[],
+                &miner,
+                &[[41; 32], [41; 32]],
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("duplicated"));
+    }
 }
 
 // StateRoot is now imported from the state module
@@ -1135,6 +1247,65 @@ impl<'a> StateStore<'a> {
         Ok(accounts)
     }
 
+    pub fn select_conversion_fulfillment_order_ids(
+        &self,
+        block_height: u64,
+        transactions: &[TransactionRecord],
+        miner: &Hash,
+    ) -> Result<Vec<Hash>, StateStoreError> {
+        let projected_accounts =
+            self.project_state_changes(block_height, transactions, miner, &[], None)?;
+        let mut staged_accounts = projected_accounts
+            .into_iter()
+            .collect::<HashMap<Hash, AccountState>>();
+        let mut candidates = staged_accounts
+            .values()
+            .filter_map(|account| account.conversion_order.clone())
+            .filter(|order| order.status == ConversionOrderStatus::Eligible)
+            .collect::<Vec<_>>();
+        candidates.sort_by(|left, right| {
+            left.created_at_block
+                .cmp(&right.created_at_block)
+                .then_with(|| left.eligible_at_block.cmp(&right.eligible_at_block))
+                .then_with(|| left.order_id.cmp(&right.order_id))
+        });
+
+        let mut selected_order_ids = Vec::new();
+        for order in candidates {
+            if let Some(requester) = find_conversion_requester(&staged_accounts, &order.order_id) {
+                if apply_single_conversion_order(
+                    &mut staged_accounts,
+                    miner,
+                    block_height,
+                    requester,
+                    &order,
+                )
+                .is_ok()
+                {
+                    selected_order_ids.push(order.order_id);
+                }
+            }
+        }
+
+        Ok(selected_order_ids)
+    }
+
+    pub fn validate_conversion_fulfillment_order_ids(
+        &self,
+        block_height: u64,
+        transactions: &[TransactionRecord],
+        miner: &Hash,
+        order_ids: &[Hash],
+    ) -> Result<(), StateStoreError> {
+        let projected_accounts =
+            self.project_state_changes(block_height, transactions, miner, &[], None)?;
+        let mut staged_accounts = projected_accounts
+            .into_iter()
+            .collect::<HashMap<Hash, AccountState>>();
+        execute_conversion_fulfillment_list(&mut staged_accounts, miner, block_height, order_ids)
+            .map_err(StateStoreError::Other)
+    }
+
     fn apply_conversion_fulfillments(
         &self,
         accounts: &mut HashMap<Hash, AccountState>,
@@ -1142,241 +1313,35 @@ impl<'a> StateStore<'a> {
         block_height: u64,
         order_ids: &[Hash],
     ) -> Result<(), StateStoreError> {
-        for account in accounts.values_mut() {
-            if let Some(order) = account.conversion_order.as_mut() {
-                refresh_conversion_order_status(order, block_height);
-            }
-        }
+        let mut prepared_accounts = prepared_conversion_accounts(accounts, block_height);
 
         if order_ids.is_empty() {
+            *accounts = prepared_accounts;
             return Ok(());
         }
 
-        let mut duplicate_ids = std::collections::HashSet::new();
-        let mut seen_ids = std::collections::HashSet::new();
-        for order_id in order_ids {
-            if !seen_ids.insert(*order_id) {
-                duplicate_ids.insert(*order_id);
-            }
-        }
-
-        let mut selected_requesters = Vec::with_capacity(order_ids.len());
-        let mut invalid_reason = None;
-        for order_id in order_ids {
-            let maybe_requester = accounts.iter().find_map(|(address, account)| {
-                account
-                    .conversion_order
-                    .as_ref()
-                    .filter(|order| order.order_id == *order_id)
-                    .map(|_| *address)
-            });
-
-            let requester = match maybe_requester {
-                Some(requester) => requester,
-                None => {
-                    invalid_reason = Some(format!(
-                        "conversion order {} was already filled or does not exist",
-                        hex::encode(order_id)
-                    ));
-                    break;
-                }
-            };
-
-            let order = accounts
-                .get(&requester)
-                .and_then(|account| account.conversion_order.as_ref())
-                .ok_or_else(|| {
-                    StateStoreError::Other(format!(
-                        "conversion order {} disappeared during fulfillment",
-                        hex::encode(order_id)
-                    ))
-                })?;
-
-            if duplicate_ids.contains(order_id) {
-                invalid_reason = Some(format!(
-                    "conversion order {} was duplicated in the fulfillment list",
-                    hex::encode(order_id)
-                ));
-                break;
-            }
-
-            if order.status != ConversionOrderStatus::Eligible {
-                invalid_reason = Some(format!(
-                    "conversion order {} is not eligible for fulfillment",
-                    hex::encode(order_id)
-                ));
-                break;
-            }
-
-            selected_requesters.push(requester);
-        }
-
-        if let Some(reason) = invalid_reason {
-            for requester in selected_requesters {
-                if let Some(order) = accounts
-                    .get_mut(&requester)
-                    .and_then(|account| account.conversion_order.as_mut())
-                {
-                    order.status = ConversionOrderStatus::Failed;
-                    order.failure_reason = Some(reason.clone());
+        if let Err(reason) = execute_conversion_fulfillment_list(
+            &mut prepared_accounts,
+            miner,
+            block_height,
+            order_ids,
+        ) {
+            for order_id in order_ids {
+                if let Some(requester) = find_conversion_requester(&prepared_accounts, order_id) {
+                    if let Some(order) = prepared_accounts
+                        .get_mut(&requester)
+                        .and_then(|account| account.conversion_order.as_mut())
+                    {
+                        order.status = ConversionOrderStatus::Failed;
+                        order.failure_reason = Some(reason.clone());
+                    }
                 }
             }
+            *accounts = prepared_accounts;
             return Ok(());
         }
 
-        let miner_account = accounts
-            .get(miner)
-            .cloned()
-            .unwrap_or_else(|| AccountState::new_user(0, block_height));
-        let mut staged_accounts = accounts.clone();
-        staged_accounts.insert(*miner, miner_account);
-
-        for requester in &selected_requesters {
-            let order = staged_accounts
-                .get(requester)
-                .and_then(|account| account.conversion_order.clone())
-                .ok_or_else(|| {
-                    StateStoreError::Other(format!(
-                        "conversion requester {} has no active order",
-                        hex::encode(requester)
-                    ))
-                })?;
-
-            match order.kind {
-                crate::storage::ConversionOrderKind::BillToCoins => {
-                    let requested_bills = conversion_bill_denominations(&order)?;
-                    let requested_coins = conversion_coin_inventory(&order)?;
-
-                    let requester_account =
-                        staged_accounts.get(requester).ok_or_else(|| {
-                            StateStoreError::AccountNotFound(hex::encode(requester))
-                        })?;
-                    let miner_account = staged_accounts.get(miner).ok_or_else(|| {
-                        StateStoreError::AccountNotFound(hex::encode(miner))
-                    })?;
-
-                    let requester_token_ids = match select_bill_token_ids_for_denominations(
-                        requester_account,
-                        &requested_bills,
-                    ) {
-                        Ok(token_ids) => token_ids,
-                        Err(_) => {
-                            return self.fail_selected_orders(
-                                accounts,
-                                &selected_requesters,
-                                "requester no longer has required bill inventory",
-                            );
-                        }
-                    };
-                    if !miner_account.coin_inventory.can_cover(&requested_coins) {
-                        return self.fail_selected_orders(
-                            accounts,
-                            &selected_requesters,
-                            "miner inventory cannot satisfy conversion order",
-                        );
-                    }
-
-                    let requester_account = staged_accounts.get_mut(requester).unwrap();
-                    let moved_tokens = requester_account
-                        .remove_tokens_by_id(&requester_token_ids)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    requester_account
-                        .coin_inventory
-                        .add_inventory(&requested_coins)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    requester_account.last_updated = block_height;
-                    requester_account.conversion_order = None;
-                    requester_account.sync_balance_from_hybrid();
-
-                    let miner_account = staged_accounts.get_mut(miner).unwrap();
-                    miner_account
-                        .coin_inventory
-                        .remove_inventory(&requested_coins)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    miner_account.deposit_tokens(*miner, moved_tokens);
-                    miner_account.last_updated = block_height;
-                    miner_account.sync_balance_from_hybrid();
-                }
-                crate::storage::ConversionOrderKind::CoinsToBill => {
-                    let requested_coins = conversion_coin_inventory(&order)?;
-                    let requested_bills = conversion_bill_denominations(&order)?;
-
-                    let requester_account =
-                        staged_accounts.get(requester).ok_or_else(|| {
-                            StateStoreError::AccountNotFound(hex::encode(requester))
-                        })?;
-                    let miner_account = staged_accounts.get(miner).ok_or_else(|| {
-                        StateStoreError::AccountNotFound(hex::encode(miner))
-                    })?;
-
-                    if !requester_account.coin_inventory.can_cover(&requested_coins) {
-                        return self.fail_selected_orders(
-                            accounts,
-                            &selected_requesters,
-                            "requester no longer has required coin inventory",
-                        );
-                    }
-                    let miner_token_ids = match select_bill_token_ids_for_denominations(
-                        miner_account,
-                        &requested_bills,
-                    ) {
-                        Ok(token_ids) => token_ids,
-                        Err(_) => {
-                            return self.fail_selected_orders(
-                                accounts,
-                                &selected_requesters,
-                                "miner inventory cannot satisfy conversion order",
-                            );
-                        }
-                    };
-
-                    let requester_account = staged_accounts.get_mut(requester).unwrap();
-                    requester_account
-                        .coin_inventory
-                        .remove_inventory(&requested_coins)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    requester_account.last_updated = block_height;
-                    requester_account.sync_balance_from_hybrid();
-
-                    let miner_account = staged_accounts.get_mut(miner).unwrap();
-                    let moved_tokens = miner_account
-                        .remove_tokens_by_id(&miner_token_ids)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    miner_account
-                        .coin_inventory
-                        .add_inventory(&requested_coins)
-                        .map_err(|e| StateStoreError::Other(e.to_string()))?;
-                    miner_account.last_updated = block_height;
-                    miner_account.sync_balance_from_hybrid();
-
-                    let requester_account = staged_accounts.get_mut(requester).unwrap();
-                    requester_account.deposit_tokens(*requester, moved_tokens);
-                    requester_account.conversion_order = None;
-                    requester_account.last_updated = block_height;
-                    requester_account.sync_balance_from_hybrid();
-                }
-            }
-        }
-
-        *accounts = staged_accounts;
-        Ok(())
-    }
-
-    fn fail_selected_orders(
-        &self,
-        accounts: &mut HashMap<Hash, AccountState>,
-        selected_requesters: &[Hash],
-        reason: &str,
-    ) -> Result<(), StateStoreError> {
-        for requester in selected_requesters {
-            if let Some(order) = accounts
-                .get_mut(requester)
-                .and_then(|account| account.conversion_order.as_mut())
-            {
-                order.status = ConversionOrderStatus::Failed;
-                order.failure_reason = Some(reason.to_string());
-            }
-        }
+        *accounts = prepared_accounts;
         Ok(())
     }
 
@@ -1973,6 +1938,176 @@ fn refresh_conversion_order_status(order: &mut ConversionOrder, block_height: u6
         order.status = ConversionOrderStatus::Pending;
         order.failure_reason = None;
     }
+}
+
+fn prepared_conversion_accounts(
+    accounts: &HashMap<Hash, AccountState>,
+    block_height: u64,
+) -> HashMap<Hash, AccountState> {
+    let mut prepared = accounts.clone();
+    for account in prepared.values_mut() {
+        if let Some(order) = account.conversion_order.as_mut() {
+            refresh_conversion_order_status(order, block_height);
+        }
+    }
+    prepared
+}
+
+fn find_conversion_requester(accounts: &HashMap<Hash, AccountState>, order_id: &Hash) -> Option<Hash> {
+    accounts.iter().find_map(|(address, account)| {
+        account
+            .conversion_order
+            .as_ref()
+            .filter(|order| order.order_id == *order_id)
+            .map(|_| *address)
+    })
+}
+
+fn apply_single_conversion_order(
+    accounts: &mut HashMap<Hash, AccountState>,
+    miner: &Hash,
+    block_height: u64,
+    requester: Hash,
+    order: &ConversionOrder,
+) -> Result<(), String> {
+    if order.status != ConversionOrderStatus::Eligible {
+        return Err(format!(
+            "conversion order {} is not eligible for fulfillment",
+            hex::encode(order.order_id)
+        ));
+    }
+
+    accounts
+        .entry(*miner)
+        .or_insert_with(|| AccountState::new_user(0, block_height));
+
+    match order.kind {
+        crate::storage::ConversionOrderKind::BillToCoins => {
+            let requested_bills = conversion_bill_denominations(order)
+                .map_err(|e| e.to_string())?;
+            let requested_coins = conversion_coin_inventory(order)
+                .map_err(|e| e.to_string())?;
+
+            let requester_account = accounts
+                .get(&requester)
+                .ok_or_else(|| format!("conversion requester {} not found", hex::encode(requester)))?;
+            let miner_account = accounts
+                .get(miner)
+                .ok_or_else(|| format!("miner {} not found", hex::encode(miner)))?;
+
+            let requester_token_ids =
+                select_bill_token_ids_for_denominations(requester_account, &requested_bills)
+                    .map_err(|_| "requester no longer has required bill inventory".to_string())?;
+            if !miner_account.coin_inventory.can_cover(&requested_coins) {
+                return Err("miner inventory cannot satisfy conversion order".to_string());
+            }
+
+            let requester_account = accounts.get_mut(&requester).unwrap();
+            let moved_tokens = requester_account
+                .remove_tokens_by_id(&requester_token_ids)
+                .map_err(|e| e.to_string())?;
+            requester_account
+                .coin_inventory
+                .add_inventory(&requested_coins)
+                .map_err(|e| e.to_string())?;
+            requester_account.last_updated = block_height;
+            requester_account.conversion_order = None;
+            requester_account.sync_balance_from_hybrid();
+
+            let miner_account = accounts.get_mut(miner).unwrap();
+            miner_account
+                .coin_inventory
+                .remove_inventory(&requested_coins)
+                .map_err(|e| e.to_string())?;
+            miner_account.deposit_tokens(*miner, moved_tokens);
+            miner_account.last_updated = block_height;
+            miner_account.sync_balance_from_hybrid();
+        }
+        crate::storage::ConversionOrderKind::CoinsToBill => {
+            let requested_coins = conversion_coin_inventory(order)
+                .map_err(|e| e.to_string())?;
+            let requested_bills = conversion_bill_denominations(order)
+                .map_err(|e| e.to_string())?;
+
+            let requester_account = accounts
+                .get(&requester)
+                .ok_or_else(|| format!("conversion requester {} not found", hex::encode(requester)))?;
+            let miner_account = accounts
+                .get(miner)
+                .ok_or_else(|| format!("miner {} not found", hex::encode(miner)))?;
+
+            if !requester_account.coin_inventory.can_cover(&requested_coins) {
+                return Err("requester no longer has required coin inventory".to_string());
+            }
+            let miner_token_ids =
+                select_bill_token_ids_for_denominations(miner_account, &requested_bills)
+                    .map_err(|_| "miner inventory cannot satisfy conversion order".to_string())?;
+
+            let requester_account = accounts.get_mut(&requester).unwrap();
+            requester_account
+                .coin_inventory
+                .remove_inventory(&requested_coins)
+                .map_err(|e| e.to_string())?;
+            requester_account.last_updated = block_height;
+            requester_account.sync_balance_from_hybrid();
+
+            let miner_account = accounts.get_mut(miner).unwrap();
+            let moved_tokens = miner_account
+                .remove_tokens_by_id(&miner_token_ids)
+                .map_err(|e| e.to_string())?;
+            miner_account
+                .coin_inventory
+                .add_inventory(&requested_coins)
+                .map_err(|e| e.to_string())?;
+            miner_account.last_updated = block_height;
+            miner_account.sync_balance_from_hybrid();
+
+            let requester_account = accounts.get_mut(&requester).unwrap();
+            requester_account.deposit_tokens(requester, moved_tokens);
+            requester_account.conversion_order = None;
+            requester_account.last_updated = block_height;
+            requester_account.sync_balance_from_hybrid();
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_conversion_fulfillment_list(
+    accounts: &mut HashMap<Hash, AccountState>,
+    miner: &Hash,
+    block_height: u64,
+    order_ids: &[Hash],
+) -> Result<(), String> {
+    let mut seen_ids = HashSet::new();
+
+    for order_id in order_ids {
+        if !seen_ids.insert(*order_id) {
+            return Err(format!(
+                "conversion order {} was duplicated in the fulfillment list",
+                hex::encode(order_id)
+            ));
+        }
+
+        let requester = find_conversion_requester(accounts, order_id).ok_or_else(|| {
+            format!(
+                "conversion order {} was already filled or does not exist",
+                hex::encode(order_id)
+            )
+        })?;
+        let order = accounts
+            .get(&requester)
+            .and_then(|account| account.conversion_order.clone())
+            .ok_or_else(|| {
+                format!(
+                    "conversion order {} disappeared during fulfillment",
+                    hex::encode(order_id)
+                )
+            })?;
+        apply_single_conversion_order(accounts, miner, block_height, requester, &order)?;
+    }
+
+    Ok(())
 }
 
 fn touched_accounts_for_projection(

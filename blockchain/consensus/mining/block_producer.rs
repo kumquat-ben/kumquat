@@ -84,13 +84,27 @@ impl<'a> BlockProducer<'a> {
         let next_height = self.chain_state.height + 1;
         let timestamp = chrono::Utc::now().timestamp() as u64;
 
+        let conversion_fulfillment_order_ids = match self
+            .state_store
+            .select_conversion_fulfillment_order_ids(
+                next_height,
+                &selected_transactions,
+                &self.config.miner_address,
+            ) {
+            Ok(order_ids) => order_ids,
+            Err(e) => {
+                error!("Failed to select conversion fulfillments: {}", e);
+                Vec::new()
+            }
+        };
+
         // Calculate the provisional state root before the hash-derived reward is known.
         let state_root = match self.state_store.calculate_projected_state_root(
             next_height,
             timestamp,
             &selected_transactions,
             &self.config.miner_address,
-            &[],
+            &conversion_fulfillment_order_ids,
         ) {
             Ok(root) => root.root_hash,
             Err(e) => {
@@ -140,7 +154,7 @@ impl<'a> BlockProducer<'a> {
             prev_hash: self.chain_state.tip_hash,
             timestamp,
             transactions: selected_transactions,
-            conversion_fulfillment_order_ids: Vec::new(),
+            conversion_fulfillment_order_ids,
             state_root,
             tx_root,      // Use the calculated transaction root
             poh_seq,      // Use the current PoH sequence
@@ -300,7 +314,10 @@ mod tests {
     use super::*;
     use crate::consensus::types::Target;
     use crate::storage::kv_store::RocksDBStore;
-    use crate::storage::{StateRoot, TransactionRecord, TransactionStatus};
+    use crate::storage::{
+        CoinInventory, ConversionOrder, ConversionOrderKind, ConversionOrderRequest, Denomination,
+        StateRoot, TransactionRecord, TransactionStatus,
+    };
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -402,5 +419,79 @@ mod tests {
         assert_eq!(template.prev_hash, [10u8; 32]);
         assert_eq!(template.transactions.len(), 2);
         assert_ne!(template.tx_root, [0u8; 32]);
+    }
+
+    #[tokio::test]
+    async fn test_block_template_selects_conversion_fulfillments() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+
+        let block_store = Arc::new(BlockStore::new(&kv_store));
+        let tx_store = Arc::new(TxStore::new(&kv_store));
+        let state_store = Arc::new(StateStore::new(&kv_store));
+        let mempool = Arc::new(Mempool::new(100));
+
+        let mut config = ConsensusConfig::default();
+        config.miner_address = [44u8; 32];
+
+        let poh_generator = Arc::new(Mutex::new(PoHGenerator::new(&config)));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let mut chain_state = ChainState::new(
+            69,
+            [10u8; 32],
+            StateRoot::new([0u8; 32], 69, 100),
+            100,
+            69,
+            [10u8; 32],
+        );
+        chain_state.current_target = Target::from_difficulty(100);
+        chain_state.latest_timestamp = 100;
+
+        state_store
+            .create_account(&[55u8; 32], 100, crate::storage::AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&config.miner_address, 0, crate::storage::AccountType::User)
+            .unwrap();
+
+        let mut requested_coins = CoinInventory::default();
+        requested_coins.add(Denomination::Cents50, 2).unwrap();
+        let mut requester_state = state_store.get_account_state(&[55u8; 32]).unwrap();
+        requester_state.conversion_order = Some(ConversionOrder::new(
+            [66u8; 32],
+            [55u8; 32],
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: requested_coins.clone(),
+                requested_bill_denominations: vec![Denomination::Dollars1],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&[55u8; 32], &requester_state)
+            .unwrap();
+
+        let mut miner_state = state_store.get_account_state(&config.miner_address).unwrap();
+        miner_state.coin_inventory = requested_coins;
+        miner_state.sync_balance_from_hybrid();
+        state_store
+            .set_account_state(&config.miner_address, &miner_state)
+            .unwrap();
+
+        let producer = BlockProducer::new(
+            chain_state,
+            block_store,
+            tx_store,
+            state_store,
+            mempool,
+            poh_generator,
+            network_tx,
+            config,
+        );
+
+        let template = producer.create_block_template().await;
+        assert_eq!(template.conversion_fulfillment_order_ids, vec![[66u8; 32]]);
     }
 }
