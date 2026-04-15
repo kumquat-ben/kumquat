@@ -596,6 +596,7 @@ pub struct ConversionOrderRequest {
 pub enum ConversionTransaction {
     Create(ConversionOrderRequest),
     Cancel { order_id: [u8; 32] },
+    ClearDead { order_id: [u8; 32] },
 }
 
 /// Protocol-tracked conversion order state for the hybrid cash model.

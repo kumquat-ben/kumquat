@@ -219,8 +219,23 @@ impl<'a> TransactionValidator<'a> {
                         return false;
                     }
                 }
+                ConversionTransaction::ClearDead { order_id } => {
+                    let clearable = matches!(
+                        existing.status,
+                        crate::storage::ConversionOrderStatus::Expired
+                            | crate::storage::ConversionOrderStatus::Failed
+                    ) || tx.block_height >= existing.cycle_end_block;
+                    if existing.order_id != *order_id
+                        || !clearable
+                    {
+                        return false;
+                    }
+                }
             }
-        } else if matches!(intent, ConversionTransaction::Cancel { .. }) {
+        } else if matches!(
+            intent,
+            ConversionTransaction::Cancel { .. } | ConversionTransaction::ClearDead { .. }
+        ) {
             return false;
         }
 
@@ -230,7 +245,7 @@ impl<'a> TransactionValidator<'a> {
                     return false;
                 }
             }
-            ConversionTransaction::Cancel { .. } => {}
+            ConversionTransaction::Cancel { .. } | ConversionTransaction::ClearDead { .. } => {}
         }
 
         let fee_total = tx.coin_fee.total_value_cents()
@@ -264,6 +279,10 @@ fn serialize_conversion_intent(data: &mut Vec<u8>, intent: Option<&ConversionTra
         }
         Some(ConversionTransaction::Cancel { order_id }) => {
             data.push(2);
+            data.extend_from_slice(order_id);
+        }
+        Some(ConversionTransaction::ClearDead { order_id }) => {
+            data.push(3);
             data.extend_from_slice(order_id);
         }
     }

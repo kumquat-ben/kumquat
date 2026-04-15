@@ -315,6 +315,26 @@ impl ConcurrentTokenStore {
                     }
                     sender.conversion_order = None;
                 }
+                ConversionTransaction::ClearDead { order_id } => {
+                    let existing = sender
+                        .conversion_order
+                        .as_mut()
+                        .ok_or(ExecutionRejection::InvalidConversion)?;
+                    if existing.order_id != *order_id {
+                        return Err(ExecutionRejection::InvalidConversion);
+                    }
+                    if block_height >= existing.cycle_end_block {
+                        existing.status = crate::storage::ConversionOrderStatus::Expired;
+                    }
+                    if !matches!(
+                        existing.status,
+                        crate::storage::ConversionOrderStatus::Expired
+                            | crate::storage::ConversionOrderStatus::Failed
+                    ) {
+                        return Err(ExecutionRejection::InvalidConversion);
+                    }
+                    sender.conversion_order = None;
+                }
             }
 
             sender.nonce += 1;

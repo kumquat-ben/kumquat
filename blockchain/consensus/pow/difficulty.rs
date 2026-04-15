@@ -1,4 +1,5 @@
 use log::{info, warn};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
 use crate::consensus::config::ConsensusConfig;
@@ -17,6 +18,8 @@ const CONVERSION_DIFFICULTY_CLAMP: f64 = 0.10;
 struct ConversionFlowStats {
     bill_to_coins_requested_cents: u64,
     coins_to_bill_requested_cents: u64,
+    bill_to_coins_fulfilled_cents: u64,
+    coins_to_bill_fulfilled_cents: u64,
 }
 
 fn normalized_delta(positive: u64, negative: u64) -> f64 {
@@ -46,12 +49,14 @@ fn collect_tracked_miner_addresses(
 fn collect_conversion_flow_stats(
     block_store: &BlockStore<'_>,
     tx_store: &TxStore<'_>,
-    start_height: u64,
+    create_scan_start: u64,
+    flow_start: u64,
     end_height: u64,
 ) -> ConversionFlowStats {
     let mut stats = ConversionFlowStats::default();
+    let mut order_requests = std::collections::HashMap::new();
 
-    for height in start_height..=end_height {
+    for height in create_scan_start..=end_height {
         let block = match block_store.get_block_by_height(height) {
             Ok(Some(block)) => block,
             _ => continue,
@@ -64,6 +69,17 @@ fn collect_conversion_flow_stats(
             };
 
             if let Some(ConversionTransaction::Create(request)) = tx.conversion_intent {
+                let mut hasher = Sha256::new();
+                hasher.update(tx.tx_id);
+                hasher.update(tx.sender);
+                let digest = hasher.finalize();
+                let mut order_id = [0u8; 32];
+                order_id.copy_from_slice(&digest[..32]);
+                order_requests.insert(order_id, (request.kind, request.requested_value_cents));
+
+                if height < flow_start {
+                    continue;
+                }
                 match request.kind {
                     ConversionOrderKind::BillToCoins => {
                         stats.bill_to_coins_requested_cents = stats
@@ -74,6 +90,26 @@ fn collect_conversion_flow_stats(
                         stats.coins_to_bill_requested_cents = stats
                             .coins_to_bill_requested_cents
                             .saturating_add(request.requested_value_cents);
+                    }
+                }
+            }
+        }
+
+        if height < flow_start {
+            continue;
+        }
+        for order_id in &block.conversion_fulfillment_order_ids {
+            if let Some((kind, value)) = order_requests.get(order_id) {
+                match kind {
+                    ConversionOrderKind::BillToCoins => {
+                        stats.bill_to_coins_fulfilled_cents = stats
+                            .bill_to_coins_fulfilled_cents
+                            .saturating_add(*value);
+                    }
+                    ConversionOrderKind::CoinsToBill => {
+                        stats.coins_to_bill_fulfilled_cents = stats
+                            .coins_to_bill_fulfilled_cents
+                            .saturating_add(*value);
                     }
                 }
             }
@@ -110,12 +146,17 @@ fn conversion_market_signal(
         rolling_flow.bill_to_coins_requested_cents,
         rolling_flow.coins_to_bill_requested_cents,
     );
+    let fulfillment_signal = normalized_delta(
+        cycle_flow.bill_to_coins_fulfilled_cents,
+        cycle_flow.coins_to_bill_fulfilled_cents,
+    );
     let smoothed_flow_signal = 0.7 * cycle_signal + 0.3 * rolling_signal;
 
     (0.40 * demand_signal
         + 0.25 * inventory_signal
         + 0.20 * (backlog_ratio * demand_signal)
-        + 0.15 * smoothed_flow_signal)
+        + 0.10 * smoothed_flow_signal
+        + 0.05 * fulfillment_signal)
         .clamp(-1.0, 1.0)
 }
 
@@ -206,9 +247,9 @@ pub fn calculate_next_target(
     let rolling_start =
         current_height.saturating_sub(CONVERSION_ORDER_ELIGIBILITY_BLOCKS.saturating_sub(1));
     let cycle_flow =
-        collect_conversion_flow_stats(block_store, tx_store, cycle_start, current_height);
+        collect_conversion_flow_stats(block_store, tx_store, cycle_start, cycle_start, current_height);
     let rolling_flow =
-        collect_conversion_flow_stats(block_store, tx_store, rolling_start, current_height);
+        collect_conversion_flow_stats(block_store, tx_store, cycle_start, rolling_start, current_height);
     let market_signal = conversion_market_signal(&snapshot, cycle_flow, rolling_flow);
     let bounded_factor = (1.0 - (market_signal * CONVERSION_DIFFICULTY_CLAMP))
         .clamp(1.0 - CONVERSION_DIFFICULTY_CLAMP, 1.0 + CONVERSION_DIFFICULTY_CLAMP);

@@ -75,6 +75,8 @@ pub struct ConversionMarketSnapshot {
     pub eligible_value_cents: u64,
     pub bill_to_coins_demand_cents: u64,
     pub coins_to_bill_demand_cents: u64,
+    pub fulfilled_bill_to_coins_cents: u64,
+    pub fulfilled_coins_to_bill_cents: u64,
 }
 
 #[cfg(test)]
@@ -244,6 +246,73 @@ mod regression_tests {
 
         let cancelled_state = state_store.get_account_state(&sender).unwrap();
         assert!(cancelled_state.conversion_order.is_none());
+    }
+
+    #[test]
+    fn apply_conversion_transaction_clear_dead_order() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let sender = [17; 32];
+        let miner = [18; 32];
+        state_store.create_account(&sender, 100, AccountType::User).unwrap();
+
+        let mut sender_state = state_store.get_account_state(&sender).unwrap();
+        sender_state
+            .coin_inventory
+            .add(crate::storage::Denomination::Cents1, 2)
+            .unwrap();
+        sender_state.conversion_order = Some(ConversionOrder::new(
+            [19; 32],
+            sender,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: vec![],
+            },
+            1,
+        ));
+        state_store.set_account_state(&sender, &sender_state).unwrap();
+
+        state_store.sweep_conversion_order_lifecycle(420).unwrap();
+
+        let mut clear_fee = CoinInventory::default();
+        clear_fee
+            .add(crate::storage::Denomination::Cents1, 1)
+            .unwrap();
+        let clear_tx = TransactionRecord {
+            tx_id: [20; 32],
+            sender,
+            recipient: [0; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: clear_fee,
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 21_000,
+            nonce: 0,
+            timestamp: 2_000,
+            block_height: 420,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::ClearDead { order_id: [19; 32] }),
+            status: TransactionStatus::Pending,
+        };
+
+        state_store
+            .apply_conversion_transaction(
+                &clear_tx,
+                &miner,
+                420,
+                clear_tx.conversion_intent.as_ref().unwrap(),
+            )
+            .unwrap();
+
+        let cleared_state = state_store.get_account_state(&sender).unwrap();
+        assert!(cleared_state.conversion_order.is_none());
     }
 
     #[test]
@@ -417,6 +486,43 @@ mod regression_tests {
             )
             .unwrap_err();
         assert!(err.to_string().contains("duplicated"));
+    }
+
+    #[test]
+    fn sweep_conversion_order_lifecycle_marks_expired_orders() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let requester = [51; 32];
+        state_store
+            .create_account(&requester, 100, AccountType::User)
+            .unwrap();
+
+        let mut requester_state = state_store.get_account_state(&requester).unwrap();
+        requester_state.conversion_order = Some(ConversionOrder::new(
+            [52; 32],
+            requester,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: vec![],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&requester, &requester_state)
+            .unwrap();
+
+        let updated = state_store.sweep_conversion_order_lifecycle(420).unwrap();
+        assert_eq!(updated, 1);
+
+        let swept_state = state_store.get_account_state(&requester).unwrap();
+        assert_eq!(
+            swept_state.conversion_order.as_ref().unwrap().status,
+            ConversionOrderStatus::Expired
+        );
     }
 }
 
@@ -1057,6 +1163,21 @@ impl<'a> StateStore<'a> {
         snapshot
     }
 
+    pub fn sweep_conversion_order_lifecycle(
+        &self,
+        block_height: u64,
+    ) -> Result<u64, StateStoreError> {
+        let mut updated = 0u64;
+        for (address, mut account) in self.get_all_accounts() {
+            if sweep_account_conversion_order(&mut account, block_height) {
+                account.last_updated = block_height;
+                self.set_account_state(&address, &account)?;
+                updated = updated.saturating_add(1);
+            }
+        }
+        Ok(updated)
+    }
+
     /// Get the current block height
     fn get_current_block_height(&self) -> Option<u64> {
         // This would normally come from the blockchain
@@ -1679,6 +1800,27 @@ impl<'a> StateStore<'a> {
                 }
                 sender.conversion_order = None;
             }
+            ConversionTransaction::ClearDead { order_id } => {
+                let existing = sender.conversion_order.as_mut().ok_or_else(|| {
+                    StateStoreError::Other(format!(
+                        "conversion transaction {} has no dead order to clear",
+                        hex::encode(tx.tx_id)
+                    ))
+                })?;
+                refresh_conversion_order_status(existing, block_height);
+                if existing.order_id != *order_id
+                    || !matches!(
+                        existing.status,
+                        ConversionOrderStatus::Expired | ConversionOrderStatus::Failed
+                    )
+                {
+                    return Err(StateStoreError::Other(format!(
+                        "conversion transaction {} cannot clear active order",
+                        hex::encode(tx.tx_id)
+                    )));
+                }
+                sender.conversion_order = None;
+            }
         }
 
         sender.nonce += 1;
@@ -2022,6 +2164,14 @@ fn refresh_conversion_order_status(order: &mut ConversionOrder, block_height: u6
         order.status = ConversionOrderStatus::Pending;
         order.failure_reason = None;
     }
+}
+
+fn sweep_account_conversion_order(account: &mut AccountState, block_height: u64) -> bool {
+    let before = account.conversion_order.clone();
+    if let Some(order) = account.conversion_order.as_mut() {
+        refresh_conversion_order_status(order, block_height);
+    }
+    account.conversion_order != before
 }
 
 fn prepared_conversion_accounts(

@@ -285,6 +285,10 @@ fn serialize_conversion_intent(data: &mut Vec<u8>, intent: Option<&ConversionTra
             data.push(2);
             data.extend_from_slice(order_id);
         }
+        Some(ConversionTransaction::ClearDead { order_id }) => {
+            data.push(3);
+            data.extend_from_slice(order_id);
+        }
     }
 }
 
