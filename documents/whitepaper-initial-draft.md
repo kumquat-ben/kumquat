@@ -18,22 +18,24 @@ The current direction is:
 - bills from `$1` through `$100` are intended to remain non-fungible owned objects
 - coins below `$1` are intended to become fungible inventory
 - coin issuance is intended to happen in accountable compute-backed batches
+- coin conversion is intended to be dynamic, miner-mediated, and sensitive to network state
 
 Readers should treat the remaining references to "all coins are non-fungible" as legacy draft language pending a full rewrite.
 
 ## Abstract
 
-Kumquat proposes a proof-of-work system centered on non-fungible coins rather than a purely fungible balance model. In this framing, newly minted units are treated as individually identifiable objects, with protocol design built around uniqueness, ownership, transfer, and cumulative work.
+Kumquat proposes a proof-of-work system built around a hybrid cash model rather than a purely fungible balance model. In this framing, bills remain individually identifiable objects while coins behave as fungible inventory produced and converted through compute-backed batch processes.
 
 The broader operating concept is the **Kumquat Farm**: a self-contained node that produces value across three dimensions at once. A farm settles transactions on its own chain, rents compute capacity, and monetizes harvested data, while using a shared native token and common settlement layer across all three activities.
 
-This draft is meant to give readers a high-level map of the protocol direction before the design is fully locked. It outlines the motivating problem, the non-fungible coin model, the role of proof-of-work, the proposed "hash-time" concept, the transaction and networking surfaces, and the major unresolved design questions that still need specification.
+This draft is meant to give readers a high-level map of the protocol direction before the design is fully locked. It outlines the motivating problem, the hybrid cash model, the role of proof-of-work, the proposed "hash-time" concept, the transaction and networking surfaces, and the major unresolved design questions that still need specification.
 
 Readers should treat this document as a working draft rather than a final protocol specification.
 
 ## Changelog
 
 - `2026-04-15`: Added an editorial note that this draft still contains older all-non-fungible language and needs a hybrid cash rewrite.
+- `2026-04-15`: Updated the draft direction to include miner-mediated coin orders and dynamic conversion difficulty based on network state.
 
 ## 1. Introduction And Motivation
 
@@ -71,30 +73,27 @@ Three properties define the farm concept:
 
 This section matters because the protocol is not only about non-fungible coins in isolation. It is about the full economic environment those coins are meant to coordinate.
 
-## 2. The Non-Fungible Coin Model
+## 2. The Hybrid Cash Model
 
-The core premise of Kumquat is that each minted coin is unique. Instead of representing supply as interchangeable divisible units only, the protocol treats each coin as a distinct on-chain object.
+The core premise of Kumquat is that bills and coins should not be modeled identically.
 
-At minimum, each coin would need a durable identity committed at mint time. That identity may be derived from protocol data such as:
+The current design direction is:
 
-- block hash
-- miner public key
-- nonce
-- coin-specific commitment data
-
-The exact identity scheme is still to be finalized, but the requirement is clear: two coins minted by Kumquat should not collapse into a single indistinguishable class by default.
+- bills from `$1` through `$100` remain distinct on-chain objects
+- coins below `$1` behave as fungible inventory
+- `$1` can exist in both bill form and coin form depending on conversion state
 
 This design has direct consequences:
 
-- ownership is ownership of specific coins, not only an abstract balance
-- transfers may need to reference exact coin identities
-- fees, wallets, and transaction construction may differ materially from both UTXO and account-based models
+- ownership of bills is ownership of specific objects
+- ownership of coins is ownership of fungible denomination counts or balances
+- transfers, wallet logic, and fee construction differ across the bill side and the coin side of the system
 
 The whitepaper should ultimately define how Kumquat compares to:
 
 - UTXO systems, where outputs are distinct but denominationally fungible
 - account systems, where balances are typically aggregated by account state
-- NFT systems, where uniqueness exists but consensus and transfer economics are usually not designed around mined coin issuance
+- NFT systems, where uniqueness exists but consensus and transfer economics are usually not designed around cash-like denomination conversion
 
 ## 3. Hash-Time: A Wall-Clock-Free Clock
 
@@ -119,7 +118,7 @@ This chapter will likely become one of the most important parts of the final whi
 
 ## 4. Proof-Of-Work Consensus
 
-Kumquat uses proof-of-work consensus, but the consensus story must be explained in terms of the non-fungible mint model rather than copied from a fungible-coin design.
+Kumquat uses proof-of-work consensus, but the consensus story must be explained in terms of the hybrid cash model rather than copied from a fungible-coin design.
 
 The full protocol description should specify:
 
@@ -129,38 +128,58 @@ The full protocol description should specify:
 - cumulative-work chain selection rule
 - fork choice and orphan handling
 
-The interaction between consensus and asset semantics is especially important. If each block mints a unique coin, then reorgs do not merely reorder fungible issuance; they may invalidate or replace specific identity-bearing coins. That changes the practical meaning of finality, wallet display, and transaction safety.
+The interaction between consensus and asset semantics is especially important. If blocks can also include bill-to-coin and coin-to-bill conversion, then finality affects not only issuance but also the available fulfillment pool, pending coin orders, and effective conversion difficulty. That changes the practical meaning of finality, wallet display, and transaction safety.
 
 This section should therefore explain not just how the chain is selected, but what chain selection means for coin identity persistence.
 
 ## 5. Minting Protocol
 
-Kumquat’s minting model appears to be one unique coin per valid block rather than a divisible reward output by default.
+Kumquat’s minting model is now better described as a hybrid issuance model:
+
+- bill rewards remain object-like
+- coin rewards are batch-produced
+- conversion between bills and coins is miner-mediated
 
 That implies a minting protocol with the following concerns:
 
 - what event triggers mint creation
-- what coin identity fields are committed at creation time
-- whether miner identity is bound to the coin permanently or optionally
-- how transaction fees are expressed if fees are not naturally represented in fungible units
+- how batch identity and miner identity are committed at creation time
+- how pending coin orders are fulfilled from miner-managed conversion capacity
+- how transaction fees are expressed across bill and coin forms
+
+The latest design direction also introduces a bank-style coin-order model:
+
+- a user can request coins without instant local conversion
+- the user keeps their value while the order is pending
+- fulfillment happens when miners provide coin inventory from pool or new conversion
+- if the requester no longer has the required value when fulfillment is ready, the resulting coins remain in the pool for the next requester
+
+Conversion itself should act as the protocol's hash-credit mechanism. Instead of a separate credit token, the system lets conversion pressure adjust the effective conversion hash easier or harder depending on network state.
+
+The network-state inputs under consideration are:
+
+- coin demand versus bill demand
+- coin pool inventory level
+- pending conversion orders
+- recent conversion imbalance
 
 The supply model also needs careful treatment. If supply is measured in unique coins rather than divisible base units, then issuance policy, scarcity language, and economic reasoning all need their own vocabulary. A final whitepaper should make that vocabulary precise.
 
 ## 6. Transaction Model
 
-A non-fungible coin chain needs a transaction model that makes object transfer explicit.
+A hybrid cash chain needs a transaction model that makes bill transfer, coin transfer, coin ordering, and coin melting explicit.
 
-The skeleton highlights the most important unresolved issue: whether coins can be split or must move only as whole objects. That decision affects nearly every downstream property of the protocol.
+The skeleton highlighted whole-coin transfer as the main issue, but the current design direction shifts the focus toward conversion and fulfillment semantics.
 
 Questions this section must resolve:
 
-- can a coin be split into smaller units
-- can multiple coins be combined into one transaction effect
-- what constitutes valid spend authorization
-- how double-spend prevention works at the coin-identity level
+- how bill-to-coin and coin-to-bill conversion requests are represented
+- how pending coin orders are matched and fulfilled
+- what constitutes valid spend authorization across bill and coin forms
+- how double-spend prevention works for fungible coin inventory
 - whether scripting or programmability is intentionally minimal or more expressive
 
-If Kumquat chooses whole-coin transfers only, the wallet and market model will likely feel more object-native but less flexible. If it allows splitting or recomposition, it may gain usability while giving up some conceptual purity.
+If Kumquat adopts miner-mediated conversion and pooled coin fulfillment, the wallet and market model will feel more like a bank-and-mint system than a simple object-transfer chain.
 
 The farm concept adds another layer to the transaction discussion: the same payment system is expected to settle several different markets. Compute leases, job execution, liquidity participation, and data purchases may all use the same token and settlement surface. That suggests the eventual transaction model may need:
 
@@ -181,7 +200,7 @@ At minimum, the final whitepaper should specify:
 - mempool rules
 - light client or SPV assumptions
 
-Because Kumquat is not centered on a standard fungible fee market, mempool ordering may need special treatment. If fees are expressed in non-standard terms, the network layer cannot simply inherit the usual miner-priority assumptions from other proof-of-work chains.
+Because Kumquat is not centered on a standard fungible fee market, mempool ordering may need special treatment. Pending conversion orders, pooled coin inventory, and dynamic conversion difficulty mean the network layer cannot simply inherit the usual miner-priority assumptions from other proof-of-work chains.
 
 At network scale, farms are intended to interoperate rather than remain isolated. That introduces additional architectural questions:
 
@@ -203,9 +222,11 @@ The draft attack list includes:
 
 Additional security questions likely belong here as the design matures:
 
-- coin identity forgery or ambiguity
+- bill identity forgery or ambiguity
+- manipulation of pooled coin-order fulfillment
+- gaming the dynamic conversion-difficulty formula
 - wallet confusion during short reorgs
-- miner incentives under non-fungible issuance
+- miner incentives under hybrid issuance and conversion
 - denial-of-service risks if coin metadata grows too large
 - service-delivery fraud in compute or data markets
 - false proofs of execution or proof-of-delivery

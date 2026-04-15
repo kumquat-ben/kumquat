@@ -26,6 +26,15 @@ This plan is optimization-driven. It is intentionally not a privacy design.
   - fungible coin value equal to 100 cents
 - melting coin inventory burns the coins and returns actual compute use on the network
 - compute use returned by melting should support either immediate execution or reserved capacity
+- coin ordering should be modeled as a pending bank-style request, not instant local change-making
+- miners decide how much coin inventory they can convert in a block
+- conversion itself is the hash-credit mechanism; it is not a separate asset
+- conversion difficulty should move dynamically in either direction based on network state
+- the conversion formula should consider:
+  - coin demand versus bill demand
+  - coin pool inventory level
+  - pending conversion orders
+  - recent conversion imbalance
 
 ## Current Constraints In The Codebase
 
@@ -89,6 +98,12 @@ Recommended approach for "like real cash":
 - keep per-denomination balances in state
 - allow transfer either by explicit denomination mix or by total cents with deterministic change-making rules
 
+Coin fulfillment should also support a pooled order model:
+
+- users can place coin orders
+- miners can fulfill those orders from pooled inventory or newly converted supply
+- if a requester no longer has the required value when fulfillment is ready, the resulting coins stay in the fulfillment pool
+
 ### Coin Batches
 
 Coin production is recorded separately from coin ownership:
@@ -108,6 +123,7 @@ Purpose:
 - support issuance auditing
 - avoid carrying serial identity on every coin
 - support melting coin value back into actual compute use
+- support miner-managed fulfillment of pending coin orders
 
 Coins should not inherit a persistent individual on-chain object ID.
 
@@ -152,6 +168,9 @@ New store keys:
 - `coin_batch:<batch_id>`
 - `coin_batch_by_block:<height>:<batch_id>`
 - `coin_batch_by_producer:<producer>:<batch_id>`
+- `coin_order:<order_id>`
+- `coin_order_queue`
+- `coin_pool_inventory`
 
 Optional accounting keys:
 
@@ -174,6 +193,7 @@ Add explicit payment fields:
 
 - `bill_transfer_ids: Vec<Hash>`
 - `coin_transfer: Option<CoinTransfer>`
+- `coin_order: Option<CoinOrder>`
 - `coin_melt: Option<CoinMelt>`
 - `fee_payment: FeePayment`
 - `value: u64` remains a compatibility mirror or derived total
@@ -182,6 +202,10 @@ Suggested supporting types:
 
 - `CoinTransfer`
   - `denomination_amounts` or `total_cents`
+- `CoinOrder`
+  - `requested_denomination_amounts` or `requested_total_cents`
+  - `submitted_at_height`
+  - `expiry` or fulfillment window
 - `FeePayment`
   - `BillToken(Hash)`
   - `Coins(CoinTransfer)`
@@ -195,7 +219,7 @@ Suggested supporting types:
 Recommended first version:
 
 - support fees in coins only
-- support bill transfers plus coin transfers in the same transaction
+- support bill transfers, coin transfers, and coin orders in the same transaction family
 
 That keeps implementation simpler than hybrid fee routing in the first pass.
 
@@ -227,6 +251,12 @@ For coin melting:
 - burn the requested coin amount
 - allocate compute use to the sender according to the selected mode
 
+For coin orders:
+
+- lock the order record, not the requester balance
+- at fulfillment time, re-check that the requester still has the required bill or value
+- if they do not, route the available coins into pooled inventory for the next requester
+
 This implies the executor needs two conflict domains:
 
 - bill object locks
@@ -244,6 +274,7 @@ Replace "owns exact token IDs" checks for coins with:
 - sender has enough fee inventory for fee payment
 - bill IDs, if present, are owned by sender
 - sender has enough coin inventory to melt when redeeming compute use
+- coin-order creation is syntactically valid even before the requester has been matched to fulfillment
 
 ### Consensus validator
 
@@ -260,6 +291,7 @@ Replace exact-token payment equality with:
 - bill movement
 - coin inventory movement
 - compute-use redemption state
+- pending coin-order state and pooled coin inventory
 
 ## Minting And Reward Changes
 
@@ -284,6 +316,12 @@ Separate from block rewards, bill-breaking must:
 - mint the matching coin inventory outcome
 - preserve conservation of face value across forms
 
+Miner conversion blocks must also:
+
+- decide how much bill-to-coin or coin-to-bill conversion to include
+- apply the dynamic conversion difficulty rule
+- fulfill eligible pending coin orders from available pool or newly converted supply
+
 ### Work-backed production
 
 First implementation target:
@@ -307,6 +345,7 @@ Then later strengthen the work model.
 - users may convert `$1+` bill objects into fungible coin inventory
 - `$1` is a boundary case because it may exist as either bill form or coin form
 - breaking should be a protocol state transition, not an off-chain wallet trick
+- in the bank-style order model, breaking can also be mediated by pending fulfillment instead of immediate direct conversion
 
 ### Melting coins into compute use
 
@@ -316,6 +355,32 @@ Then later strengthen the work model.
 - the user should be able to choose:
   - immediate execution
   - reserved capacity
+
+### Ordering coins
+
+- ordering coins should work like ordering coins at a bank
+- the requester keeps their value while waiting for fulfillment
+- miners choose how much coin conversion capacity to provide in a block
+- if the requester no longer has the required value when fulfillment is ready, the coins move into the general pool
+- the next matching requester can be fulfilled instantly from that pool
+
+## Dynamic Conversion Difficulty
+
+The protocol should treat conversion as a dynamic part of mining rather than a fixed side effect.
+
+Rules:
+
+- conversion itself is the hash-credit mechanism
+- there is no separate stored hash-credit token or balance
+- bill-to-coin and coin-to-bill conversion can push the effective conversion hash easier or harder
+- ordinary chain PoW remains, but conversion logic adjusts the conversion portion of block work
+
+The adjustment formula should use all of the following:
+
+- coin demand versus bill demand
+- coin pool inventory level
+- pending conversion orders
+- recent conversion imbalance
 
 ## Migration Strategy
 
@@ -350,6 +415,8 @@ Decisions required before code:
 - does a reward block create one coin batch or many
 - how compute use allocation is represented in state after coin melting
 - whether bill breaking burns the old object or records a reversible form conversion
+- how coin orders are bucketed and matched inside the fulfillment pool
+- how much of block validation treats conversion as separate from ordinary PoW
 
 Exit criteria:
 
@@ -501,3 +568,4 @@ Unless we decide otherwise, the fastest coherent build is:
 
 - `2026-04-15`: Added the first phased implementation plan for the hybrid cash ledger refactor.
 - `2026-04-15`: Added the locked decisions that compute acts as metal, kumquats pay for production compute, coins can be broken from bills, and melting coins returns actual compute use.
+- `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.

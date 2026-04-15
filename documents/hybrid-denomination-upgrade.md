@@ -20,6 +20,15 @@ Adopt a split asset model:
   - fungible coin value equal to 100 cents
 - melting coins destroys the coin inventory and returns actual compute use on the network, not tokenized credits
 - compute use returned by melting should support either immediate execution or reserved capacity at redemption time
+- coin ordering should behave more like ordering coins from a bank than making instant change locally
+- miners decide how much coin inventory they can convert in a block
+- conversion itself is the hash-credit mechanism; there is no separate pre-mined hash-credit asset
+- conversion pressure can make the effective conversion hash easier or harder depending on network state
+- the conversion adjustment formula should consider:
+  - coin demand versus bill demand
+  - coin pool inventory level
+  - pending conversion orders
+  - recent conversion imbalance
 
 ## Current Chain Shape
 
@@ -86,12 +95,13 @@ Transactions need two transfer paths:
 
 - bill transfer: list of exact `bill_token_ids`
 - coin transfer: fungible amount against owned coin inventory
+- coin order: request fungible coin issuance against future miner-supplied inventory
 
 That implies replacing the current transaction shape with something more like:
 
 - `bill_transfer_ids: Vec<Hash>`
 - `coin_amount_cents: u64`
-- `coin_spend_proof: Option<...>`
+- `coin_order: Option<CoinOrder>`
 - `fee_payment: BillFee | CoinFee | HybridFee`
 
 ### 5. Redesign minting and reward issuance
@@ -104,6 +114,7 @@ New mint behavior should be:
 - if reward output is sub-dollar, accumulate into a `CoinBatch`
 - the `CoinBatch` must carry a proof that enough compute work was performed to authorize the minted amount
 - if a user breaks a `$1+` bill, convert the bill form into matching fungible coin inventory
+- if an account owner places a coin order, miners may fulfill it immediately from pooled coin inventory or later when new conversion capacity becomes available
 
 ## Compute-Backed Coin Production
 
@@ -124,10 +135,11 @@ That can be implemented in increasing order of complexity:
 - cheap to implement
 - weakest expression of "coins require compute," because no distinct work market exists
 
-### Option B: Add batch-level proof-of-work
+### Option B: Add batch-level proof-of-work with conversion adjustment
 
 - a miner submits a `CoinBatch` with its own nonce/proof
 - difficulty can scale with minted sub-dollar value
+- when the block includes bill-to-coin or coin-to-bill conversion, the effective conversion hash can move easier or harder based on network state
 - closer to "metal extraction"
 - still publicly verifiable and simple
 
@@ -155,12 +167,47 @@ Recommended shape:
 - recipients receive fungible coin inventory credited from those batches
 - when coins move, the chain verifies balances and denomination counts rather than exact coin IDs
 - when coins are melted, the chain burns coin inventory and allocates compute use to the redeemer
+- when coins are ordered, the protocol records a pending request that miners can fulfill from pooled or newly converted coin inventory
 
 This gives:
 
 - producer accountability at the batch layer
 - fungibility at the spend layer
 - no permanent public identity for each penny-like unit
+- a reusable pool model where failed fulfillment for one requester can still satisfy the next requester
+
+## Coin Order Pool
+
+The requested user behavior is closer to ordering coins at a bank than instantly making local change.
+
+That means:
+
+- an account owner may submit a coin-order request
+- the account owner keeps their value while the request is pending
+- at fulfillment time, the requester must still have the required value
+- if they do not, the minted or converted coins move into the general fulfillment pool
+- the next matching requester can be fulfilled instantly from that pool
+- miners decide how much coin inventory they are willing or able to convert in a block
+
+This pool is important because it lets the network treat coin issuance as a fulfillment market instead of a strict one-request-one-batch pipeline.
+
+## Dynamic Conversion Difficulty
+
+Conversion is not always easier. It should move in both directions depending on network state.
+
+The model is:
+
+- bill-to-coin and coin-to-bill conversion may be included in the same block
+- the conversion itself is the hash-credit mechanism
+- there is no separate stored hash-credit balance
+- the effective conversion hash may become easier or harder depending on current network needs
+
+The adjustment formula should use all of the following:
+
+- coin demand versus bill demand
+- coin pool inventory level
+- pending conversion orders
+- recent conversion imbalance
 
 ## Code Areas That Need a Breaking Upgrade
 
@@ -214,6 +261,8 @@ Add new indexed stores for:
 - `coin_batch:<batch_id>`
 - `account_coin_balance:<address>`
 - `compute_redemption:<redemption_id>`
+- `coin_order:<order_id>`
+- `coin_order_pool:<denomination or amount bucket>`
 
 ### Tooling and wallet logic
 
@@ -221,6 +270,7 @@ Refactor [`blockchain/tools/development.rs`](/Users/armenmerikyan/Desktop/wd/kum
 
 - exact-token selection only works for bills
 - wallet building must select bills explicitly and assemble coin spends from fungible coin state
+- wallet and miner tooling must support coin-order placement, pool inspection, and fulfillment
 
 ## Migration Consequences
 
@@ -251,6 +301,8 @@ Decide:
 - is coin issuance tied to block PoW or separate batch PoW
 - can fees be paid in bills, coins, or both
 - how compute use returned by melting is scheduled and delivered
+- how pending coin orders are matched against pooled fulfillment
+- how the network-state inputs are weighted in dynamic conversion difficulty
 
 ### Phase 2. Implement a minimal hybrid ledger
 
@@ -288,3 +340,4 @@ That keeps the bill model you want while avoiding an unnecessary privacy system 
 
 - `2026-04-15`: Revised the upgrade note to match the clarified requirement: optimization and cash-like behavior, not a privacy system.
 - `2026-04-15`: Added the locked decisions that coins are compute-backed, kumquats pay for production compute, `$1` can exist in bill and coin form, and melting coins returns actual compute use.
+- `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.
