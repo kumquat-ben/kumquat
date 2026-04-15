@@ -7,7 +7,7 @@ The product framing on [kumquat.info](https://kumquat.info) is the guide for thi
 - digital money should keep the logic of cash
 - denominations should feel like units you can hold and hand over
 - wallets should show count, composition, and movement clearly
-- the chain should support object-like value, not just opaque balance mutation
+- the chain should support hybrid cash semantics, not just opaque balance mutation
 
 This directory contains the Rust blockchain implementation, module docs, and local tooling for that direction.
 
@@ -19,6 +19,12 @@ The current implementation combines:
 - Proof of History for ordering and verifiable sequencing
 - object-aware storage primitives for unit-oriented state
 - networking, mempool, and persistence layers for full node operation
+
+The current documentation direction for the ledger is:
+
+- bills from `$1` through `$100` remain discrete owned objects
+- coins below `$1` become fungible inventory
+- sub-dollar issuance is tracked in accountable work-backed batches
 
 Kumquat Chain is not being positioned here as a generic L1. The intended direction is a chain that can back a denomination-first digital money system and eventually plug into the broader Kumquat Farm model described in the root repo docs.
 
@@ -88,3 +94,7 @@ See [docs](./docs) for architecture, API, and module documentation.
 ## Status
 
 This blockchain folder was copied forward from earlier standalone project work and is now being integrated into the main Kumquat repository. It still carries legacy names internally, so the documentation is being aligned first while the underlying implementation is brought over in stages.
+
+## Changelog
+
+- `2026-04-15`: Updated the blockchain README to describe the hybrid cash target model.

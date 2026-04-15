@@ -39,7 +39,7 @@ Create and populate the GitHub project at `https://github.com/users/kumquat-ben/
 ## Remaining Work
 
 - Turn the whitepaper draft into concrete milestones and implementation phases
-- Lock protocol decisions around non-fungible coins, transaction behavior, fees, and governance
+- Lock protocol decisions around the hybrid cash model, transaction behavior, fees, and governance
 - Define pre-launch rewards and conversion policy for kumquats
 - Move from product narrative and demo surfaces into real wallet and transfer behavior
 - Clarify launch readiness, hardening, and operator workflow gaps
@@ -135,6 +135,7 @@ This keeps repository operations connected across code, docs, project planning, 
 | Tighten production secrets, rotation, and operational runbooks | Platform | Backlog | Adoption & Scaling | `infra/aws-secure-platform/README.md`, `documents/operator-onboarding.md` |
 | Seed Discussions and establish the recurring roadmap/community cycle | Community | Backlog | Ecosystem Growth | `documents/community-operations.md` |
 | Publish monthly roadmap and farm updates tied back to project status | Community | Backlog | Ecosystem Growth | `documents/community-operations.md` |
+| Implement the hybrid cash ledger model for bills and sub-dollar coin inventory | Protocol | Backlog | Technical Development | `documents/hybrid-cash-implementation-plan.md` |
 
 ### Suggested Issue Conversion Order
 
@@ -167,3 +168,7 @@ Convert these items from project drafts into repository issues first so mileston
 - Create repository issues for the backlog and in-progress items above
 - Add each issue to `kumquat-ben/projects/1`
 - Set `Status`, `Track`, and `Milestone` on each project item
+
+## Changelog
+
+- `2026-04-15`: Updated the project baseline to reference the hybrid cash model and added the ledger refactor as a protocol backlog item.

@@ -1,6 +1,6 @@
 # Kumquat Wiki
 
-Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer.
+Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. The current protocol direction is a hybrid cash model: bills from `$1` through `$100` are discrete owned units, while coins below `$1` are fungible counted inventory.
 
 This repository contains:
 
@@ -49,3 +49,7 @@ The roadmap is organized across four active tracks:
 - community
 
 For the current milestone structure and immediate priorities, see [Roadmap](Roadmap).
+
+## Changelog
+
+- `2026-04-15`: Updated the wiki home page to reflect the hybrid cash protocol direction.

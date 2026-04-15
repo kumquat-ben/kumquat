@@ -11,6 +11,8 @@ This folder is the top-level operating manual for Kumquat. It consolidates the d
 - [Product Requirements Document](product-requirements.md): current product intent, audience, scope, and release assumptions
 - [White Paper Initial Draft](whitepaper-initial-draft.md): Markdown draft converted from the provided whitepaper skeleton
 - [Community Operations](community-operations.md): GitHub Discussions seeding plan, engagement cadence, and project-management integration
+- [Hybrid Denomination Upgrade](hybrid-denomination-upgrade.md): protocol direction note for the hybrid bills-plus-coins model
+- [Hybrid Cash Implementation Plan](hybrid-cash-implementation-plan.md): phased implementation plan for the ledger refactor
 
 ## Source Material
 
@@ -19,3 +21,7 @@ These documents are aligned with the repo's existing operator references:
 - [`README.md`](../README.md)
 - [`infra/aws-secure-platform/README.md`](../infra/aws-secure-platform/README.md)
 - [`infra/aws-secure-platform/VPN.md`](../infra/aws-secure-platform/VPN.md)
+
+## Changelog
+
+- `2026-04-15`: Added the hybrid cash planning docs to the document index.

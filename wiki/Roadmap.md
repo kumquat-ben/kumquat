@@ -19,7 +19,7 @@ The next phase is to turn the existing product narrative, protocol draft, and in
 
 - turn the whitepaper draft into a concrete protocol specification
 - align the Rust blockchain codebase with the current Kumquat product model
-- define the denomination object model and transaction behavior
+- define the hybrid cash model and transaction behavior
 - complete consensus, networking, and synchronization integration around the current design
 
 ### Platform
@@ -49,7 +49,7 @@ The repository milestones currently map to this progression:
 ## Immediate Priorities
 
 1. turn the whitepaper draft into a protocol spec and public roadmap
-2. align the Rust blockchain codebase with the current product direction
+2. align the Rust blockchain codebase with the hybrid cash product direction
 3. define early-access rewards policy and conversion rules
 4. build real wallet and transfer flows
 5. connect those product flows to persistent backend state
@@ -60,3 +60,7 @@ The repository milestones currently map to this progression:
 - [Architecture](Architecture)
 - [Getting Started](Getting-Started)
 - [Home](Home)
+
+## Changelog
+
+- `2026-04-15`: Updated roadmap language to reference the hybrid cash model.

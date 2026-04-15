@@ -7,6 +7,19 @@
 - Additional source basis: `/Users/armenmerikyan/Downloads/kumquat-farm-concept.html`
 - Intended audience: GitHub readers, contributors, and early protocol reviewers
 - Current maturity: structure-first draft with explicit open questions
+- Draft status note: parts of this document still describe an older all-non-fungible coin direction and need revision toward the hybrid cash model now being planned in the repository
+
+## Editorial Update 2026-04-15
+
+This draft no longer matches the latest protocol direction exactly.
+
+The current direction is:
+
+- bills from `$1` through `$100` are intended to remain non-fungible owned objects
+- coins below `$1` are intended to become fungible inventory
+- coin issuance is intended to happen in accountable compute-backed batches
+
+Readers should treat the remaining references to "all coins are non-fungible" as legacy draft language pending a full rewrite.
 
 ## Abstract
 
@@ -17,6 +30,10 @@ The broader operating concept is the **Kumquat Farm**: a self-contained node tha
 This draft is meant to give readers a high-level map of the protocol direction before the design is fully locked. It outlines the motivating problem, the non-fungible coin model, the role of proof-of-work, the proposed "hash-time" concept, the transaction and networking surfaces, and the major unresolved design questions that still need specification.
 
 Readers should treat this document as a working draft rather than a final protocol specification.
+
+## Changelog
+
+- `2026-04-15`: Added an editorial note that this draft still contains older all-non-fungible language and needs a hybrid cash rewrite.
 
 ## 1. Introduction And Motivation
 

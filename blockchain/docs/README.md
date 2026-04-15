@@ -12,4 +12,8 @@ This directory contains the supporting documentation for the blockchain implemen
 
 ## Project Overview
 
-Kumquat Chain is the protocol layer behind Kumquat's digital cash model. It combines Proof of Work, Proof of History, and object-aware state to support a system where value can be represented as visible, transferable units rather than only a single abstract balance.
+Kumquat Chain is the protocol layer behind Kumquat's digital cash model. It combines Proof of Work, Proof of History, and state/storage primitives aimed at a hybrid cash ledger where bills remain discrete objects and sub-dollar coins behave as fungible inventory.
+
+## Changelog
+
+- `2026-04-15`: Updated the blockchain docs index to reflect the hybrid cash target model.

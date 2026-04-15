@@ -6,13 +6,13 @@
 
 ![Kumquat Team](team.kumquat.png)
 
-Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. This repository contains the public Django website, the Rust blockchain in `/blockchain`, and the AWS-hosted k3s infrastructure that supports the product.
+Kumquat is a digital money product built around a physical cash mental model, where denominations behave like visible units you can hold, read, and transfer. The current protocol direction is a hybrid cash model: bills from `$1` through `$100` behave as discrete owned objects, while coins below `$1` behave as fungible inventory produced in accountable batches. This repository contains the public Django website, the Rust blockchain in `/blockchain`, and the AWS-hosted k3s infrastructure that supports the product.
 
 Live at **[kumquat.info](https://kumquat.info)**.
 
 The website lives in [website](website) and is implemented as a Django application that serves the public site, auth flow, admin surfaces, and backend endpoints from the same service and hostname.
 
-The chain implementation lives in [blockchain](blockchain). That folder contains the Rust node, storage layer, consensus engine, networking stack, genesis tooling, and deployment assets for the protocol layer that backs Kumquat's denomination-first money model.
+The chain implementation lives in [blockchain](blockchain). That folder contains the Rust node, storage layer, consensus engine, networking stack, genesis tooling, and deployment assets for the protocol layer that backs Kumquat's denomination-first hybrid cash model.
 
 Infrastructure for the AWS private container platform lives in [infra/aws-secure-platform](infra/aws-secure-platform). That folder contains the Terraform for the VPC, VPN, ECR, and k3s cluster, plus Helm and Terraform add-on code for the Kumquat backend platform, including the MySQL operator, a MySQL InnoDB cluster, and EBS-backed persistent storage.
 
@@ -133,6 +133,8 @@ Top-level team documentation now lives in [documents](documents):
 - [documents/developer-onboarding.md](documents/developer-onboarding.md)
 - [documents/operator-onboarding.md](documents/operator-onboarding.md)
 - [documents/product-requirements.md](documents/product-requirements.md)
+- [documents/hybrid-denomination-upgrade.md](documents/hybrid-denomination-upgrade.md)
+- [documents/hybrid-cash-implementation-plan.md](documents/hybrid-cash-implementation-plan.md)
 
 ## Getting Started
 
@@ -165,6 +167,10 @@ Code contributions are welcome through GitHub:
 - Sponsor the project: <https://github.com/sponsors/kumquat-ben>
 
 Project management and community work should run as part of the normal delivery cycle, not outside it. Use Discussions for `Q&A`, `Ideas`, `Polls`, and `Announcements`, link relevant threads in PRs when community context exists, and keep the recurring engagement cadence documented in [documents/community-operations.md](documents/community-operations.md) visible in project planning.
+
+## Changelog
+
+- `2026-04-15`: Updated the repo overview to reflect the hybrid cash protocol direction and linked the new planning documents.
 
 © 2026 Benjamin Levin. All Rights Reserved.
 Unauthorized use, copying, or distribution is strictly prohibited.

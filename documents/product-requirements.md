@@ -17,6 +17,12 @@ The current website frames the product as:
 - transfers that read like handing over real cash
 - an early-access system that rewards users with kumquats before chain launch
 
+The current protocol direction under that product framing is:
+
+- bills from `$1` through `$100` are discrete wallet objects
+- coins below `$1` are fungible counted inventory
+- wallets should make the bill-versus-coin distinction legible instead of flattening both into one object model
+
 ## Problem
 
 Digital balances are often hard to parse at a glance. They flatten denomination, count, and transfer behavior into an abstract number. Kumquat aims to make value easier to understand by restoring the logic of cash in a digital interface.
@@ -85,6 +91,8 @@ The implementation should preserve the existing direction:
 - How will kumquats convert into launch-era units?
 - What wallet capabilities will be available before chain launch?
 - What admin workflows are required to support early-access users?
+- How much denomination control should users have when sending coin inventory?
+- Should the wallet auto-make coin change or require explicit denomination mixes?
 
 ## Suggested Next Product Documents
 
@@ -94,3 +102,7 @@ If the team wants a fuller product documentation set, add:
 - token or denomination policy
 - auth and user-state flows
 - admin operations guide
+
+## Changelog
+
+- `2026-04-15`: Updated product requirements to reflect the hybrid cash model with bill objects and fungible sub-dollar coin inventory.

@@ -2,6 +2,8 @@
 
 This document defines the current consensus-critical block model for the Rust blockchain implementation.
 
+The live code still documents reward results as `reward_token_ids`, but the current protocol direction is to evolve sub-dollar reward outputs into aggregated coin batches while preserving bill-object rewards. Until that refactor lands, this document should be read as the current implementation model, not the final hybrid cash target.
+
 ## Canonical Block Shape
 
 The stored `Block` carries three distinct layers of data:
@@ -146,3 +148,7 @@ This avoids a circular dependency where the block hash would need the reward res
 - Move all production and test block construction to a single builder API.
 - Remove stale alternate block/header code paths that no longer match this model.
 - Extend tests so `cargo test --lib` validates this exact flow cleanly.
+
+## Changelog
+
+- `2026-04-15`: Added a status note clarifying that this block model still reflects the current implementation and will need follow-up work for hybrid cash reward outputs.
