@@ -259,6 +259,7 @@ mod tests {
             prev_hash,
             timestamp: height * 10,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],

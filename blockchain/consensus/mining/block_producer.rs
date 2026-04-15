@@ -90,6 +90,7 @@ impl<'a> BlockProducer<'a> {
             timestamp,
             &selected_transactions,
             &self.config.miner_address,
+            &[],
         ) {
             Ok(root) => root.root_hash,
             Err(e) => {
@@ -139,6 +140,7 @@ impl<'a> BlockProducer<'a> {
             prev_hash: self.chain_state.tip_hash,
             timestamp,
             transactions: selected_transactions,
+            conversion_fulfillment_order_ids: Vec::new(),
             state_root,
             tx_root,      // Use the calculated transaction root
             poh_seq,      // Use the current PoH sequence
@@ -219,6 +221,7 @@ impl<'a> BlockProducer<'a> {
                         block.timestamp,
                         &template_transactions,
                         &block.miner,
+                        &block.conversion_fulfillment_order_ids,
                         &block.hash,
                     ) {
                     Ok(root) => {
@@ -229,8 +232,12 @@ impl<'a> BlockProducer<'a> {
                         return None;
                     }
                 }
-                block.result_commitment =
-                    result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+                block.result_commitment = result_commitment(
+                    &block.hash,
+                    &block.state_root,
+                    &block.reward_token_ids,
+                    &block.conversion_fulfillment_order_ids,
+                );
 
                 // Mark transactions as included
                 for tx_id in &block.transactions {

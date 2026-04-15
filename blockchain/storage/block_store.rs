@@ -26,6 +26,7 @@ pub struct CanonicalBlockHeader {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalBlockBody {
     pub transactions: Vec<Hash>,
+    pub conversion_fulfillment_order_ids: Vec<Hash>,
     pub reward_token_ids: Vec<Hash>,
     pub state_root: Hash,
     pub result_commitment: Hash,
@@ -43,13 +44,24 @@ pub fn pow_hash(header: &CanonicalBlockHeader) -> Hash {
     crate::crypto::hash::sha256(&preimage)
 }
 
-pub fn result_commitment(block_hash: &Hash, state_root: &Hash, reward_token_ids: &[Hash]) -> Hash {
-    let mut preimage = Vec::with_capacity(32 + 32 + 8 + (reward_token_ids.len() * 32));
+pub fn result_commitment(
+    block_hash: &Hash,
+    state_root: &Hash,
+    reward_token_ids: &[Hash],
+    conversion_fulfillment_order_ids: &[Hash],
+) -> Hash {
+    let mut preimage = Vec::with_capacity(
+        32 + 32 + 8 + (reward_token_ids.len() * 32) + 8 + (conversion_fulfillment_order_ids.len() * 32),
+    );
     preimage.extend_from_slice(block_hash);
     preimage.extend_from_slice(state_root);
     preimage.extend_from_slice(&(reward_token_ids.len() as u64).to_be_bytes());
     for token_id in reward_token_ids {
         preimage.extend_from_slice(token_id);
+    }
+    preimage.extend_from_slice(&(conversion_fulfillment_order_ids.len() as u64).to_be_bytes());
+    for order_id in conversion_fulfillment_order_ids {
+        preimage.extend_from_slice(order_id);
     }
     crate::crypto::hash::sha256(&preimage)
 }
@@ -75,6 +87,10 @@ pub struct Block {
 
     /// Transaction IDs included in this block
     pub transactions: Vec<Hash>,
+
+    /// Conversion orders selected for fulfillment in PoH order.
+    #[serde(default)]
+    pub conversion_fulfillment_order_ids: Vec<Hash>,
 
     /// Reward recipient for this block.
     pub miner: Hash,
@@ -404,6 +420,7 @@ impl Block {
     pub fn canonical_body(&self) -> CanonicalBlockBody {
         CanonicalBlockBody {
             transactions: self.transactions.clone(),
+            conversion_fulfillment_order_ids: self.conversion_fulfillment_order_ids.clone(),
             reward_token_ids: self.reward_token_ids.clone(),
             state_root: self.state_root,
             result_commitment: self.result_commitment,
@@ -428,6 +445,7 @@ mod tests {
             },
             timestamp: 12345 + height,
             transactions: vec![[height as u8 + 1; 32]],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [height as u8 + 7; 32],
             reward_token_ids: vec![],

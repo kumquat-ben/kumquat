@@ -187,6 +187,7 @@ impl GenesisConfig {
             prev_hash: [0; 32],
             timestamp: self.timestamp,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0; 32],
             pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
@@ -213,7 +214,12 @@ impl GenesisConfig {
 
         block.hash = sha256(block_data.as_bytes());
         block.result_commitment =
-            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+            result_commitment(
+                &block.hash,
+                &block.state_root,
+                &block.reward_token_ids,
+                &block.conversion_fulfillment_order_ids,
+            );
 
         block
     }
@@ -248,7 +254,12 @@ impl GenesisConfig {
         );
         block.hash = sha256(block_data.as_bytes());
         block.result_commitment =
-            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+            result_commitment(
+                &block.hash,
+                &block.state_root,
+                &block.reward_token_ids,
+                &block.conversion_fulfillment_order_ids,
+            );
 
         Ok(block)
     }

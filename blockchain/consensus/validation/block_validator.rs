@@ -173,6 +173,7 @@ impl<'a> BlockValidator<'a> {
             block.timestamp,
             &transactions,
             &block.miner,
+            &block.conversion_fulfillment_order_ids,
         ) {
             Ok(root) => root.root_hash,
             Err(err) => {
@@ -233,7 +234,12 @@ impl<'a> BlockValidator<'a> {
 
     fn validate_result_commitment(&self, block: &Block) -> bool {
         let expected_commitment =
-            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+            result_commitment(
+                &block.hash,
+                &block.state_root,
+                &block.reward_token_ids,
+                &block.conversion_fulfillment_order_ids,
+            );
 
         if block.result_commitment != expected_commitment {
             error!(
@@ -396,6 +402,7 @@ impl<'a> BlockValidator<'a> {
                 block.timestamp,
                 &transactions,
                 &block.miner,
+                &block.conversion_fulfillment_order_ids,
                 &block.hash,
             ) {
             Ok(root) => root.root_hash,
@@ -541,10 +548,11 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 0,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
-            result_commitment: result_commitment(&[0u8; 32], &[0u8; 32], &[]),
+            result_commitment: result_commitment(&[0u8; 32], &[0u8; 32], &[], &[]),
             state_root: [0u8; 32],
             tx_root: empty_tx_root,
             poh_hash: [0u8; 32],
@@ -584,7 +592,7 @@ mod tests {
         };
 
         let pre_reward_state_root = state_store
-            .calculate_projected_state_root(height, timestamp, transactions, &miner)
+            .calculate_projected_state_root(height, timestamp, transactions, &miner, &[])
             .unwrap()
             .root_hash;
         let header = CanonicalBlockHeader {
@@ -611,6 +619,7 @@ mod tests {
                 timestamp,
                 transactions,
                 &miner,
+                &[],
                 &hash,
             )
             .unwrap()
@@ -622,10 +631,11 @@ mod tests {
             prev_hash,
             timestamp,
             transactions: tx_hashes,
+            conversion_fulfillment_order_ids: vec![],
             miner,
             pre_reward_state_root,
             reward_token_ids: reward_token_ids.clone(),
-            result_commitment: result_commitment(&hash, &state_root, &reward_token_ids),
+            result_commitment: result_commitment(&hash, &state_root, &reward_token_ids, &[]),
             state_root,
             tx_root,
             poh_hash: crate::crypto::hash::sha256(&(timestamp.to_be_bytes())),
@@ -670,7 +680,12 @@ mod tests {
         let mut block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [9u8; 32]);
         block.reward_token_ids.push([77u8; 32]);
         block.result_commitment =
-            result_commitment(&block.hash, &block.state_root, &block.reward_token_ids);
+            result_commitment(
+                &block.hash,
+                &block.state_root,
+                &block.reward_token_ids,
+                &block.conversion_fulfillment_order_ids,
+            );
 
         let target = Target::from_difficulty(1);
         assert!(matches!(

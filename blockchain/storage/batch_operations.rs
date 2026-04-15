@@ -65,6 +65,7 @@ mod regression_tests {
             prev_hash: [0; 32],
             timestamp: 12345,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [8; 32],
             pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
@@ -134,11 +135,12 @@ mod regression_tests {
                 12345,
                 &[tx.clone()],
                 &miner,
+                &[],
                 &block_hash,
             )
             .unwrap();
         let overrides = state_store
-            .project_state_changes(1, &[tx], &miner, Some(&block_hash))
+            .project_state_changes(1, &[tx], &miner, &[], Some(&block_hash))
             .unwrap();
         let recomputed = state_store
             .calculate_state_root_with_overrides(1, 12345, &overrides)

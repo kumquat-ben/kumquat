@@ -21,6 +21,9 @@ pub struct BlockTemplate {
     /// Transactions to include
     pub transactions: Vec<TransactionRecord>,
 
+    /// Conversion orders selected for fulfillment in this block.
+    pub conversion_fulfillment_order_ids: Vec<Hash>,
+
     /// State root
     pub state_root: Hash,
 
@@ -71,6 +74,7 @@ impl BlockTemplate {
             prev_hash,
             timestamp,
             transactions,
+            conversion_fulfillment_order_ids: Vec::new(),
             state_root,
             tx_root,
             poh_seq,
@@ -119,6 +123,7 @@ impl BlockTemplate {
                 .iter()
                 .map(|tx| tx.tx_id.clone())
                 .collect(),
+            conversion_fulfillment_order_ids: self.conversion_fulfillment_order_ids.clone(),
             miner: self.miner,
             pre_reward_state_root: self.state_root,
             reward_token_ids: crate::storage::block_store::reward_outcome(

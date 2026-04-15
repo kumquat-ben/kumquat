@@ -262,7 +262,13 @@ impl<'a> BlockProcessor<'a> {
         transactions: &[TransactionRecord],
     ) -> Result<Vec<(Hash, AccountState)>, String> {
         self.state_store
-            .project_state_changes(block.height, transactions, &block.miner, Some(&block.hash))
+            .project_state_changes(
+                block.height,
+                transactions,
+                &block.miner,
+                &block.conversion_fulfillment_order_ids,
+                Some(&block.hash),
+            )
             .map_err(|e| format!("Failed to project state changes: {}", e))
     }
 

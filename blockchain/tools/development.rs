@@ -211,6 +211,7 @@ impl<'a> DevelopmentTools<'a> {
                 .unwrap()
                 .as_secs(),
             transactions: transactions.iter().map(|tx| tx.tx_id).collect(),
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],
@@ -232,6 +233,7 @@ impl<'a> DevelopmentTools<'a> {
             &block.hash,
             &block.state_root,
             &block.reward_token_ids,
+            &block.conversion_fulfillment_order_ids,
         );
 
         info!(

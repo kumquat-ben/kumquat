@@ -953,6 +953,7 @@ mod tests {
             prev_hash: [6u8; 32],
             timestamp: 12345,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
