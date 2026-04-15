@@ -29,6 +29,12 @@ Adopt a split asset model:
   - coin pool inventory level
   - pending conversion orders
   - recent conversion imbalance
+- miners should fulfill coin orders from their own inventory first
+- coin orders are all-or-nothing; no partial fulfillment
+- pending coin orders expire when the 420-block difficulty cycle ends and require fresh approval after expiry
+- the protocol recalculates the major conversion baseline every 420 blocks
+- per-block conversion adjustment should use a 69-block rolling average to reduce oscillation
+- per-block adjustment should be tightly bounded around the 420-block baseline, recommended at `+/- 10%`
 
 ## Current Chain Shape
 
@@ -188,6 +194,9 @@ That means:
 - if they do not, the minted or converted coins move into the general fulfillment pool
 - the next matching requester can be fulfilled instantly from that pool
 - miners decide how much coin inventory they are willing or able to convert in a block
+- miners must use their own inventory first when fulfilling orders
+- orders are filled only when a miner can satisfy the full request
+- unmatched orders expire at the end of the current 420-block cycle and are removed
 
 This pool is important because it lets the network treat coin issuance as a fulfillment market instead of a strict one-request-one-batch pipeline.
 
@@ -201,6 +210,9 @@ The model is:
 - the conversion itself is the hash-credit mechanism
 - there is no separate stored hash-credit balance
 - the effective conversion hash may become easier or harder depending on current network needs
+- the major conversion baseline resets every 420 blocks
+- per-block movement should use a 69-block rolling average
+- per-block movement should be clamped tightly around the baseline to avoid oscillation
 
 The adjustment formula should use all of the following:
 
@@ -208,6 +220,12 @@ The adjustment formula should use all of the following:
 - coin pool inventory level
 - pending conversion orders
 - recent conversion imbalance
+
+Recommended control rule:
+
+- 420-block baseline recalibration
+- 69-block rolling average for micro-adjustment
+- tight clamp around baseline, recommended at `+/- 10%`
 
 ## Code Areas That Need a Breaking Upgrade
 
@@ -263,6 +281,7 @@ Add new indexed stores for:
 - `compute_redemption:<redemption_id>`
 - `coin_order:<order_id>`
 - `coin_order_pool:<denomination or amount bucket>`
+- `conversion_cycle:<cycle_id>`
 
 ### Tooling and wallet logic
 
@@ -303,6 +322,7 @@ Decide:
 - how compute use returned by melting is scheduled and delivered
 - how pending coin orders are matched against pooled fulfillment
 - how the network-state inputs are weighted in dynamic conversion difficulty
+- how the 69-block rolling average and `+/- 10%` clamp are encoded in consensus rules
 
 ### Phase 2. Implement a minimal hybrid ledger
 
@@ -341,3 +361,4 @@ That keeps the bill model you want while avoiding an unnecessary privacy system 
 - `2026-04-15`: Revised the upgrade note to match the clarified requirement: optimization and cash-like behavior, not a privacy system.
 - `2026-04-15`: Added the locked decisions that coins are compute-backed, kumquats pay for production compute, `$1` can exist in bill and coin form, and melting coins returns actual compute use.
 - `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.
+- `2026-04-15`: Added the order-fulfillment and smoothing rules: miner inventory first, no partial fills, 420-block expiry, 69-block rolling average, and a tight `+/- 10%` adjustment clamp.

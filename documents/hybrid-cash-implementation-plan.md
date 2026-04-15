@@ -35,6 +35,12 @@ This plan is optimization-driven. It is intentionally not a privacy design.
   - coin pool inventory level
   - pending conversion orders
   - recent conversion imbalance
+- miners must fulfill orders from their own inventory first
+- coin orders are all-or-nothing; no partial fulfillment
+- pending orders expire at the end of each 420-block conversion cycle
+- the major conversion baseline recalculates every 420 blocks
+- per-block conversion adjustment uses a 69-block rolling average
+- per-block adjustment should be tightly bounded around the cycle baseline, recommended at `+/- 10%`
 
 ## Current Constraints In The Codebase
 
@@ -103,6 +109,9 @@ Coin fulfillment should also support a pooled order model:
 - users can place coin orders
 - miners can fulfill those orders from pooled inventory or newly converted supply
 - if a requester no longer has the required value when fulfillment is ready, the resulting coins stay in the fulfillment pool
+- miners use their own inventory first
+- fulfillment is all-or-nothing
+- unmatched orders expire at the end of the current 420-block cycle
 
 ### Coin Batches
 
@@ -171,6 +180,7 @@ New store keys:
 - `coin_order:<order_id>`
 - `coin_order_queue`
 - `coin_pool_inventory`
+- `conversion_cycle:<cycle_id>`
 
 Optional accounting keys:
 
@@ -205,7 +215,8 @@ Suggested supporting types:
 - `CoinOrder`
   - `requested_denomination_amounts` or `requested_total_cents`
   - `submitted_at_height`
-  - `expiry` or fulfillment window
+  - `expiry_height`
+  - `cycle_id`
 - `FeePayment`
   - `BillToken(Hash)`
   - `Coins(CoinTransfer)`
@@ -256,6 +267,7 @@ For coin orders:
 - lock the order record, not the requester balance
 - at fulfillment time, re-check that the requester still has the required bill or value
 - if they do not, route the available coins into pooled inventory for the next requester
+- require a full fill from miner-owned inventory or fail fulfillment for that attempt
 
 This implies the executor needs two conflict domains:
 
@@ -292,6 +304,7 @@ Replace exact-token payment equality with:
 - coin inventory movement
 - compute-use redemption state
 - pending coin-order state and pooled coin inventory
+- current conversion-cycle state
 
 ## Minting And Reward Changes
 
@@ -321,6 +334,7 @@ Miner conversion blocks must also:
 - decide how much bill-to-coin or coin-to-bill conversion to include
 - apply the dynamic conversion difficulty rule
 - fulfill eligible pending coin orders from available pool or newly converted supply
+- respect the inventory-first and no-partial-fill rules
 
 ### Work-backed production
 
@@ -363,6 +377,9 @@ Then later strengthen the work model.
 - miners choose how much coin conversion capacity to provide in a block
 - if the requester no longer has the required value when fulfillment is ready, the coins move into the general pool
 - the next matching requester can be fulfilled instantly from that pool
+- miners fulfill from their own inventory first
+- orders are all-or-nothing
+- orders expire at the end of the current 420-block cycle and require fresh approval
 
 ## Dynamic Conversion Difficulty
 
@@ -374,6 +391,9 @@ Rules:
 - there is no separate stored hash-credit token or balance
 - bill-to-coin and coin-to-bill conversion can push the effective conversion hash easier or harder
 - ordinary chain PoW remains, but conversion logic adjusts the conversion portion of block work
+- major conversion recalibration happens every 420 blocks
+- per-block movement uses a 69-block rolling average
+- per-block movement is tightly clamped around the cycle baseline, recommended at `+/- 10%`
 
 The adjustment formula should use all of the following:
 
@@ -381,6 +401,12 @@ The adjustment formula should use all of the following:
 - coin pool inventory level
 - pending conversion orders
 - recent conversion imbalance
+
+Recommended stability rule:
+
+- use 420-block cycle baselines for major recalibration
+- use a 69-block rolling average for micro-adjustment
+- clamp the per-block adjustment to `+/- 10%` from the cycle baseline to avoid oscillations
 
 ## Migration Strategy
 
@@ -417,6 +443,7 @@ Decisions required before code:
 - whether bill breaking burns the old object or records a reversible form conversion
 - how coin orders are bucketed and matched inside the fulfillment pool
 - how much of block validation treats conversion as separate from ordinary PoW
+- whether `+/- 10%` is the final clamp or just the starting default
 
 Exit criteria:
 
@@ -569,3 +596,4 @@ Unless we decide otherwise, the fastest coherent build is:
 - `2026-04-15`: Added the first phased implementation plan for the hybrid cash ledger refactor.
 - `2026-04-15`: Added the locked decisions that compute acts as metal, kumquats pay for production compute, coins can be broken from bills, and melting coins returns actual compute use.
 - `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.
+- `2026-04-15`: Added the fulfillment and smoothing rules: miner inventory first, no partial fills, 420-block expiry, 69-block rolling average, and a tight `+/- 10%` clamp.

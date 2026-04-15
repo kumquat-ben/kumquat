@@ -153,6 +153,9 @@ The latest design direction also introduces a bank-style coin-order model:
 - the user keeps their value while the order is pending
 - fulfillment happens when miners provide coin inventory from pool or new conversion
 - if the requester no longer has the required value when fulfillment is ready, the resulting coins remain in the pool for the next requester
+- miners must fulfill from their own inventory first
+- fulfillment is all-or-nothing rather than partial
+- pending orders expire at the end of a 420-block conversion cycle and require fresh approval
 
 Conversion itself should act as the protocol's hash-credit mechanism. Instead of a separate credit token, the system lets conversion pressure adjust the effective conversion hash easier or harder depending on network state.
 
@@ -162,6 +165,12 @@ The network-state inputs under consideration are:
 - coin pool inventory level
 - pending conversion orders
 - recent conversion imbalance
+
+The current stability direction is:
+
+- major conversion-baseline recalibration every 420 blocks
+- per-block micro-adjustment using a 69-block rolling average
+- a tight adjustment clamp around the cycle baseline, currently targeted at `+/- 10%`, to avoid oscillations
 
 The supply model also needs careful treatment. If supply is measured in unique coins rather than divisible base units, then issuance policy, scarcity language, and economic reasoning all need their own vocabulary. A final whitepaper should make that vocabulary precise.
 
@@ -202,6 +211,8 @@ At minimum, the final whitepaper should specify:
 
 Because Kumquat is not centered on a standard fungible fee market, mempool ordering may need special treatment. Pending conversion orders, pooled coin inventory, and dynamic conversion difficulty mean the network layer cannot simply inherit the usual miner-priority assumptions from other proof-of-work chains.
 
+The network specification will also need to define how nodes agree on the current conversion cycle, the 69-block rolling average inputs, and the clamped adjustment result for each block.
+
 At network scale, farms are intended to interoperate rather than remain isolated. That introduces additional architectural questions:
 
 - how compute demand routes to available farm capacity
@@ -225,6 +236,7 @@ Additional security questions likely belong here as the design matures:
 - bill identity forgery or ambiguity
 - manipulation of pooled coin-order fulfillment
 - gaming the dynamic conversion-difficulty formula
+- oscillation attacks against per-block conversion adjustment
 - wallet confusion during short reorgs
 - miner incentives under hybrid issuance and conversion
 - denial-of-service risks if coin metadata grows too large
