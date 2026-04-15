@@ -382,17 +382,10 @@ fn bench_commit_block(b: &mut Bencher) {
     };
 
     // Create test state changes
-    let state1 = AccountState {
-        balance: 900,
-        nonce: 1,
-        account_type: AccountType::User,
-    };
+    let mut state1 = AccountState::new_user(900, 1);
+    state1.nonce = 1;
 
-    let state2 = AccountState {
-        balance: 200,
-        nonce: 0,
-        account_type: AccountType::User,
-    };
+    let state2 = AccountState::new_user(200, 1);
 
     let state_changes = vec![([10; 32], state1), ([11; 32], state2)];
 

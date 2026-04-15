@@ -268,6 +268,30 @@ impl Denomination {
             _ => None,
         }
     }
+
+    pub fn is_bill(&self) -> bool {
+        matches!(
+            self,
+            Denomination::Dollars100
+                | Denomination::Dollars50
+                | Denomination::Dollars20
+                | Denomination::Dollars10
+                | Denomination::Dollars5
+                | Denomination::Dollars2
+                | Denomination::Dollars1
+        )
+    }
+
+    pub fn is_coin(&self) -> bool {
+        matches!(
+            self,
+            Denomination::Cents50
+                | Denomination::Cents25
+                | Denomination::Cents10
+                | Denomination::Cents5
+                | Denomination::Cents1
+        )
+    }
 }
 
 impl fmt::Display for Denomination {
@@ -331,6 +355,215 @@ impl DenominationToken {
     }
 }
 
+/// A non-fungible bill tracked as a discrete ledger object.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct BillToken {
+    pub bill_id: [u8; 32],
+    pub version: u64,
+    pub denomination: Denomination,
+    pub owner: [u8; 32],
+    pub minted_at_block: u64,
+    pub mint_source: TokenMintSource,
+    pub metadata: HashMap<String, String>,
+}
+
+impl BillToken {
+    pub fn new(
+        owner: [u8; 32],
+        denomination: Denomination,
+        minted_at_block: u64,
+        mint_source: TokenMintSource,
+    ) -> StateResult<Self> {
+        if !denomination.is_bill() {
+            return Err(StateError::Other(format!(
+                "denomination {} cannot be minted as a bill",
+                denomination
+            )));
+        }
+
+        let assignment_index = deterministic_assignment_index(
+            owner,
+            denomination,
+            minted_at_block,
+            mint_source,
+            0,
+        )?;
+
+        Ok(Self {
+            bill_id: assignment_index_to_token_id(assignment_index),
+            version: 0,
+            denomination,
+            owner,
+            minted_at_block,
+            mint_source,
+            metadata: HashMap::new(),
+        })
+    }
+
+    pub fn value_cents(&self) -> AmountCents {
+        self.denomination.value_cents()
+    }
+}
+
+impl TryFrom<DenominationToken> for BillToken {
+    type Error = StateError;
+
+    fn try_from(token: DenominationToken) -> StateResult<Self> {
+        let denomination = token.denomination();
+        if !denomination.is_bill() {
+            return Err(StateError::Other(format!(
+                "token denomination {} cannot be represented as a bill",
+                denomination
+            )));
+        }
+
+        Ok(Self {
+            bill_id: token.token_id,
+            version: token.version,
+            denomination,
+            owner: token.owner,
+            minted_at_block: token.minted_at_block,
+            mint_source: token.mint_source,
+            metadata: token.metadata,
+        })
+    }
+}
+
+impl From<BillToken> for DenominationToken {
+    fn from(bill: BillToken) -> Self {
+        let assignment_index = bill
+            .denomination
+            .assignment_range()
+            .map(|(start_index, _)| start_index)
+            .unwrap_or(0);
+
+        Self {
+            token_id: bill.bill_id,
+            version: bill.version,
+            assignment_index,
+            owner: bill.owner,
+            minted_at_block: bill.minted_at_block,
+            mint_source: bill.mint_source,
+            metadata: bill.metadata,
+        }
+    }
+}
+
+/// Fungible sub-dollar inventory tracked per denomination.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct CoinInventory {
+    pub counts: HashMap<Denomination, u64>,
+}
+
+impl CoinInventory {
+    pub fn total_value_cents(&self) -> AmountCents {
+        self.counts
+            .iter()
+            .map(|(denomination, count)| denomination.value_cents() * count)
+            .sum()
+    }
+
+    pub fn count(&self, denomination: Denomination) -> u64 {
+        self.counts.get(&denomination).copied().unwrap_or(0)
+    }
+
+    pub fn add(&mut self, denomination: Denomination, count: u64) -> StateResult<()> {
+        if !denomination.is_coin() {
+            return Err(StateError::Other(format!(
+                "denomination {} cannot be added to coin inventory",
+                denomination
+            )));
+        }
+
+        let entry = self.counts.entry(denomination).or_insert(0);
+        *entry = entry
+            .checked_add(count)
+            .ok_or_else(|| StateError::Other("coin inventory overflow".to_string()))?;
+        Ok(())
+    }
+
+    pub fn remove(&mut self, denomination: Denomination, count: u64) -> StateResult<()> {
+        if !denomination.is_coin() {
+            return Err(StateError::Other(format!(
+                "denomination {} cannot be removed from coin inventory",
+                denomination
+            )));
+        }
+
+        let entry = self.counts.entry(denomination).or_insert(0);
+        if *entry < count {
+            return Err(StateError::InsufficientBalance(count, *entry));
+        }
+
+        *entry -= count;
+        if *entry == 0 {
+            self.counts.remove(&denomination);
+        }
+        Ok(())
+    }
+
+    pub fn from_tokens(tokens: &[DenominationToken]) -> Self {
+        let mut inventory = Self::default();
+        for token in tokens {
+            let denomination = token.denomination();
+            if denomination.is_coin() {
+                *inventory.counts.entry(denomination).or_insert(0) += 1;
+            }
+        }
+        inventory
+    }
+}
+
+/// How melted coin value can be consumed by the network.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComputeUseMode {
+    ImmediateExecution,
+    ReservedCapacity,
+}
+
+/// Granted compute use created by melting fungible coins.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ComputeAllocation {
+    pub allocation_id: [u8; 32],
+    pub value_cents: AmountCents,
+    pub mode: ComputeUseMode,
+    pub created_at_block: u64,
+    pub expires_at_block: Option<u64>,
+}
+
+/// User-visible conversion order lifecycle states.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConversionOrderStatus {
+    Pending,
+    Eligible,
+    Fulfilled,
+    Expired,
+    Failed,
+}
+
+/// Direction of a cash-form conversion request.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConversionOrderKind {
+    BillToCoins,
+    CoinsToBill,
+}
+
+/// Protocol-tracked conversion order state for the hybrid cash model.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ConversionOrder {
+    pub order_id: [u8; 32],
+    pub requester: [u8; 32],
+    pub kind: ConversionOrderKind,
+    pub requested_value_cents: AmountCents,
+    pub requested_coin_inventory: CoinInventory,
+    pub requested_bill_denominations: Vec<Denomination>,
+    pub created_at_block: u64,
+    pub eligible_at_block: u64,
+    pub cycle_end_block: u64,
+    pub status: ConversionOrderStatus,
+    pub failure_reason: Option<String>,
+}
+
 /// Account state structure
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AccountState {
@@ -364,6 +597,22 @@ pub struct AccountState {
 
     /// Individually owned denomination tokens.
     pub tokens: Vec<DenominationToken>,
+
+    /// Hybrid-cash bill objects tracked separately from fungible coin inventory.
+    #[serde(default)]
+    pub bills: Vec<BillToken>,
+
+    /// Fungible sub-dollar inventory tracked by denomination.
+    #[serde(default)]
+    pub coin_inventory: CoinInventory,
+
+    /// Active conversion order for the account. Current protocol design allows one slot.
+    #[serde(default)]
+    pub conversion_order: Option<ConversionOrder>,
+
+    /// Compute-use claims obtained by melting coins back into network use.
+    #[serde(default)]
+    pub compute_allocations: Vec<ComputeAllocation>,
 }
 
 impl AccountState {
@@ -380,6 +629,10 @@ impl AccountState {
             delegations: None,
             metadata: HashMap::new(),
             tokens: Vec::new(),
+            bills: Vec::new(),
+            coin_inventory: CoinInventory::default(),
+            conversion_order: None,
+            compute_allocations: Vec::new(),
         };
         account
             .rebuild_tokens_from_balance_compat(
@@ -404,6 +657,10 @@ impl AccountState {
             delegations: None,
             metadata: HashMap::new(),
             tokens: Vec::new(),
+            bills: Vec::new(),
+            coin_inventory: CoinInventory::default(),
+            conversion_order: None,
+            compute_allocations: Vec::new(),
         };
         account
             .rebuild_tokens_from_balance_compat(
@@ -428,6 +685,10 @@ impl AccountState {
             delegations: None,
             metadata: HashMap::new(),
             tokens: Vec::new(),
+            bills: Vec::new(),
+            coin_inventory: CoinInventory::default(),
+            conversion_order: None,
+            compute_allocations: Vec::new(),
         };
         account
             .rebuild_tokens_from_balance_compat(
@@ -452,6 +713,10 @@ impl AccountState {
             delegations: Some(HashMap::new()),
             metadata: HashMap::new(),
             tokens: Vec::new(),
+            bills: Vec::new(),
+            coin_inventory: CoinInventory::default(),
+            conversion_order: None,
+            compute_allocations: Vec::new(),
         };
         account
             .rebuild_tokens_from_balance_compat(
@@ -470,7 +735,7 @@ impl AccountState {
         block_height: u64,
     ) -> Self {
         let balance = tokens.iter().map(|token| token.value_cents()).sum();
-        Self {
+        let mut account = Self {
             balance,
             nonce: 0,
             code: None,
@@ -487,12 +752,18 @@ impl AccountState {
                     token
                 })
                 .collect(),
-        }
+            bills: Vec::new(),
+            coin_inventory: CoinInventory::default(),
+            conversion_order: None,
+            compute_allocations: Vec::new(),
+        };
+        account.sync_hybrid_from_tokens();
+        account
     }
 
     /// Check if the account has sufficient balance
     pub fn has_sufficient_balance(&self, amount: u64) -> bool {
-        self.total_token_value() >= amount
+        self.total_account_value() >= amount
     }
 
     /// Increment the account nonce
@@ -541,8 +812,34 @@ impl AccountState {
         self.tokens.iter().map(|token| token.value_cents()).sum()
     }
 
+    pub fn total_bill_value(&self) -> AmountCents {
+        self.bills.iter().map(|bill| bill.value_cents()).sum()
+    }
+
+    pub fn total_coin_value(&self) -> AmountCents {
+        self.coin_inventory.total_value_cents()
+    }
+
+    pub fn total_account_value(&self) -> AmountCents {
+        let hybrid_total = self.total_bill_value() + self.total_coin_value();
+        hybrid_total.max(self.total_token_value())
+    }
+
     pub fn sync_balance_from_tokens(&mut self) {
         self.balance = self.total_token_value();
+        self.sync_hybrid_from_tokens();
+    }
+
+    pub fn sync_hybrid_from_tokens(&mut self) {
+        self.bills = self
+            .tokens
+            .iter()
+            .filter(|token| token.denomination().is_bill())
+            .cloned()
+            .filter_map(|token| BillToken::try_from(token).ok())
+            .collect();
+        self.coin_inventory = CoinInventory::from_tokens(&self.tokens);
+        self.balance = self.total_account_value();
     }
 
     pub fn current_owner(&self) -> [u8; 32] {
@@ -1071,6 +1368,8 @@ mod tests {
         assert!(account.staked_amount.is_none());
         assert!(account.delegations.is_none());
         assert!(account.metadata.is_empty());
+        assert_eq!(account.total_bill_value(), 1000);
+        assert_eq!(account.total_coin_value(), 0);
     }
 
     #[test]
@@ -1086,6 +1385,8 @@ mod tests {
         assert!(account.staked_amount.is_none());
         assert!(account.delegations.is_none());
         assert!(account.metadata.is_empty());
+        assert_eq!(account.total_bill_value(), 500);
+        assert_eq!(account.total_coin_value(), 0);
     }
 
     #[test]
@@ -1098,8 +1399,23 @@ mod tests {
         assert!(account.code.is_none());
         assert!(account.storage.is_empty());
         assert_eq!(account.staked_amount, Some(1000));
-        assert!(account.delegations.unwrap().is_empty());
+        assert!(account.delegations.as_ref().unwrap().is_empty());
         assert!(account.metadata.is_empty());
+        assert_eq!(account.total_bill_value(), 2000);
+        assert_eq!(account.total_coin_value(), 0);
+    }
+
+    #[test]
+    fn test_sync_hybrid_from_tokens_splits_bills_and_coins() {
+        let account = AccountState::new_user(136, 42);
+
+        assert_eq!(account.total_bill_value(), 100);
+        assert_eq!(account.total_coin_value(), 36);
+        assert_eq!(account.coin_inventory.count(Denomination::Cents25), 1);
+        assert_eq!(account.coin_inventory.count(Denomination::Cents10), 1);
+        assert_eq!(account.coin_inventory.count(Denomination::Cents1), 1);
+        assert_eq!(account.bills.len(), 1);
+        assert_eq!(account.bills[0].denomination, Denomination::Dollars1);
     }
 
     #[test]
