@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::crypto::keys::VibePublicKey;
 use crate::crypto::signer::VibeSignature;
-use crate::storage::state::Denomination;
+use crate::storage::state::{ConversionOrderRequest, ConversionTransaction, Denomination};
 use crate::storage::state_store::StateStore;
 use crate::storage::tx_store::{TransactionRecord, TxStore};
 // use crate::mempool::types::TransactionRecord as MempoolTransactionRecord;
@@ -101,6 +101,8 @@ impl<'a> TransactionValidator<'a> {
             data.extend_from_slice(tx_data);
         }
 
+        serialize_conversion_intent(&mut data, tx.conversion_intent.as_ref());
+
         data
     }
 
@@ -140,6 +142,10 @@ impl<'a> TransactionValidator<'a> {
 
         if tx.fee_token_id.is_none() && tx.coin_fee.is_empty() {
             return false;
+        }
+
+        if let Some(intent) = &tx.conversion_intent {
+            return self.check_conversion_balance(tx, sender_state, intent);
         }
 
         if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
@@ -191,6 +197,49 @@ impl<'a> TransactionValidator<'a> {
                 >= payment_total + coin_total + fee_total + coin_fee_total
     }
 
+    fn check_conversion_balance(
+        &self,
+        tx: &TransactionRecord,
+        sender_state: crate::storage::AccountState,
+        intent: &ConversionTransaction,
+    ) -> bool {
+        if !tx.transfer_token_ids.is_empty() || !tx.coin_transfer.is_empty() {
+            return false;
+        }
+
+        if !sender_state.coin_inventory.can_cover(&tx.coin_fee) {
+            return false;
+        }
+
+        if let Some(existing) = &sender_state.conversion_order {
+            match intent {
+                ConversionTransaction::Create(_) => return false,
+                ConversionTransaction::Cancel { order_id } => {
+                    if existing.order_id != *order_id {
+                        return false;
+                    }
+                }
+            }
+        } else if matches!(intent, ConversionTransaction::Cancel { .. }) {
+            return false;
+        }
+
+        match intent {
+            ConversionTransaction::Create(request) => {
+                if request.requested_value_cents == 0 {
+                    return false;
+                }
+            }
+            ConversionTransaction::Cancel { .. } => {}
+        }
+
+        let fee_total = tx.coin_fee.total_value_cents()
+            + tx.fee_token_id
+                .and_then(|token_id| sender_state.token_value(&token_id))
+                .unwrap_or(0);
+        sender_state.total_account_value() >= fee_total
+    }
+
     /// Check if the transaction nonce is valid
     fn check_nonce(&self, tx: &TransactionRecord, sender_address: &[u8; 32]) -> bool {
         // Get the sender's account state
@@ -206,12 +255,44 @@ impl<'a> TransactionValidator<'a> {
     }
 }
 
+fn serialize_conversion_intent(data: &mut Vec<u8>, intent: Option<&ConversionTransaction>) {
+    match intent {
+        None => data.push(0),
+        Some(ConversionTransaction::Create(request)) => {
+            data.push(1);
+            serialize_conversion_request(data, request);
+        }
+        Some(ConversionTransaction::Cancel { order_id }) => {
+            data.push(2);
+            data.extend_from_slice(order_id);
+        }
+    }
+}
+
+fn serialize_conversion_request(data: &mut Vec<u8>, request: &ConversionOrderRequest) {
+    data.push(match request.kind {
+        crate::storage::ConversionOrderKind::BillToCoins => 1,
+        crate::storage::ConversionOrderKind::CoinsToBill => 2,
+    });
+    data.extend_from_slice(&request.requested_value_cents.to_be_bytes());
+    for denomination in Denomination::all_descending() {
+        data.extend_from_slice(&request.requested_coin_inventory.count(*denomination).to_be_bytes());
+    }
+    data.extend_from_slice(&(request.requested_bill_denominations.len() as u64).to_be_bytes());
+    for denomination in &request.requested_bill_denominations {
+        data.extend_from_slice(&denomination.value_cents().to_be_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::keys::VibeKeypair;
     use crate::storage::kv_store::RocksDBStore;
-    use crate::storage::{AccountType, TransactionStatus};
+    use crate::storage::{
+        AccountType, CoinInventory, ConversionOrderKind, ConversionOrderRequest,
+        ConversionTransaction, TransactionStatus,
+    };
     use tempfile::tempdir;
 
     #[test]
@@ -254,6 +335,7 @@ mod tests {
             timestamp: 1,
             block_height: 0,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         };
 
@@ -272,5 +354,59 @@ mod tests {
 
         // The transaction should be already known
         assert_eq!(result, TransactionValidationResult::AlreadyKnown);
+    }
+
+    #[test]
+    fn test_conversion_transaction_validation() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let tx_store = Arc::new(TxStore::new(&kv_store));
+        let state_store = Arc::new(StateStore::new(&kv_store));
+        let validator = TransactionValidator::new(tx_store.clone(), state_store.clone());
+
+        let keypair = VibeKeypair::generate();
+        let address = keypair.address();
+        state_store
+            .create_account(&address, 100, AccountType::User)
+            .unwrap();
+
+        let mut state = state_store.get_account_state(&address).unwrap();
+        state
+            .coin_inventory
+            .add(crate::storage::Denomination::Cents1, 3)
+            .unwrap();
+        state.sync_balance_from_hybrid();
+        state_store.set_account_state(&address, &state).unwrap();
+
+        let mut fee = CoinInventory::default();
+        fee.add(crate::storage::Denomination::Cents1, 1).unwrap();
+
+        let tx = TransactionRecord {
+            tx_id: [12u8; 32],
+            sender: address,
+            recipient: [0u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: fee,
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 10,
+            nonce: 0,
+            timestamp: 2,
+            block_height: 0,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::Create(ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 25,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: Vec::new(),
+            })),
+            status: TransactionStatus::Pending,
+        };
+
+        assert!(validator.check_balance(&tx, &address));
+        assert!(validator.check_nonce(&tx, &address));
     }
 }

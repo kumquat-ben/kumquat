@@ -124,6 +124,7 @@ mod regression_tests {
             timestamp: 12345,
             block_height: 1,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         };
 

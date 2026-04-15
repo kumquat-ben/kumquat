@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::block_store::Hash;
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
-use crate::storage::state::CoinInventory;
+use crate::storage::state::{CoinInventory, ConversionTransaction};
 
 /// Transaction record structure
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -55,6 +55,10 @@ pub struct TransactionRecord {
 
     /// Transaction data (for smart contracts)
     pub data: Option<Vec<u8>>,
+
+    /// Optional conversion-order intent.
+    #[serde(default)]
+    pub conversion_intent: Option<ConversionTransaction>,
 
     /// Transaction status
     pub status: TransactionStatus,

@@ -56,8 +56,10 @@ pub use snapshot::{
 pub use state::{
     AccountChange, AccountChangeType, AccountState, AccountType, AmountCents, ChainParameters,
     BillToken, CoinInventory, ComputeAllocation, ComputeUseMode, ConversionOrder,
-    ConversionOrderKind, ConversionOrderStatus, Denomination, DenominationToken, GlobalState,
-    StateError, StateResult, StateRoot, StateTransition, TokenMintSource,
+    ConversionOrderKind, ConversionOrderRequest, ConversionOrderStatus,
+    ConversionTransaction, CONVERSION_ORDER_CYCLE_BLOCKS, CONVERSION_ORDER_ELIGIBILITY_BLOCKS,
+    Denomination, DenominationToken, GlobalState, StateError, StateResult, StateRoot,
+    StateTransition, TokenMintSource,
 };
 pub use state_indexing::{
     IndexConfig, IndexType, IndexingError, IndexingProgress, IndexingResult, IndexingStatus,

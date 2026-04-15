@@ -90,6 +90,7 @@ impl MempoolIntegration {
             timestamp: tx.timestamp,
             data: tx.data.clone(),
             signature: VibeSignature::new([0; 64]), // Placeholder signature
+            conversion_intent: tx.conversion_intent.clone(),
         };
 
         // Add to mempool

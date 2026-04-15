@@ -1,5 +1,6 @@
 use hex;
 use log::{debug, error, info, warn};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 use crate::storage::block_store::{Block, Hash};
@@ -8,7 +9,8 @@ use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
 use crate::storage::state::{
-    AccountState, AccountType, CoinInventory, ConversionOrder, StateResult, StateRoot,
+    AccountState, AccountType, CoinInventory, ConversionOrder, ConversionTransaction, StateResult,
+    StateRoot,
 };
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::tx_store::TransactionRecord;
@@ -64,6 +66,9 @@ pub enum StateStoreError {
 mod regression_tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::{
+        CoinInventory, ConversionOrderKind, ConversionOrderRequest, ConversionTransaction,
+    };
     use crate::storage::TransactionStatus;
     use tempfile::tempdir;
 
@@ -90,6 +95,7 @@ mod regression_tests {
             timestamp: 1_234_567,
             block_height,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         }
     }
@@ -121,6 +127,107 @@ mod regression_tests {
         assert_eq!(after_sender, before_sender);
         assert!(state_store.get_account_state(&recipient).is_none());
         assert!(state_store.get_account_state(&miner).is_none());
+    }
+
+    #[test]
+    fn apply_conversion_transaction_create_and_cancel() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        let sender = [7; 32];
+        let miner = [8; 32];
+        state_store.create_account(&sender, 100, AccountType::User).unwrap();
+
+        let mut sender_state = state_store.get_account_state(&sender).unwrap();
+        sender_state
+            .coin_inventory
+            .add(crate::storage::Denomination::Cents1, 5)
+            .unwrap();
+        sender_state.sync_balance_from_hybrid();
+        state_store.set_account_state(&sender, &sender_state).unwrap();
+
+        let mut create_fee = CoinInventory::default();
+        create_fee
+            .add(crate::storage::Denomination::Cents1, 1)
+            .unwrap();
+
+        let create_tx = TransactionRecord {
+            tx_id: [9; 32],
+            sender,
+            recipient: [0; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: create_fee,
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 21_000,
+            nonce: 0,
+            timestamp: 1_000,
+            block_height: 1,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::Create(ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 25,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: Vec::new(),
+            })),
+            status: TransactionStatus::Pending,
+        };
+
+        state_store
+            .apply_conversion_transaction(
+                &create_tx,
+                &miner,
+                1,
+                create_tx.conversion_intent.as_ref().unwrap(),
+            )
+            .unwrap();
+
+        let created_state = state_store.get_account_state(&sender).unwrap();
+        let order_id = created_state.conversion_order.as_ref().unwrap().order_id;
+        assert_eq!(
+            created_state.conversion_order.as_ref().unwrap().eligible_at_block,
+            70
+        );
+
+        let mut cancel_fee = CoinInventory::default();
+        cancel_fee
+            .add(crate::storage::Denomination::Cents1, 1)
+            .unwrap();
+        let cancel_tx = TransactionRecord {
+            tx_id: [10; 32],
+            sender,
+            recipient: [0; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: cancel_fee,
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 21_000,
+            nonce: 1,
+            timestamp: 1_001,
+            block_height: 2,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::Cancel { order_id }),
+            status: TransactionStatus::Pending,
+        };
+
+        state_store
+            .apply_conversion_transaction(
+                &cancel_tx,
+                &miner,
+                2,
+                cancel_tx.conversion_intent.as_ref().unwrap(),
+            )
+            .unwrap();
+
+        let cancelled_state = state_store.get_account_state(&sender).unwrap();
+        assert!(cancelled_state.conversion_order.is_none());
     }
 }
 
@@ -967,6 +1074,10 @@ impl<'a> StateStore<'a> {
         fee_recipient: &Hash,
         block_height: u64,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
+        if let Some(intent) = &tx.conversion_intent {
+            return self.apply_conversion_transaction(tx, fee_recipient, block_height, intent);
+        }
+
         if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
             return Err(StateStoreError::Other(format!(
                 "transaction {} has no transfer inputs",
@@ -1118,6 +1229,95 @@ impl<'a> StateStore<'a> {
         Ok(changed_accounts)
     }
 
+    pub fn apply_conversion_transaction(
+        &self,
+        tx: &TransactionRecord,
+        fee_recipient: &Hash,
+        block_height: u64,
+        intent: &ConversionTransaction,
+    ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
+        if !tx.transfer_token_ids.is_empty() || !tx.coin_transfer.is_empty() || tx.fee_token_id.is_some() {
+            return Err(StateStoreError::Other(format!(
+                "conversion transaction {} must not carry normal transfer inputs",
+                hex::encode(tx.tx_id)
+            )));
+        }
+        if tx.coin_fee.is_empty() {
+            return Err(StateStoreError::Other(format!(
+                "conversion transaction {} is missing coin fee",
+                hex::encode(tx.tx_id)
+            )));
+        }
+
+        let mut sender = self
+            .get_account_state(&tx.sender)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
+        if sender.nonce != tx.nonce {
+            return Err(StateStoreError::InvalidNonce(tx.nonce, sender.nonce));
+        }
+        sender
+            .coin_inventory
+            .remove_inventory(&tx.coin_fee)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+
+        match intent {
+            ConversionTransaction::Create(request) => {
+                if sender.conversion_order.is_some() || request.requested_value_cents == 0 {
+                    return Err(StateStoreError::Other(format!(
+                        "conversion transaction {} cannot create a new order",
+                        hex::encode(tx.tx_id)
+                    )));
+                }
+                sender.conversion_order = Some(ConversionOrder::new(
+                    derive_conversion_order_id(&tx.tx_id, tx.sender),
+                    tx.sender,
+                    request.clone(),
+                    block_height,
+                ));
+            }
+            ConversionTransaction::Cancel { order_id } => {
+                let existing = sender.conversion_order.as_ref().ok_or_else(|| {
+                    StateStoreError::Other(format!(
+                        "conversion transaction {} has no active order to cancel",
+                        hex::encode(tx.tx_id)
+                    ))
+                })?;
+                if existing.order_id != *order_id {
+                    return Err(StateStoreError::Other(format!(
+                        "conversion transaction {} order id mismatch",
+                        hex::encode(tx.tx_id)
+                    )));
+                }
+                sender.conversion_order = None;
+            }
+        }
+
+        sender.nonce += 1;
+        sender.last_updated = block_height;
+        sender.sync_balance_from_hybrid();
+
+        let mut fee_account = self
+            .get_account_state(fee_recipient)
+            .unwrap_or_else(|| AccountState::new_user(0, block_height));
+        fee_account
+            .coin_inventory
+            .add_inventory(&tx.coin_fee)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+        fee_account.last_updated = block_height;
+        fee_account.sync_balance_from_hybrid();
+
+        self.set_account_state(&tx.sender, &sender)?;
+        self.set_account_state(fee_recipient, &fee_account)?;
+
+        let mut changed_accounts = vec![(tx.sender, sender)];
+        if *fee_recipient != tx.sender {
+            changed_accounts.push((*fee_recipient, fee_account));
+        } else {
+            changed_accounts[0] = (*fee_recipient, fee_account);
+        }
+        Ok(changed_accounts)
+    }
+
     /// Apply a block's transactions to the state store
     ///
     /// This method processes all transactions in a block and updates the account states accordingly.
@@ -1253,6 +1453,16 @@ fn map_rejection_to_tx_error(reason: ExecutionRejection) -> TransactionError {
         }
         _ => TransactionError::Other,
     }
+}
+
+fn derive_conversion_order_id(tx_id: &Hash, sender: Hash) -> Hash {
+    let mut hasher = Sha256::new();
+    hasher.update(tx_id);
+    hasher.update(sender);
+    let digest = hasher.finalize();
+    let mut order_id = [0u8; 32];
+    order_id.copy_from_slice(&digest[..32]);
+    order_id
 }
 
 #[cfg(all(test, feature = "legacy-test-compat"))]

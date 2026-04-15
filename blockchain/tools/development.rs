@@ -150,6 +150,7 @@ impl<'a> DevelopmentTools<'a> {
                 .as_secs(),
             block_height: 0, // Will be set when included in a block
             data: None,      // No data for simple transfers
+            conversion_intent: None,
             status: crate::storage::tx_store::TransactionStatus::Pending,
         };
 

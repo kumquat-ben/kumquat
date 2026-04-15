@@ -360,6 +360,7 @@ mod tests {
             timestamp: 100,
             block_height: 0,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         };
 
@@ -379,6 +380,7 @@ mod tests {
             timestamp: 100,
             block_height: 0,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         };
 

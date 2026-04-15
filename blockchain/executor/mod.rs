@@ -4,8 +4,13 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 use crate::storage::block_store::Hash;
-use crate::storage::state::{AccountState, AccountType, CoinInventory, DenominationToken};
+use crate::storage::state::{
+    AccountState, AccountType, CoinInventory, ConversionOrder, ConversionTransaction,
+    DenominationToken,
+};
 use crate::storage::tx_store::TransactionRecord;
 
 pub mod scheduler;
@@ -30,6 +35,7 @@ pub enum ExecutionRejection {
     MissingFeeToken,
     MissingFee,
     EmptyTransferSet,
+    InvalidConversion,
     DuplicateToken,
     MissingToken,
     InsufficientBalance,
@@ -142,6 +148,10 @@ impl ConcurrentTokenStore {
         fee_recipient: &Hash,
         block_height: u64,
     ) -> Result<(), ExecutionRejection> {
+        if let Some(intent) = &prepared.tx.conversion_intent {
+            return self.execute_conversion(prepared, intent, fee_recipient, block_height);
+        }
+
         let mut lock_ids = prepared
             .declared_inputs
             .iter()
@@ -260,6 +270,70 @@ impl ConcurrentTokenStore {
         Ok(())
     }
 
+    fn execute_conversion(
+        &self,
+        prepared: &PreparedTransaction,
+        intent: &ConversionTransaction,
+        fee_recipient: &Hash,
+        block_height: u64,
+    ) -> Result<(), ExecutionRejection> {
+        let sender_account = self.get_or_create_account(prepared.tx.sender, block_height);
+        let fee_account = self.get_or_create_account(*fee_recipient, block_height);
+
+        {
+            let mut sender = sender_account.lock().unwrap();
+            if sender.nonce != prepared.tx.nonce {
+                return Err(ExecutionRejection::InvalidNonce);
+            }
+            if !sender.coin_inventory.can_cover(&prepared.tx.coin_fee) {
+                return Err(ExecutionRejection::InsufficientBalance);
+            }
+            sender
+                .coin_inventory
+                .remove_inventory(&prepared.tx.coin_fee)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
+
+            match intent {
+                ConversionTransaction::Create(request) => {
+                    if sender.conversion_order.is_some() || request.requested_value_cents == 0 {
+                        return Err(ExecutionRejection::InvalidConversion);
+                    }
+                    sender.conversion_order = Some(ConversionOrder::new(
+                        conversion_order_id(&prepared.tx.tx_id, prepared.tx.sender),
+                        prepared.tx.sender,
+                        request.clone(),
+                        block_height,
+                    ));
+                }
+                ConversionTransaction::Cancel { order_id } => {
+                    let existing = sender
+                        .conversion_order
+                        .as_ref()
+                        .ok_or(ExecutionRejection::InvalidConversion)?;
+                    if existing.order_id != *order_id {
+                        return Err(ExecutionRejection::InvalidConversion);
+                    }
+                    sender.conversion_order = None;
+                }
+            }
+
+            sender.nonce += 1;
+            sender.last_updated = block_height;
+            sender.sync_balance_from_hybrid();
+        }
+
+        {
+            let mut fee = fee_account.lock().unwrap();
+            fee.coin_inventory
+                .add_inventory(&prepared.tx.coin_fee)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
+            fee.last_updated = block_height;
+            fee.sync_balance_from_hybrid();
+        }
+
+        Ok(())
+    }
+
     fn mint_block_reward_tokens(&self, miner: Hash, block_height: u64, block_hash: &Hash) {
         let miner_account = self.get_or_create_account(miner, block_height);
         {
@@ -351,6 +425,23 @@ fn prepare_transaction(
     if tx.nonce != sender.nonce {
         return Err(ExecutionRejection::InvalidNonce);
     }
+    if tx.conversion_intent.is_some() {
+        if !tx.transfer_token_ids.is_empty() || !tx.coin_transfer.is_empty() {
+            return Err(ExecutionRejection::InvalidConversion);
+        }
+        if tx.fee_token_id.is_some() {
+            return Err(ExecutionRejection::InvalidConversion);
+        }
+        if tx.coin_fee.is_empty() {
+            return Err(ExecutionRejection::MissingFee);
+        }
+        return Ok(PreparedTransaction {
+            original_index,
+            tx: tx.clone(),
+            declared_inputs: Vec::new(),
+            route: TransactionRoute::Consensus,
+        });
+    }
     if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
         return Err(ExecutionRejection::EmptyTransferSet);
     }
@@ -404,6 +495,16 @@ fn prepare_transaction(
         declared_inputs,
         route: classify_transaction(tx, accounts),
     })
+}
+
+fn conversion_order_id(tx_id: &Hash, sender: Hash) -> Hash {
+    let mut hasher = Sha256::new();
+    hasher.update(tx_id);
+    hasher.update(sender);
+    let digest = hasher.finalize();
+    let mut order_id = [0u8; 32];
+    order_id.copy_from_slice(&digest[..32]);
+    order_id
 }
 
 pub fn execute_transaction_batch(

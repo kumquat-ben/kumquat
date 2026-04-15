@@ -122,6 +122,7 @@ mod tests {
             timestamp: 0,
             block_height: 0,
             data: None,
+            conversion_intent: None,
             status: TransactionStatus::Pending,
         }
     }

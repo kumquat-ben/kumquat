@@ -579,6 +579,25 @@ pub enum ConversionOrderKind {
     CoinsToBill,
 }
 
+pub const CONVERSION_ORDER_ELIGIBILITY_BLOCKS: u64 = 69;
+pub const CONVERSION_ORDER_CYCLE_BLOCKS: u64 = 420;
+
+/// User-specified request payload for opening a conversion order.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ConversionOrderRequest {
+    pub kind: ConversionOrderKind,
+    pub requested_value_cents: AmountCents,
+    pub requested_coin_inventory: CoinInventory,
+    pub requested_bill_denominations: Vec<Denomination>,
+}
+
+/// Transaction-level conversion intent.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum ConversionTransaction {
+    Create(ConversionOrderRequest),
+    Cancel { order_id: [u8; 32] },
+}
+
 /// Protocol-tracked conversion order state for the hybrid cash model.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ConversionOrder {
@@ -593,6 +612,27 @@ pub struct ConversionOrder {
     pub cycle_end_block: u64,
     pub status: ConversionOrderStatus,
     pub failure_reason: Option<String>,
+}
+
+impl ConversionOrder {
+    pub fn new(order_id: [u8; 32], requester: [u8; 32], request: ConversionOrderRequest, created_at_block: u64) -> Self {
+        let cycle_start = created_at_block - (created_at_block % CONVERSION_ORDER_CYCLE_BLOCKS);
+        let cycle_end_block = cycle_start + CONVERSION_ORDER_CYCLE_BLOCKS;
+
+        Self {
+            order_id,
+            requester,
+            kind: request.kind,
+            requested_value_cents: request.requested_value_cents,
+            requested_coin_inventory: request.requested_coin_inventory,
+            requested_bill_denominations: request.requested_bill_denominations,
+            created_at_block,
+            eligible_at_block: created_at_block + CONVERSION_ORDER_ELIGIBILITY_BLOCKS,
+            cycle_end_block,
+            status: ConversionOrderStatus::Pending,
+            failure_reason: None,
+        }
+    }
 }
 
 /// Account state structure

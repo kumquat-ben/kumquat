@@ -118,6 +118,7 @@ impl SystemRouter {
                             timestamp: tx_clone.timestamp,
                             signature: crate::crypto::signer::VibeSignature::new([0; 64]), // Placeholder
                             data: tx_clone.data.clone(),
+                            conversion_intent: tx_clone.conversion_intent.clone(),
                         };
 
                         tokio::spawn(async move {

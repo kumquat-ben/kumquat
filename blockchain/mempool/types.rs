@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::crypto::keys::VibeKeypair;
 use crate::crypto::signer::{sign_message, VibeSignature};
-use crate::storage::state::{CoinInventory, Denomination};
+use crate::storage::state::{CoinInventory, ConversionOrderRequest, ConversionTransaction, Denomination};
 
 /// Type alias for address (public key hash)
 pub type Address = [u8; 32];
@@ -58,6 +58,10 @@ pub struct TransactionRecord {
 
     /// Optional data payload
     pub data: Option<Vec<u8>>,
+
+    /// Optional conversion-order intent handled separately from normal transfers.
+    #[serde(default)]
+    pub conversion_intent: Option<ConversionTransaction>,
 }
 
 impl TransactionRecord {
@@ -95,6 +99,7 @@ impl TransactionRecord {
             timestamp,
             signature,
             data,
+            conversion_intent: None,
         };
 
         // Compute the transaction ID based on the contents
@@ -129,6 +134,8 @@ impl TransactionRecord {
         if let Some(tx_data) = &self.data {
             data.extend_from_slice(tx_data);
         }
+
+        serialize_conversion_intent(&mut data, self.conversion_intent.as_ref());
 
         data
     }
@@ -204,6 +211,10 @@ impl TransactionRecord {
         self.fee_token_id.is_some() || !self.coin_fee.is_empty()
     }
 
+    pub fn has_conversion_intent(&self) -> bool {
+        self.conversion_intent.is_some()
+    }
+
     /// Check if the transaction is expired
     pub fn is_expired(&self, max_age_secs: u64) -> bool {
         let now = SystemTime::now()
@@ -260,5 +271,32 @@ impl Eq for TransactionRecord {}
 fn serialize_coin_inventory(data: &mut Vec<u8>, inventory: &CoinInventory) {
     for denomination in Denomination::all_descending() {
         data.extend_from_slice(&inventory.count(*denomination).to_be_bytes());
+    }
+}
+
+fn serialize_conversion_intent(data: &mut Vec<u8>, intent: Option<&ConversionTransaction>) {
+    match intent {
+        None => data.push(0),
+        Some(ConversionTransaction::Create(request)) => {
+            data.push(1);
+            serialize_conversion_request(data, request);
+        }
+        Some(ConversionTransaction::Cancel { order_id }) => {
+            data.push(2);
+            data.extend_from_slice(order_id);
+        }
+    }
+}
+
+fn serialize_conversion_request(data: &mut Vec<u8>, request: &ConversionOrderRequest) {
+    data.push(match request.kind {
+        crate::storage::ConversionOrderKind::BillToCoins => 1,
+        crate::storage::ConversionOrderKind::CoinsToBill => 2,
+    });
+    data.extend_from_slice(&request.requested_value_cents.to_be_bytes());
+    serialize_coin_inventory(data, &request.requested_coin_inventory);
+    data.extend_from_slice(&(request.requested_bill_denominations.len() as u64).to_be_bytes());
+    for denomination in &request.requested_bill_denominations {
+        data.extend_from_slice(&denomination.value_cents().to_be_bytes());
     }
 }

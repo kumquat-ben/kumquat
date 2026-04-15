@@ -107,6 +107,7 @@ impl TransactionHandler {
             timestamp: tx.timestamp,
             data: tx.data.clone(),
             signature: crate::crypto::signer::VibeSignature::new([0; 64]), // Create a placeholder signature
+            conversion_intent: tx.conversion_intent.clone(),
         };
 
         // Add to mempool
