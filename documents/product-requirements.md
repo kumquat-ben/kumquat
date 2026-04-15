@@ -22,6 +22,8 @@ The current protocol direction under that product framing is:
 - bills from `$1` through `$100` are discrete wallet objects
 - coins below `$1` are fungible counted inventory
 - wallets should make the bill-versus-coin distinction legible instead of flattening both into one object model
+- compute acts like the underlying metal for coin production
+- coins can be melted into actual compute use on the network
 
 ## Problem
 
@@ -93,6 +95,7 @@ The implementation should preserve the existing direction:
 - What admin workflows are required to support early-access users?
 - How much denomination control should users have when sending coin inventory?
 - Should the wallet auto-make coin change or require explicit denomination mixes?
+- How should the product explain breaking bills into coins and melting coins into compute use?
 
 ## Suggested Next Product Documents
 
@@ -106,3 +109,4 @@ If the team wants a fuller product documentation set, add:
 ## Changelog
 
 - `2026-04-15`: Updated product requirements to reflect the hybrid cash model with bill objects and fungible sub-dollar coin inventory.
+- `2026-04-15`: Added the product direction that compute behaves like metal for coin production and that coins can be melted into actual compute use.

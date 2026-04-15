@@ -10,6 +10,17 @@ Adopt a split asset model:
 - sub-dollar issuance should happen in accountable batches so single units do not need individual serial-like identities
 - the protocol should still preserve accountability for who produced a batch and how much value they introduced
 
+## Locked Design Decisions 2026-04-15
+
+- compute is the metal analogue for coin production
+- users need kumquats to pay for the compute consumed in coin production
+- coins can be created both by compute-backed minting and by breaking larger bill units into coin form
+- `$1` may exist in both forms:
+  - a non-fungible bill object
+  - fungible coin value equal to 100 cents
+- melting coins destroys the coin inventory and returns actual compute use on the network, not tokenized credits
+- compute use returned by melting should support either immediate execution or reserved capacity at redemption time
+
 ## Current Chain Shape
 
 Today the chain already treats every denomination as a unique owned object:
@@ -53,7 +64,8 @@ A workable structure is:
   - denomination mix or total sub-dollar value
   - work proof / compute proof
   - mint block
--- `CoinBalance`: fungible account-held spendable sub-dollar value derived from owned batch issuance
+- `CoinBalance`: fungible account-held spendable sub-dollar value derived from owned batch issuance
+- `ComputeUseRedemption`: a record that burns coin inventory and allocates actual compute use
 
 ### 3. Track production at the batch layer
 
@@ -91,6 +103,7 @@ New mint behavior should be:
 - if reward output is bill-denominated, mint `BillToken`s as today
 - if reward output is sub-dollar, accumulate into a `CoinBatch`
 - the `CoinBatch` must carry a proof that enough compute work was performed to authorize the minted amount
+- if a user breaks a `$1+` bill, convert the bill form into matching fungible coin inventory
 
 ## Compute-Backed Coin Production
 
@@ -100,6 +113,8 @@ The clean model is:
 
 - block production secures consensus
 - coin-batch production proves extra compute expenditure for sub-dollar issuance
+- kumquats are spent to acquire the compute consumed in coin production
+- coin melting releases actual compute use back to the redeemer
 
 That can be implemented in increasing order of complexity:
 
@@ -139,6 +154,7 @@ Recommended shape:
   - work proof
 - recipients receive fungible coin inventory credited from those batches
 - when coins move, the chain verifies balances and denomination counts rather than exact coin IDs
+- when coins are melted, the chain burns coin inventory and allocates compute use to the redeemer
 
 This gives:
 
@@ -197,6 +213,7 @@ Add new indexed stores for:
 
 - `coin_batch:<batch_id>`
 - `account_coin_balance:<address>`
+- `compute_redemption:<redemption_id>`
 
 ### Tooling and wallet logic
 
@@ -229,11 +246,11 @@ The new-network path is much safer.
 
 Decide:
 
-- are `$1` bills non-fungible or fungible within the same serial class
+- how the protocol represents conversion between `$1` bill form and `$1` coin form
 - are coin denominations preserved internally, or is all sub-dollar value one fungible pool in cents
-- is coin privacy account-based or note-based
 - is coin issuance tied to block PoW or separate batch PoW
 - can fees be paid in bills, coins, or both
+- how compute use returned by melting is scheduled and delivered
 
 ### Phase 2. Implement a minimal hybrid ledger
 
@@ -242,15 +259,16 @@ First production-capable target:
 - bills remain `DenominationToken`-like objects
 - sub-dollar value becomes fungible account buckets
 - coin batch metadata is public and attributable
-- no strong privacy yet
+- bill breaking and coin melting rules are explicit state transitions
 
-This gets the economic split working quickly, but does not satisfy the full "bag" requirement.
+This gets the economic split and compute-to-coin flow working quickly.
 
 ### Phase 3. Add compute-priced minting
 
 - define batch mint difficulty schedule
 - set conversion from accepted compute work to minted sub-dollar value
 - add anti-spam and supply controls
+- define the conversion rate between burned coin value and returned compute use
 
 ## Recommendation
 
@@ -269,3 +287,4 @@ That keeps the bill model you want while avoiding an unnecessary privacy system 
 ## Changelog
 
 - `2026-04-15`: Revised the upgrade note to match the clarified requirement: optimization and cash-like behavior, not a privacy system.
+- `2026-04-15`: Added the locked decisions that coins are compute-backed, kumquats pay for production compute, `$1` can exist in bill and coin form, and melting coins returns actual compute use.

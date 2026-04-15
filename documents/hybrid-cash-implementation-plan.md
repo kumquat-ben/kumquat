@@ -14,6 +14,19 @@ This document is the build plan for the current repository.
 
 This plan is optimization-driven. It is intentionally not a privacy design.
 
+## Locked Design Decisions 2026-04-15
+
+- compute is the metal analogue for coin production
+- kumquats are spent to buy the compute consumed in coin minting
+- coins can be created in two ways:
+  - compute-backed minting
+  - breaking larger bill units into coin form
+- `$1` can exist in two forms:
+  - a non-fungible bill object
+  - fungible coin value equal to 100 cents
+- melting coin inventory burns the coins and returns actual compute use on the network
+- compute use returned by melting should support either immediate execution or reserved capacity
+
 ## Current Constraints In The Codebase
 
 The present implementation assumes a single asset model where every denomination is an individually owned token.
@@ -94,6 +107,7 @@ Purpose:
 - record compute/work cost
 - support issuance auditing
 - avoid carrying serial identity on every coin
+- support melting coin value back into actual compute use
 
 Coins should not inherit a persistent individual on-chain object ID.
 
@@ -112,6 +126,7 @@ Target:
 - `AccountState.coin_balance_cents`
 - `AccountState.bills: Vec<BillToken>`
 - `AccountState.coins: CoinInventory`
+- `AccountState.compute_entitlements` or equivalent runtime allocation state for redeemed compute use
 
 If we want to minimize disruption, keep:
 
@@ -159,6 +174,7 @@ Add explicit payment fields:
 
 - `bill_transfer_ids: Vec<Hash>`
 - `coin_transfer: Option<CoinTransfer>`
+- `coin_melt: Option<CoinMelt>`
 - `fee_payment: FeePayment`
 - `value: u64` remains a compatibility mirror or derived total
 
@@ -170,6 +186,11 @@ Suggested supporting types:
   - `BillToken(Hash)`
   - `Coins(CoinTransfer)`
   - `Hybrid { bill_token_id: Option<Hash>, coin_amounts: ... }`
+- `CoinMelt`
+  - `denomination_amounts` or `total_cents`
+  - `compute_use_mode`
+    - `ImmediateExecution`
+    - `ReservedCapacity`
 
 Recommended first version:
 
@@ -200,6 +221,12 @@ Instead:
 - credit recipient denomination counts
 - increment sender nonce
 
+For coin melting:
+
+- lock the sender account coin inventory
+- burn the requested coin amount
+- allocate compute use to the sender according to the selected mode
+
 This implies the executor needs two conflict domains:
 
 - bill object locks
@@ -216,6 +243,7 @@ Replace "owns exact token IDs" checks for coins with:
 - sender has enough coin inventory for transfer
 - sender has enough fee inventory for fee payment
 - bill IDs, if present, are owned by sender
+- sender has enough coin inventory to melt when redeeming compute use
 
 ### Consensus validator
 
@@ -231,6 +259,7 @@ Replace exact-token payment equality with:
 
 - bill movement
 - coin inventory movement
+- compute-use redemption state
 
 ## Minting And Reward Changes
 
@@ -249,6 +278,12 @@ Instead:
 - credit the miner's `CoinInventory`
 - persist the `CoinBatch`
 
+Separate from block rewards, bill-breaking must:
+
+- destroy or transform the bill form being broken
+- mint the matching coin inventory outcome
+- preserve conservation of face value across forms
+
 ### Work-backed production
 
 First implementation target:
@@ -264,6 +299,23 @@ Do not block the ledger refactor on designing a whole new compute-proof market. 
 - minted coin mix
 
 Then later strengthen the work model.
+
+## Breaking And Melting Rules
+
+### Breaking bills into coins
+
+- users may convert `$1+` bill objects into fungible coin inventory
+- `$1` is a boundary case because it may exist as either bill form or coin form
+- breaking should be a protocol state transition, not an off-chain wallet trick
+
+### Melting coins into compute use
+
+- melting burns coin inventory
+- melting does not return a tokenized compute credit
+- melting returns actual compute use on the network
+- the user should be able to choose:
+  - immediate execution
+  - reserved capacity
 
 ## Migration Strategy
 
@@ -295,8 +347,9 @@ Decisions required before code:
 - are coin balances stored by denomination or only total cents
 - are fees payable in bills, coins, or coins-only initially
 - can transactions request automatic coin change-making
-- should `$1` be treated as a bill object or fungible boundary case
 - does a reward block create one coin batch or many
+- how compute use allocation is represented in state after coin melting
+- whether bill breaking burns the old object or records a reversible form conversion
 
 Exit criteria:
 
@@ -447,3 +500,4 @@ Unless we decide otherwise, the fastest coherent build is:
 ## Changelog
 
 - `2026-04-15`: Added the first phased implementation plan for the hybrid cash ledger refactor.
+- `2026-04-15`: Added the locked decisions that compute acts as metal, kumquats pay for production compute, coins can be broken from bills, and melting coins returns actual compute use.
