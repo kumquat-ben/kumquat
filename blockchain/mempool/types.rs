@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::crypto::keys::VibeKeypair;
 use crate::crypto::signer::{sign_message, VibeSignature};
+use crate::storage::state::{CoinInventory, Denomination};
 
 /// Type alias for address (public key hash)
 pub type Address = [u8; 32];
@@ -23,11 +24,19 @@ pub struct TransactionRecord {
     /// Recipient address
     pub recipient: Address,
 
-    /// Exact token IDs that move from sender to recipient.
+    /// Exact bill object IDs that move from sender to recipient.
     pub transfer_token_ids: Vec<Hash>,
 
-    /// Exact token ID selected as the validator/miner fee.
+    /// Exact bill object ID selected as the validator/miner fee.
     pub fee_token_id: Option<Hash>,
+
+    /// Fungible coin inventory that moves from sender to recipient.
+    #[serde(default)]
+    pub coin_transfer: CoinInventory,
+
+    /// Fungible coin inventory consumed as fees.
+    #[serde(default)]
+    pub coin_fee: CoinInventory,
 
     /// Compatibility mirror of the transferred value in cents.
     pub value: u64,
@@ -77,6 +86,8 @@ impl TransactionRecord {
             recipient,
             transfer_token_ids: Vec::new(),
             fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: CoinInventory::default(),
             value,
             gas_price,
             gas_limit,
@@ -106,6 +117,8 @@ impl TransactionRecord {
         if let Some(fee_token_id) = self.fee_token_id {
             data.extend_from_slice(&fee_token_id);
         }
+        serialize_coin_inventory(&mut data, &self.coin_transfer);
+        serialize_coin_inventory(&mut data, &self.coin_fee);
         data.extend_from_slice(&self.value.to_be_bytes());
         data.extend_from_slice(&self.gas_price.to_be_bytes());
         data.extend_from_slice(&self.gas_limit.to_be_bytes());
@@ -172,7 +185,23 @@ impl TransactionRecord {
 
     /// Get the total transaction cost (value + gas_cost)
     pub fn total_cost(&self) -> u64 {
-        self.value + self.gas_cost()
+        self.value + self.coin_fee.total_value_cents() + self.gas_cost()
+    }
+
+    pub fn has_bill_transfers(&self) -> bool {
+        !self.transfer_token_ids.is_empty()
+    }
+
+    pub fn has_coin_transfers(&self) -> bool {
+        !self.coin_transfer.is_empty()
+    }
+
+    pub fn has_any_transfers(&self) -> bool {
+        self.has_bill_transfers() || self.has_coin_transfers()
+    }
+
+    pub fn has_any_fee_inputs(&self) -> bool {
+        self.fee_token_id.is_some() || !self.coin_fee.is_empty()
     }
 
     /// Check if the transaction is expired
@@ -227,3 +256,9 @@ impl PartialEq for TransactionRecord {
 }
 
 impl Eq for TransactionRecord {}
+
+fn serialize_coin_inventory(data: &mut Vec<u8>, inventory: &CoinInventory) {
+    for denomination in Denomination::all_descending() {
+        data.extend_from_slice(&inventory.count(*denomination).to_be_bytes());
+    }
+}

@@ -80,6 +80,8 @@ mod regression_tests {
             recipient,
             transfer_token_ids,
             fee_token_id: Some(fee_token_id),
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value: 100,
             gas_price: 1,
             gas_limit: 21_000,
@@ -164,7 +166,11 @@ impl<'a> StateStore<'a> {
         if let Some(owner) = fallback_owner {
             state.assign_token_owner(owner);
         }
-        state.sync_hybrid_from_tokens();
+        if state.bills.is_empty() && state.coin_inventory.is_empty() {
+            state.sync_hybrid_from_tokens();
+        } else {
+            state.sync_balance_from_hybrid();
+        }
         state
     }
 
@@ -961,29 +967,31 @@ impl<'a> StateStore<'a> {
         fee_recipient: &Hash,
         block_height: u64,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
-        let fee_token_id = tx.fee_token_id.ok_or_else(|| {
-            StateStoreError::Other(format!(
-                "transaction {} missing fee token",
-                hex::encode(tx.tx_id)
-            ))
-        })?;
-
-        if tx.transfer_token_ids.is_empty() {
+        if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
             return Err(StateStoreError::Other(format!(
-                "transaction {} has no transfer tokens",
+                "transaction {} has no transfer inputs",
                 hex::encode(tx.tx_id)
             )));
         }
 
-        if tx
-            .transfer_token_ids
-            .iter()
-            .any(|token_id| *token_id == fee_token_id)
-        {
+        if tx.fee_token_id.is_none() && tx.coin_fee.is_empty() {
             return Err(StateStoreError::Other(format!(
-                "transaction {} reuses fee token as payment token",
+                "transaction {} is missing fee inputs",
                 hex::encode(tx.tx_id)
             )));
+        }
+
+        if let Some(fee_token_id) = tx.fee_token_id {
+            if tx
+                .transfer_token_ids
+                .iter()
+                .any(|token_id| *token_id == fee_token_id)
+            {
+                return Err(StateStoreError::Other(format!(
+                    "transaction {} reuses fee token as payment token",
+                    hex::encode(tx.tx_id)
+                )));
+            }
         }
 
         let mut sender = self
@@ -993,24 +1001,36 @@ impl<'a> StateStore<'a> {
         let payment_total = tx
             .transfer_token_ids
             .iter()
-            .try_fold(0u64, |acc, token_id| {
-                sender
-                    .token_value(token_id)
-                    .map(|value| acc + value)
+            .try_fold(0u64, |acc, token_id| -> Result<u64, StateStoreError> {
+                let token = sender
+                    .tokens
+                    .iter()
+                    .find(|token| token.token_id == *token_id && token.denomination().is_bill())
                     .ok_or_else(|| {
                         StateStoreError::Other(format!(
-                            "sender does not own transfer token {}",
+                            "sender does not own bill token {}",
                             hex::encode(token_id)
                         ))
-                    })
+                    })?;
+                Ok(acc + token.value_cents())
             })?;
+        let coin_transfer_total = tx.coin_transfer.total_value_cents();
 
-        let fee_value = sender.token_value(&fee_token_id).ok_or_else(|| {
-            StateStoreError::Other(format!(
-                "sender does not own fee token {}",
-                hex::encode(fee_token_id)
-            ))
-        })?;
+        let fee_value = if let Some(fee_token_id) = tx.fee_token_id {
+            sender
+                .tokens
+                .iter()
+                .find(|token| token.token_id == fee_token_id && token.denomination().is_bill())
+                .map(|token| token.value_cents())
+                .ok_or_else(|| {
+                    StateStoreError::Other(format!(
+                        "sender does not own fee bill token {}",
+                        hex::encode(fee_token_id)
+                    ))
+                })?
+        } else {
+            0
+        };
 
         let mut recipient = self
             .get_account_state(&tx.recipient)
@@ -1025,20 +1045,52 @@ impl<'a> StateStore<'a> {
         let moved_tokens = sender
             .remove_tokens_by_id(&tx.transfer_token_ids)
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
-        let fee_tokens = sender
-            .remove_tokens_by_id(&[fee_token_id])
+        let fee_tokens = if let Some(fee_token_id) = tx.fee_token_id {
+            sender
+                .remove_tokens_by_id(&[fee_token_id])
+                .map_err(|e| StateStoreError::Other(e.to_string()))?
+        } else {
+            Vec::new()
+        };
+
+        sender
+            .coin_inventory
+            .remove_inventory(&tx.coin_transfer)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
+        sender
+            .coin_inventory
+            .remove_inventory(&tx.coin_fee)
             .map_err(|e| StateStoreError::Other(e.to_string()))?;
 
         sender.nonce += 1;
         sender.last_updated = block_height;
         sender.assign_token_owner(tx.sender);
-        sender.sync_balance_from_tokens();
+        sender.sync_balance_from_hybrid();
 
         recipient.deposit_tokens(tx.recipient, moved_tokens);
+        recipient
+            .coin_inventory
+            .add_inventory(&tx.coin_transfer)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
         recipient.last_updated = block_height;
+        recipient.sync_balance_from_hybrid();
 
-        fee_account.deposit_tokens(*fee_recipient, fee_tokens);
+        if !fee_tokens.is_empty() {
+            fee_account.deposit_tokens(*fee_recipient, fee_tokens);
+        }
+        fee_account
+            .coin_inventory
+            .add_inventory(&tx.coin_fee)
+            .map_err(|e| StateStoreError::Other(e.to_string()))?;
         fee_account.last_updated = block_height;
+        fee_account.sync_balance_from_hybrid();
+
+        if payment_total + coin_transfer_total != tx.value {
+            return Err(StateStoreError::Other(format!(
+                "transaction {} has mismatched value mirror",
+                hex::encode(tx.tx_id)
+            )));
+        }
 
         self.set_account_state(&tx.sender, &sender)?;
         self.set_account_state(&tx.recipient, &recipient)?;
@@ -1059,8 +1111,8 @@ impl<'a> StateStore<'a> {
         debug!(
             "Applied token transaction {} transferring {} cents and fee {} cents",
             hex::encode(tx.tx_id),
-            payment_total,
-            fee_value,
+            payment_total + coin_transfer_total,
+            fee_value + tx.coin_fee.total_value_cents(),
         );
 
         Ok(changed_accounts)

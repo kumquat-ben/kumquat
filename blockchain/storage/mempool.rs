@@ -524,6 +524,8 @@ mod tests {
             recipient: [0; 32],
             transfer_token_ids: vec![],
             fee_token_id: None,
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value: 100,
             gas_price: 10,
             gas_limit: 21000,

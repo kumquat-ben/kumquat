@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::crypto::keys::VibePublicKey;
 use crate::crypto::signer::VibeSignature;
+use crate::storage::state::Denomination;
 use crate::storage::state_store::StateStore;
 use crate::storage::tx_store::{TransactionRecord, TxStore};
 // use crate::mempool::types::TransactionRecord as MempoolTransactionRecord;
@@ -83,6 +84,12 @@ impl<'a> TransactionValidator<'a> {
         if let Some(fee_token_id) = tx.fee_token_id {
             data.extend_from_slice(&fee_token_id);
         }
+        for denomination in Denomination::all_descending() {
+            data.extend_from_slice(&tx.coin_transfer.count(*denomination).to_be_bytes());
+        }
+        for denomination in Denomination::all_descending() {
+            data.extend_from_slice(&tx.coin_fee.count(*denomination).to_be_bytes());
+        }
         data.extend_from_slice(&tx.value.to_be_bytes());
         data.extend_from_slice(&tx.gas_price.to_be_bytes());
         data.extend_from_slice(&tx.gas_limit.to_be_bytes());
@@ -131,11 +138,11 @@ impl<'a> TransactionValidator<'a> {
             }
         };
 
-        if tx.fee_token_id.is_none() {
+        if tx.fee_token_id.is_none() && tx.coin_fee.is_empty() {
             return false;
         }
 
-        if tx.transfer_token_ids.is_empty() {
+        if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
             return false;
         }
 
@@ -161,17 +168,27 @@ impl<'a> TransactionValidator<'a> {
             return false;
         }
 
+        if !sender_state.coin_inventory.can_cover(&tx.coin_transfer)
+            || !sender_state.coin_inventory.can_cover(&tx.coin_fee)
+        {
+            return false;
+        }
+
         let payment_total = tx
             .transfer_token_ids
             .iter()
             .filter_map(|token_id| sender_state.token_value(token_id))
             .sum::<u64>();
+        let coin_total = tx.coin_transfer.total_value_cents();
         let fee_total = tx
             .fee_token_id
             .and_then(|token_id| sender_state.token_value(&token_id))
             .unwrap_or(0);
+        let coin_fee_total = tx.coin_fee.total_value_cents();
 
-        payment_total == tx.value && sender_state.total_token_value() >= payment_total + fee_total
+        payment_total + coin_total == tx.value
+            && sender_state.total_account_value()
+                >= payment_total + coin_total + fee_total + coin_fee_total
     }
 
     /// Check if the transaction nonce is valid
@@ -227,6 +244,8 @@ mod tests {
             recipient: [2u8; 32],
             transfer_token_ids: vec![[4u8; 32]],
             fee_token_id: Some([5u8; 32]),
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value: 100,
             gas_price: 1,
             gas_limit: 21_000,

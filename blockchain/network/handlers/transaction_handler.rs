@@ -98,6 +98,8 @@ impl TransactionHandler {
             recipient: tx.recipient,
             transfer_token_ids: tx.transfer_token_ids.clone(),
             fee_token_id: tx.fee_token_id,
+            coin_transfer: tx.coin_transfer.clone(),
+            coin_fee: tx.coin_fee.clone(),
             value: tx.value,
             gas_price: tx.gas_price,
             gas_limit: tx.gas_limit,

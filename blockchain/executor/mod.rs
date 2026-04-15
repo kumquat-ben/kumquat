@@ -5,7 +5,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::storage::block_store::Hash;
-use crate::storage::state::{AccountState, AccountType, DenominationToken};
+use crate::storage::state::{AccountState, AccountType, CoinInventory, DenominationToken};
 use crate::storage::tx_store::TransactionRecord;
 
 pub mod scheduler;
@@ -28,6 +28,7 @@ pub enum ExecutionRejection {
     UndeclaredInputs,
     BundleTooLarge,
     MissingFeeToken,
+    MissingFee,
     EmptyTransferSet,
     DuplicateToken,
     MissingToken,
@@ -84,10 +85,13 @@ impl ConcurrentTokenStore {
         for (address, account) in accounts {
             let mut account_copy = account.clone();
             account_copy.tokens.clear();
-            account_copy.balance = 0;
+            account_copy.balance = account_copy.total_account_value();
             account_store.insert(*address, Arc::new(Mutex::new(account_copy)));
 
             for token in &account.tokens {
+                if !token.denomination().is_bill() {
+                    continue;
+                }
                 token_store.insert(
                     token.token_id,
                     Arc::new(Mutex::new(TokenRuntime {
@@ -194,16 +198,42 @@ impl ConcurrentTokenStore {
 
         {
             let mut sender = sender_account.lock().unwrap();
+            if sender.nonce != prepared.tx.nonce {
+                return Err(ExecutionRejection::InvalidNonce);
+            }
+            if !sender.coin_inventory.can_cover(&prepared.tx.coin_transfer)
+                || !sender.coin_inventory.can_cover(&prepared.tx.coin_fee)
+            {
+                return Err(ExecutionRejection::InsufficientBalance);
+            }
+            sender
+                .coin_inventory
+                .remove_inventory(&prepared.tx.coin_transfer)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
+            sender
+                .coin_inventory
+                .remove_inventory(&prepared.tx.coin_fee)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
             sender.nonce += 1;
             sender.last_updated = block_height;
+            sender.sync_balance_from_hybrid();
         }
         {
             let mut recipient = recipient_account.lock().unwrap();
+            recipient
+                .coin_inventory
+                .add_inventory(&prepared.tx.coin_transfer)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
             recipient.last_updated = block_height;
+            recipient.sync_balance_from_hybrid();
         }
         {
             let mut fee = fee_account.lock().unwrap();
+            fee.coin_inventory
+                .add_inventory(&prepared.tx.coin_fee)
+                .map_err(|_| ExecutionRejection::InsufficientBalance)?;
             fee.last_updated = block_height;
+            fee.sync_balance_from_hybrid();
         }
 
         for token_id in &prepared.tx.transfer_token_ids {
@@ -276,7 +306,12 @@ impl ConcurrentTokenStore {
                 .unwrap_or_else(|| AccountState::new_user(0, 0));
             let mut tokens = token_buckets.remove(&address).unwrap_or_default();
             tokens.sort_by_key(|token| token.token_id);
-            account.set_tokens(address, tokens);
+            account.tokens = tokens.clone();
+            account.bills = tokens
+                .into_iter()
+                .filter_map(|token| crate::storage::BillToken::try_from(token).ok())
+                .collect();
+            account.sync_balance_from_hybrid();
             materialized.push((address, account));
         }
 
@@ -316,13 +351,18 @@ fn prepare_transaction(
     if tx.nonce != sender.nonce {
         return Err(ExecutionRejection::InvalidNonce);
     }
-    if tx.transfer_token_ids.is_empty() {
+    if tx.transfer_token_ids.is_empty() && tx.coin_transfer.is_empty() {
         return Err(ExecutionRejection::EmptyTransferSet);
     }
-    let fee_token_id = tx.fee_token_id.ok_or(ExecutionRejection::MissingFeeToken)?;
+    let fee_token_id = tx.fee_token_id;
+    if fee_token_id.is_none() && tx.coin_fee.is_empty() {
+        return Err(ExecutionRejection::MissingFee);
+    }
 
     let mut touched = tx.transfer_token_ids.clone();
-    touched.push(fee_token_id);
+    if let Some(fee_token_id) = fee_token_id {
+        touched.push(fee_token_id);
+    }
     if touched.len() > 20 {
         return Err(ExecutionRejection::BundleTooLarge);
     }
@@ -336,13 +376,26 @@ fn prepare_transaction(
         let expected_version = sender
             .tokens
             .iter()
-            .find(|token| token.token_id == token_id)
+            .find(|token| token.token_id == token_id && token.denomination().is_bill())
             .map(|token| token.version)
             .ok_or(ExecutionRejection::MissingToken)?;
         declared_inputs.push(DeclaredTokenInput {
             token_id,
             expected_version,
         });
+    }
+
+    if !sender.coin_inventory.can_cover(&tx.coin_transfer) || !sender.coin_inventory.can_cover(&tx.coin_fee) {
+        return Err(ExecutionRejection::InsufficientBalance);
+    }
+
+    let bill_total = tx
+        .transfer_token_ids
+        .iter()
+        .filter_map(|token_id| sender.token_value(token_id))
+        .sum::<u64>();
+    if bill_total + tx.coin_transfer.total_value_cents() != tx.value {
+        return Err(ExecutionRejection::UndeclaredInputs);
     }
 
     Ok(PreparedTransaction {

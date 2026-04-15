@@ -112,6 +112,8 @@ mod tests {
             recipient: [3u8; 32],
             transfer_token_ids: vec![[9u8; 32]],
             fee_token_id: Some([8u8; 32]),
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value,
             gas_price: 1,
             gas_limit: 21_000,

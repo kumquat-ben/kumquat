@@ -114,6 +114,8 @@ mod regression_tests {
             recipient,
             transfer_token_ids: vec![sender_state.tokens[0].token_id],
             fee_token_id: Some(sender_state.tokens[1].token_id),
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value: 100,
             gas_price: 1,
             gas_limit: 21_000,

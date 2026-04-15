@@ -456,6 +456,10 @@ pub struct CoinInventory {
 }
 
 impl CoinInventory {
+    pub fn is_empty(&self) -> bool {
+        self.counts.values().all(|count| *count == 0)
+    }
+
     pub fn total_value_cents(&self) -> AmountCents {
         self.counts
             .iter()
@@ -498,6 +502,33 @@ impl CoinInventory {
         *entry -= count;
         if *entry == 0 {
             self.counts.remove(&denomination);
+        }
+        Ok(())
+    }
+
+    pub fn can_cover(&self, required: &CoinInventory) -> bool {
+        required
+            .counts
+            .iter()
+            .all(|(denomination, count)| self.count(*denomination) >= *count)
+    }
+
+    pub fn add_inventory(&mut self, other: &CoinInventory) -> StateResult<()> {
+        for (denomination, count) in &other.counts {
+            self.add(*denomination, *count)?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_inventory(&mut self, other: &CoinInventory) -> StateResult<()> {
+        if !self.can_cover(other) {
+            return Err(StateError::Other(
+                "coin inventory cannot cover requested removal".to_string(),
+            ));
+        }
+
+        for (denomination, count) in &other.counts {
+            self.remove(*denomination, *count)?;
         }
         Ok(())
     }
@@ -828,6 +859,10 @@ impl AccountState {
     pub fn sync_balance_from_tokens(&mut self) {
         self.balance = self.total_token_value();
         self.sync_hybrid_from_tokens();
+    }
+
+    pub fn sync_balance_from_hybrid(&mut self) {
+        self.balance = self.total_bill_value() + self.total_coin_value();
     }
 
     pub fn sync_hybrid_from_tokens(&mut self) {

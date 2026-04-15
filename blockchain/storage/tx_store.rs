@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::block_store::Hash;
 use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
+use crate::storage::state::CoinInventory;
 
 /// Transaction record structure
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -17,11 +18,19 @@ pub struct TransactionRecord {
     /// Recipient address
     pub recipient: Hash,
 
-    /// Exact token IDs that move from the sender to the recipient.
+    /// Exact bill object IDs that move from the sender to the recipient.
     pub transfer_token_ids: Vec<Hash>,
 
-    /// Exact token ID selected by the sender as the transaction fee.
+    /// Exact bill object ID selected by the sender as the transaction fee.
     pub fee_token_id: Option<Hash>,
+
+    /// Fungible coin inventory that moves from sender to recipient.
+    #[serde(default)]
+    pub coin_transfer: CoinInventory,
+
+    /// Fungible coin inventory consumed as fees.
+    #[serde(default)]
+    pub coin_fee: CoinInventory,
 
     /// Compatibility mirror of the transferred value in cents.
     pub value: u64,

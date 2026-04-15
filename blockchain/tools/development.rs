@@ -137,6 +137,8 @@ impl<'a> DevelopmentTools<'a> {
             recipient: *receiver_address,
             transfer_token_ids: transfer_token_ids.clone(),
             fee_token_id,
+            coin_transfer: crate::storage::CoinInventory::default(),
+            coin_fee: crate::storage::CoinInventory::default(),
             value: amount,
             gas_price,
             gas_limit,

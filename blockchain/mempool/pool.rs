@@ -204,32 +204,38 @@ impl Mempool {
             return Err(MempoolError::InvalidNonce);
         }
 
-        if tx.fee_token_id.is_none() {
+        if !tx.has_any_fee_inputs() {
             return Err(MempoolError::InsufficientBalance);
         }
 
-        if tx.transfer_token_ids.is_empty() {
+        if !tx.has_any_transfers() {
             return Err(MempoolError::InsufficientBalance);
         }
 
-        let fee_token_id = tx.fee_token_id.unwrap();
+        if let Some(fee_token_id) = tx.fee_token_id {
+            if tx
+                .transfer_token_ids
+                .iter()
+                .any(|token_id| *token_id == fee_token_id)
+            {
+                return Err(MempoolError::InsufficientBalance);
+            }
 
-        if tx
-            .transfer_token_ids
-            .iter()
-            .any(|token_id| *token_id == fee_token_id)
-        {
-            return Err(MempoolError::InsufficientBalance);
-        }
-
-        if !account.owns_token(&fee_token_id) {
-            return Err(MempoolError::InsufficientBalance);
+            if !account.owns_token(&fee_token_id) {
+                return Err(MempoolError::InsufficientBalance);
+            }
         }
 
         if !tx
             .transfer_token_ids
             .iter()
             .all(|token_id| account.owns_token(token_id))
+        {
+            return Err(MempoolError::InsufficientBalance);
+        }
+
+        if !account.coin_inventory.can_cover(&tx.coin_transfer)
+            || !account.coin_inventory.can_cover(&tx.coin_fee)
         {
             return Err(MempoolError::InsufficientBalance);
         }
