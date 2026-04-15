@@ -9,8 +9,8 @@ use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
 use crate::storage::state::{
-    AccountState, AccountType, CoinInventory, ConversionOrder, ConversionOrderStatus,
-    ConversionTransaction, Denomination, StateResult, StateRoot,
+    AccountState, AccountType, CoinInventory, ConversionOrder, ConversionOrderKind,
+    ConversionOrderStatus, ConversionTransaction, Denomination, StateResult, StateRoot,
 };
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::tx_store::TransactionRecord;
@@ -60,6 +60,21 @@ pub enum StateStoreError {
     /// Balance overflow
     #[error("Balance overflow for account: {0}")]
     BalanceOverflow(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConversionMarketSnapshot {
+    pub at_block_height: u64,
+    pub tracked_miner_count: usize,
+    pub tracked_miner_coin_inventory_cents: u64,
+    pub total_coin_inventory_cents: u64,
+    pub open_order_count: u64,
+    pub pending_order_count: u64,
+    pub eligible_order_count: u64,
+    pub pending_value_cents: u64,
+    pub eligible_value_cents: u64,
+    pub bill_to_coins_demand_cents: u64,
+    pub coins_to_bill_demand_cents: u64,
 }
 
 #[cfg(test)]
@@ -971,6 +986,75 @@ impl<'a> StateStore<'a> {
             .into_iter()
             .filter(|(_, state)| state.last_updated > block_height)
             .collect()
+    }
+
+    pub fn conversion_market_snapshot(
+        &self,
+        block_height: u64,
+        tracked_miner_addresses: &HashSet<Hash>,
+    ) -> ConversionMarketSnapshot {
+        let mut snapshot = ConversionMarketSnapshot {
+            at_block_height: block_height,
+            ..ConversionMarketSnapshot::default()
+        };
+
+        for (address, account) in self.get_all_accounts() {
+            let coin_value = account.coin_inventory.total_value_cents();
+            snapshot.total_coin_inventory_cents = snapshot
+                .total_coin_inventory_cents
+                .saturating_add(coin_value);
+
+            if tracked_miner_addresses.contains(&address) {
+                snapshot.tracked_miner_count += 1;
+                snapshot.tracked_miner_coin_inventory_cents = snapshot
+                    .tracked_miner_coin_inventory_cents
+                    .saturating_add(coin_value);
+            }
+
+            if let Some(mut order) = account.conversion_order {
+                refresh_conversion_order_status(&mut order, block_height);
+                if !matches!(
+                    order.status,
+                    ConversionOrderStatus::Pending | ConversionOrderStatus::Eligible
+                ) {
+                    continue;
+                }
+
+                snapshot.open_order_count = snapshot.open_order_count.saturating_add(1);
+                match order.status {
+                    ConversionOrderStatus::Pending => {
+                        snapshot.pending_order_count =
+                            snapshot.pending_order_count.saturating_add(1);
+                        snapshot.pending_value_cents = snapshot
+                            .pending_value_cents
+                            .saturating_add(order.requested_value_cents);
+                    }
+                    ConversionOrderStatus::Eligible => {
+                        snapshot.eligible_order_count =
+                            snapshot.eligible_order_count.saturating_add(1);
+                        snapshot.eligible_value_cents = snapshot
+                            .eligible_value_cents
+                            .saturating_add(order.requested_value_cents);
+                    }
+                    _ => {}
+                }
+
+                match order.kind {
+                    ConversionOrderKind::BillToCoins => {
+                        snapshot.bill_to_coins_demand_cents = snapshot
+                            .bill_to_coins_demand_cents
+                            .saturating_add(order.requested_value_cents);
+                    }
+                    ConversionOrderKind::CoinsToBill => {
+                        snapshot.coins_to_bill_demand_cents = snapshot
+                            .coins_to_bill_demand_cents
+                            .saturating_add(order.requested_value_cents);
+                    }
+                }
+            }
+        }
+
+        snapshot
     }
 
     /// Get the current block height

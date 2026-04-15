@@ -1,13 +1,130 @@
 use log::{info, warn};
+use std::collections::HashSet;
 
 use crate::consensus::config::ConsensusConfig;
 use crate::consensus::types::Target;
 use crate::storage::block_store::BlockStore;
+use crate::storage::state_store::StateStore;
+use crate::storage::tx_store::TxStore;
+use crate::storage::{
+    ConversionMarketSnapshot, ConversionOrderKind, ConversionTransaction,
+    CONVERSION_ORDER_CYCLE_BLOCKS, CONVERSION_ORDER_ELIGIBILITY_BLOCKS,
+};
+
+const CONVERSION_DIFFICULTY_CLAMP: f64 = 0.10;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ConversionFlowStats {
+    bill_to_coins_requested_cents: u64,
+    coins_to_bill_requested_cents: u64,
+}
+
+fn normalized_delta(positive: u64, negative: u64) -> f64 {
+    let total = positive.saturating_add(negative);
+    if total == 0 {
+        0.0
+    } else {
+        (positive as f64 - negative as f64) / total as f64
+    }
+}
+
+fn collect_tracked_miner_addresses(
+    block_store: &BlockStore<'_>,
+    current_height: u64,
+    window: u64,
+) -> HashSet<[u8; 32]> {
+    let mut miners = HashSet::new();
+    let start_height = current_height.saturating_sub(window.saturating_sub(1));
+    for height in start_height..=current_height {
+        if let Ok(Some(block)) = block_store.get_block_by_height(height) {
+            miners.insert(block.miner);
+        }
+    }
+    miners
+}
+
+fn collect_conversion_flow_stats(
+    block_store: &BlockStore<'_>,
+    tx_store: &TxStore<'_>,
+    start_height: u64,
+    end_height: u64,
+) -> ConversionFlowStats {
+    let mut stats = ConversionFlowStats::default();
+
+    for height in start_height..=end_height {
+        let block = match block_store.get_block_by_height(height) {
+            Ok(Some(block)) => block,
+            _ => continue,
+        };
+
+        for tx_hash in &block.transactions {
+            let tx = match tx_store.get_transaction(tx_hash) {
+                Ok(Some(tx)) => tx,
+                _ => continue,
+            };
+
+            if let Some(ConversionTransaction::Create(request)) = tx.conversion_intent {
+                match request.kind {
+                    ConversionOrderKind::BillToCoins => {
+                        stats.bill_to_coins_requested_cents = stats
+                            .bill_to_coins_requested_cents
+                            .saturating_add(request.requested_value_cents);
+                    }
+                    ConversionOrderKind::CoinsToBill => {
+                        stats.coins_to_bill_requested_cents = stats
+                            .coins_to_bill_requested_cents
+                            .saturating_add(request.requested_value_cents);
+                    }
+                }
+            }
+        }
+    }
+
+    stats
+}
+
+fn conversion_market_signal(
+    snapshot: &ConversionMarketSnapshot,
+    cycle_flow: ConversionFlowStats,
+    rolling_flow: ConversionFlowStats,
+) -> f64 {
+    let demand_signal = normalized_delta(
+        snapshot.bill_to_coins_demand_cents,
+        snapshot.coins_to_bill_demand_cents,
+    );
+    let inventory_reference = snapshot
+        .bill_to_coins_demand_cents
+        .max(snapshot.coins_to_bill_demand_cents)
+        .max(1);
+    let inventory_signal = ((snapshot.bill_to_coins_demand_cents as f64
+        - snapshot.tracked_miner_coin_inventory_cents as f64)
+        / inventory_reference as f64)
+        .clamp(-1.0, 1.0);
+    let backlog_ratio = (snapshot.open_order_count as f64 / CONVERSION_ORDER_CYCLE_BLOCKS as f64)
+        .clamp(0.0, 1.0);
+    let cycle_signal = normalized_delta(
+        cycle_flow.bill_to_coins_requested_cents,
+        cycle_flow.coins_to_bill_requested_cents,
+    );
+    let rolling_signal = normalized_delta(
+        rolling_flow.bill_to_coins_requested_cents,
+        rolling_flow.coins_to_bill_requested_cents,
+    );
+    let smoothed_flow_signal = 0.7 * cycle_signal + 0.3 * rolling_signal;
+
+    (0.40 * demand_signal
+        + 0.25 * inventory_signal
+        + 0.20 * (backlog_ratio * demand_signal)
+        + 0.15 * smoothed_flow_signal)
+        .clamp(-1.0, 1.0)
+}
 
 /// Calculate the next target difficulty
 pub fn calculate_next_target(
     config: &ConsensusConfig,
     block_store: &BlockStore<'_>,
+    state_store: &StateStore<'_>,
+    tx_store: &TxStore<'_>,
     current_height: u64,
 ) -> Target {
     // If we're at the genesis block or below the adjustment window, use the initial difficulty
@@ -77,14 +194,37 @@ pub fn calculate_next_target(
     let current_difficulty = current_target.to_difficulty();
 
     // Calculate the new difficulty
-    let new_difficulty = (current_difficulty as f64 * clamped_factor) as u64;
+    let time_adjusted_difficulty = (current_difficulty as f64 * clamped_factor) as u64;
+
+    let tracked_miners = collect_tracked_miner_addresses(
+        block_store,
+        current_height,
+        CONVERSION_ORDER_ELIGIBILITY_BLOCKS,
+    );
+    let snapshot = state_store.conversion_market_snapshot(current_height, &tracked_miners);
+    let cycle_start = current_height.saturating_sub(CONVERSION_ORDER_CYCLE_BLOCKS.saturating_sub(1));
+    let rolling_start =
+        current_height.saturating_sub(CONVERSION_ORDER_ELIGIBILITY_BLOCKS.saturating_sub(1));
+    let cycle_flow =
+        collect_conversion_flow_stats(block_store, tx_store, cycle_start, current_height);
+    let rolling_flow =
+        collect_conversion_flow_stats(block_store, tx_store, rolling_start, current_height);
+    let market_signal = conversion_market_signal(&snapshot, cycle_flow, rolling_flow);
+    let bounded_factor = (1.0 - (market_signal * CONVERSION_DIFFICULTY_CLAMP))
+        .clamp(1.0 - CONVERSION_DIFFICULTY_CLAMP, 1.0 + CONVERSION_DIFFICULTY_CLAMP);
+    let new_difficulty = (time_adjusted_difficulty as f64 * bounded_factor).round() as u64;
 
     // Ensure the difficulty doesn't go below the initial difficulty
     let new_difficulty = new_difficulty.max(config.initial_difficulty);
 
     info!(
-        "Difficulty adjustment: {} -> {} (factor: {:.2})",
-        current_difficulty, new_difficulty, clamped_factor
+        "Difficulty adjustment: {} -> {} (time_factor: {:.2}, market_signal: {:.2}, tracked_miner_inventory: {}, open_orders: {})",
+        current_difficulty,
+        new_difficulty,
+        clamped_factor,
+        market_signal,
+        snapshot.tracked_miner_coin_inventory_cents,
+        snapshot.open_order_count,
     );
 
     Target::from_difficulty(new_difficulty)
@@ -93,7 +233,7 @@ pub fn calculate_next_target(
 /// Get the target at a specific height
 pub fn get_target_at_height(block_store: &BlockStore<'_>, height: u64) -> Target {
     // Get the block at the specified height
-    let _block = match block_store.get_block_by_height(height) {
+    let block = match block_store.get_block_by_height(height) {
         Ok(Some(block)) => block,
         Ok(None) => {
             warn!(
@@ -111,15 +251,16 @@ pub fn get_target_at_height(block_store: &BlockStore<'_>, height: u64) -> Target
         }
     };
 
-    // In a real implementation, the target would be stored in the block
-    // For now, we'll just use a placeholder
-    Target::from_difficulty(1)
+    Target::from_difficulty(block.difficulty.max(1))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{Block, RocksDBStore};
+    use crate::storage::{
+        Block, CoinInventory, ConversionOrder, ConversionOrderKind, ConversionOrderRequest,
+        RocksDBStore, StateStore, TransactionRecord, TransactionStatus, TxStore,
+    };
     use tempfile::tempdir;
 
     #[cfg(feature = "legacy-test-compat")]
@@ -129,6 +270,8 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
         let block_store = BlockStore::new(&kv_store);
+        let state_store = StateStore::new(&kv_store);
+        let tx_store = TxStore::new(&kv_store);
 
         // Create a config
         let config = ConsensusConfig::default()
@@ -143,6 +286,7 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 0,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
@@ -163,6 +307,7 @@ mod tests {
             prev_hash: [0u8; 32],
             timestamp: 10,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
@@ -172,7 +317,7 @@ mod tests {
             nonce: 0,
             poh_seq: 1,
             poh_hash: [0u8; 32],
-            difficulty: 1,
+            difficulty: config.initial_difficulty,
             total_difficulty: 2,
         };
 
@@ -183,6 +328,7 @@ mod tests {
             prev_hash: [1u8; 32],
             timestamp: 30,
             transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0u8; 32],
             reward_token_ids: vec![],
@@ -192,7 +338,7 @@ mod tests {
             nonce: 0,
             poh_seq: 2,
             poh_hash: [0u8; 32],
-            difficulty: 1,
+            difficulty: config.initial_difficulty,
             total_difficulty: 3,
         };
 
@@ -202,7 +348,7 @@ mod tests {
         block_store.put_block(&block2);
 
         // Calculate the next target
-        let target = calculate_next_target(&config, &block_store, 2);
+        let target = calculate_next_target(&config, &block_store, &state_store, &tx_store, 2);
 
         // The blocks took longer than expected, so difficulty should decrease
         // Expected time: 10 * 2 = 20
@@ -220,5 +366,138 @@ mod tests {
         };
 
         assert!(ratio < 1.01, "Difficulty adjustment error too large");
+    }
+
+    #[test]
+    fn test_conversion_market_pressure_eases_difficulty() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let block_store = BlockStore::new(&kv_store);
+        let state_store = StateStore::new(&kv_store);
+        let tx_store = TxStore::new(&kv_store);
+
+        let config = ConsensusConfig::default()
+            .with_target_block_time(10)
+            .with_initial_difficulty(100)
+            .with_difficulty_adjustment_window(2);
+
+        let miner = [7u8; 32];
+        let requester = [8u8; 32];
+
+        state_store
+            .create_account(&requester, 100, crate::storage::AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&miner, 0, crate::storage::AccountType::User)
+            .unwrap();
+
+        let mut requester_state = state_store.get_account_state(&requester).unwrap();
+        requester_state.conversion_order = Some(ConversionOrder::new(
+            [9u8; 32],
+            requester,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: vec![],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&requester, &requester_state)
+            .unwrap();
+
+        let block0 = Block {
+            height: 0,
+            hash: [0u8; 32],
+            prev_hash: [0u8; 32],
+            timestamp: 0,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 100,
+        };
+        let block1 = Block {
+            height: 1,
+            hash: [1u8; 32],
+            prev_hash: [0u8; 32],
+            timestamp: 10,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 1,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 200,
+        };
+        let create_tx = TransactionRecord {
+            tx_id: [2u8; 32],
+            sender: requester,
+            recipient: [0u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: CoinInventory::default(),
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 10,
+            nonce: 0,
+            timestamp: 20,
+            block_height: 2,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::Create(ConversionOrderRequest {
+                kind: ConversionOrderKind::BillToCoins,
+                requested_value_cents: 100,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: vec![],
+            })),
+            status: TransactionStatus::Confirmed,
+        };
+        tx_store.put_transaction(&create_tx).unwrap();
+        let block2 = Block {
+            height: 2,
+            hash: [3u8; 32],
+            prev_hash: [1u8; 32],
+            timestamp: 20,
+            transactions: vec![create_tx.tx_id],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 2,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 300,
+        };
+
+        block_store.put_block(&block0).unwrap();
+        block_store.put_block(&block1).unwrap();
+        block_store.put_block(&block2).unwrap();
+
+        let target = calculate_next_target(&config, &block_store, &state_store, &tx_store, 2);
+        assert!(
+            target.to_difficulty() < 100,
+            "expected shortage-driven conversion pressure to ease difficulty"
+        );
     }
 }

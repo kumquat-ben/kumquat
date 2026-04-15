@@ -72,7 +72,7 @@ pub use state_pruning::{
 pub use state_sharding::{
     ShardConfig, ShardingError, ShardingResult, ShardingStrategy, StateShard, StateShardingManager,
 };
-pub use state_store::StateStore;
+pub use state_store::{ConversionMarketSnapshot, StateStore};
 pub use state_sync::{
     NetworkClient, StateSynchronizer, SyncConfig, SyncError, SyncMode, SyncProgress, SyncResult,
     SyncStatus,

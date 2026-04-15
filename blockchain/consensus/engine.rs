@@ -594,8 +594,13 @@ impl ConsensusEngine {
         let mut chain_state = self.chain_state.lock().await;
 
         // Calculate the next target
-        let next_target =
-            calculate_next_target(&self.config, &self.block_store, chain_state.height);
+        let next_target = calculate_next_target(
+            &self.config,
+            &self.block_store,
+            &self.state_store,
+            &self.tx_store,
+            chain_state.height,
+        );
 
         // Update the chain state
         chain_state.current_target = next_target;
