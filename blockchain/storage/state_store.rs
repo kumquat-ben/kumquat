@@ -7,7 +7,9 @@ use crate::executor::{execute_transaction_batch, ExecutionRejection, ExecutionSt
 use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
-use crate::storage::state::{AccountState, AccountType, StateResult, StateRoot};
+use crate::storage::state::{
+    AccountState, AccountType, CoinInventory, ConversionOrder, StateResult, StateRoot,
+};
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::tx_store::TransactionRecord;
 use crate::storage::tx_store::{TransactionError, TransactionStatus, TxStore};
@@ -158,13 +160,21 @@ impl<'a> StateStore<'a> {
         }
     }
 
+    fn normalize_account_state(mut state: AccountState, fallback_owner: Option<Hash>) -> AccountState {
+        if let Some(owner) = fallback_owner {
+            state.assign_token_owner(owner);
+        }
+        state.sync_hybrid_from_tokens();
+        state
+    }
+
     /// Get the state of an account
     pub fn get_account_state(&self, address: &Hash) -> Option<AccountState> {
         let addr_str = hex::encode(address);
 
         // Check the cache first
         if let Some(cached) = self.account_cache.get(&addr_str) {
-            return Some(cached.clone());
+            return Some(Self::normalize_account_state(cached.clone(), Some(*address)));
         }
 
         // If not in cache, get from store
@@ -173,6 +183,7 @@ impl<'a> StateStore<'a> {
             Ok(Some(bytes)) => {
                 match bincode::deserialize::<AccountState>(&bytes) {
                     Ok(state) => {
+                        let state = Self::normalize_account_state(state, Some(*address));
                         // Add to cache
                         self.add_to_cache(addr_str, state.clone());
                         Some(state)
@@ -202,15 +213,16 @@ impl<'a> StateStore<'a> {
     ) -> Result<(), StateStoreError> {
         let addr_str = hex::encode(address);
         let key = format!("state:account:{}", addr_str);
+        let normalized_state = Self::normalize_account_state(state.clone(), Some(*address));
 
-        let value = bincode::serialize(state)
+        let value = bincode::serialize(&normalized_state)
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
         // Update the store
         self.store.put(key.as_bytes(), &value)?;
 
         // Update the cache
-        self.add_to_cache(addr_str, state.clone());
+        self.add_to_cache(addr_str, normalized_state);
 
         // Invalidate the state root
         let mut state_root = self.state_root.write().unwrap();
@@ -237,15 +249,20 @@ impl<'a> StateStore<'a> {
     ) -> Result<StateResult<()>, StateStoreError> {
         let addr_str = hex::encode(address);
         let key = format!("state:account:{}:{}", addr_str, height);
+        let mut owner = [0u8; 32];
+        if address.len() == owner.len() {
+            owner.copy_from_slice(address);
+        }
+        let normalized_account = Self::normalize_account_state(account.clone(), Some(owner));
 
-        let value = bincode::serialize(account)
+        let value = bincode::serialize(&normalized_account)
             .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
 
         // Update the store
         self.store.put(key.as_bytes(), &value)?;
 
         // Update the cache
-        self.add_to_cache(addr_str, account.clone());
+        self.add_to_cache(addr_str, normalized_account);
 
         // Invalidate the state root
         let mut state_root = self.state_root.write().unwrap();
@@ -278,7 +295,11 @@ impl<'a> StateStore<'a> {
 
         match self.store.get(key.as_bytes())? {
             Some(value) => match bincode::deserialize(&value) {
-                Ok(state) => Ok(Some(state)),
+                Ok(state) => Ok(Some(Self::normalize_account_state(state, Some({
+                    let mut owner = [0u8; 32];
+                    owner.copy_from_slice(address);
+                    owner
+                })))),
                 Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
             },
             None => Ok(None),
@@ -327,6 +348,13 @@ impl<'a> StateStore<'a> {
             Some(value) => {
                 match bincode::deserialize::<AccountState>(&value) {
                     Ok(state) => {
+                        let mut address = [0u8; 32];
+                        if let Ok(bytes) = hex::decode(&addr_str) {
+                            if bytes.len() == address.len() {
+                                address.copy_from_slice(&bytes);
+                            }
+                        }
+                        let state = Self::normalize_account_state(state, Some(address));
                         // Add to cache
                         let state_clone = state.clone();
                         self.add_to_cache(addr_str, state_clone);
@@ -366,6 +394,48 @@ impl<'a> StateStore<'a> {
         } else {
             Err(StateStoreError::AccountNotFound(addr_str))
         }
+    }
+
+    pub fn get_coin_inventory(&self, address: &Hash) -> Result<CoinInventory, StateStoreError> {
+        self.get_account_state(address)
+            .map(|state| state.coin_inventory)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(address)))
+    }
+
+    pub fn get_conversion_order(
+        &self,
+        address: &Hash,
+    ) -> Result<Option<ConversionOrder>, StateStoreError> {
+        self.get_account_state(address)
+            .map(|state| state.conversion_order)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(address)))
+    }
+
+    pub fn set_conversion_order(
+        &self,
+        address: &Hash,
+        conversion_order: ConversionOrder,
+        block_height: u64,
+    ) -> Result<(), StateStoreError> {
+        let mut state = self
+            .get_account_state(address)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(address)))?;
+        state.conversion_order = Some(conversion_order);
+        state.last_updated = block_height;
+        self.set_account_state(address, &state)
+    }
+
+    pub fn clear_conversion_order(
+        &self,
+        address: &Hash,
+        block_height: u64,
+    ) -> Result<(), StateStoreError> {
+        let mut state = self
+            .get_account_state(address)
+            .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(address)))?;
+        state.conversion_order = None;
+        state.last_updated = block_height;
+        self.set_account_state(address, &state)
     }
 
     /// Transfer balance between accounts
@@ -592,7 +662,7 @@ impl<'a> StateStore<'a> {
 
                         // Deserialize account state
                         match bincode::deserialize(value) {
-                            Ok(state) => Some((addr, state)),
+                            Ok(state) => Some((addr, Self::normalize_account_state(state, Some(addr)))),
                             Err(e) => {
                                 error!("Failed to deserialize account state: {}", e);
                                 None
@@ -1137,6 +1207,7 @@ fn map_rejection_to_tx_error(reason: ExecutionRejection) -> TransactionError {
 mod tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::state::{CoinInventory, ConversionOrderKind, ConversionOrderStatus};
     use sha2::{Digest, Sha256};
     use tempfile::tempdir;
 
@@ -1246,6 +1317,66 @@ mod tests {
             result,
             Err(StateStoreError::Other(_))
         ));
+    }
+
+    #[test]
+    fn test_get_account_state_normalizes_legacy_hybrid_fields() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path());
+        let state_store = StateStore::new(&kv_store);
+
+        let address = [7; 32];
+        let key = format!("state:account:{}", hex::encode(address));
+
+        let mut legacy_state = AccountState::new_user(136, 5);
+        legacy_state.bills.clear();
+        legacy_state.coin_inventory = CoinInventory::default();
+
+        let bytes = bincode::serialize(&legacy_state).unwrap();
+        kv_store.put(key.as_bytes(), &bytes).unwrap();
+
+        let loaded = state_store.get_account_state(&address).unwrap();
+        assert_eq!(loaded.total_bill_value(), 100);
+        assert_eq!(loaded.total_coin_value(), 36);
+        assert_eq!(loaded.bills.len(), 1);
+        assert_eq!(loaded.coin_inventory.count(crate::storage::Denomination::Cents25), 1);
+    }
+
+    #[test]
+    fn test_conversion_order_round_trip() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path());
+        let state_store = StateStore::new(&kv_store);
+
+        let address = [8; 32];
+        state_store
+            .create_account(&address, 500, AccountType::User)
+            .unwrap();
+
+        let order = ConversionOrder {
+            order_id: [9; 32],
+            requester: address,
+            kind: ConversionOrderKind::BillToCoins,
+            requested_value_cents: 125,
+            requested_coin_inventory: CoinInventory::default(),
+            requested_bill_denominations: Vec::new(),
+            created_at_block: 10,
+            eligible_at_block: 79,
+            cycle_end_block: 420,
+            status: ConversionOrderStatus::Pending,
+            failure_reason: None,
+        };
+
+        state_store
+            .set_conversion_order(&address, order.clone(), 10)
+            .unwrap();
+
+        let stored = state_store.get_conversion_order(&address).unwrap();
+        assert_eq!(stored, Some(order));
+
+        state_store.clear_conversion_order(&address, 11).unwrap();
+        let cleared = state_store.get_conversion_order(&address).unwrap();
+        assert_eq!(cleared, None);
     }
 
     #[test]
