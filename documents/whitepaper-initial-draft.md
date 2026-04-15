@@ -188,6 +188,15 @@ Questions this section must resolve:
 - how double-spend prevention works for fungible coin inventory
 - whether scripting or programmability is intentionally minimal or more expressive
 
+Current working defaults in the repo direction are:
+
+- miners choose which eligible orders to fulfill
+- miners may fulfill multiple eligible orders in the same block
+- the fulfillment list is committed first and fails as a whole if any selected order is invalid
+- execution order follows PoH order
+- eligible orders remain eligible until the 420-block cycle ends
+- one open conversion order per account is allowed until non-fulfilled state is manually cleared
+
 If Kumquat adopts miner-mediated conversion and pooled coin fulfillment, the wallet and market model will feel more like a bank-and-mint system than a simple object-transfer chain.
 
 The farm concept adds another layer to the transaction discussion: the same payment system is expected to settle several different markets. Compute leases, job execution, liquidity participation, and data purchases may all use the same token and settlement surface. That suggests the eventual transaction model may need:
@@ -300,14 +309,11 @@ The skeleton correctly treats unresolved issues as first-class content rather th
 
 The largest open questions currently visible are:
 
-- whether coins are splittable
-- how a fee market works without default fungibility
-- whether miner identity is required, optional, or intentionally anonymous
-- whether Kumquat remains narrowly scoped or grows a smart contract layer
-- how much of the farm should be mandatory versus optional per operator
-- what proof system governs workload execution and proof of delivery
-- how cross-farm routing works for compute and data requests
-- whether liquidity is local to each farm, shared network-wide, or both
+- how to encode the locked conversion rules cleanly in block and transaction data structures
+- how miner incentives should be measured under hybrid issuance
+- how dynamic conversion difficulty should be bounded and tested in production conditions
+- how compute-use redemption should be validated and scheduled
+- how the state-model-first implementation should stage migration from the current token-object ledger
 
 This section should remain explicit and candid in future revisions. If the protocol is still evolving, the whitepaper should say so clearly.
 

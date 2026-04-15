@@ -41,6 +41,30 @@ This plan is optimization-driven. It is intentionally not a privacy design.
 - the major conversion baseline recalculates every 420 blocks
 - per-block conversion adjustment uses a 69-block rolling average
 - per-block adjustment should be tightly bounded around the cycle baseline, recommended at `+/- 10%`
+- once an order becomes eligible after 69 blocks, it remains eligible until cycle end
+- miners may fulfill multiple eligible orders in the same block
+- miners must commit the full fulfillment list before execution
+- if any selected order in that list is invalid, the whole fulfillment list fails
+- the minimum invalidity set is:
+  - order not yet eligible
+  - order expired
+  - requester no longer has required value
+  - miner lacks sufficient inventory
+  - duplicate order in the fulfillment list
+  - order already filled
+- blocks may contain both normal transfers and conversion-order fulfillments
+- execution order follows PoH order
+- the separately committed fulfillment list must preserve exact PoH order
+- miners may omit eligible orders
+- skipped eligible orders are not exposed publicly
+- users can see the status of their own orders only
+- order statuses are `pending`, `eligible`, `fulfilled`, `expired`, and `failed`
+- a failed order stays failed
+- a replacement order may be submitted in the next block and starts a fresh 69-block aging period
+- one open conversion order per account is allowed
+- the one-order cap applies to all non-fulfilled states
+- clearing a blocked non-fulfilled order requires manual cancel or acknowledge
+- the next implementation target should be the state model first
 
 ## Current Constraints In The Codebase
 
@@ -379,7 +403,9 @@ Then later strengthen the work model.
 - the next matching requester can be fulfilled instantly from that pool
 - miners fulfill from their own inventory first
 - orders are all-or-nothing
+- once eligible, orders remain eligible until cycle end
 - orders expire at the end of the current 420-block cycle and require fresh approval
+- one open conversion order per account is allowed across all non-fulfilled states
 
 ## Dynamic Conversion Difficulty
 
@@ -433,17 +459,17 @@ Recommendation:
 
 ### Phase 0. Spec lock
 
-Decisions required before code:
+Current recommended defaults:
 
-- are coin balances stored by denomination or only total cents
-- are fees payable in bills, coins, or coins-only initially
-- can transactions request automatic coin change-making
-- does a reward block create one coin batch or many
-- how compute use allocation is represented in state after coin melting
-- whether bill breaking burns the old object or records a reversible form conversion
-- how coin orders are bucketed and matched inside the fulfillment pool
-- how much of block validation treats conversion as separate from ordinary PoW
-- whether `+/- 10%` is the final clamp or just the starting default
+- coin balances are stored by denomination
+- fees are payable in coins only initially
+- transactions may request explicit denomination mixes
+- each block may emit one aggregated coin batch for sub-dollar rewards
+- compute use allocation is explicit protocol state
+- bill breaking is modeled as a protocol form conversion
+- coin orders are bucketed in protocol-managed pool state
+- conversion remains a separate committed part of block logic while execution still follows PoH order
+- `+/- 10%` is the starting protocol default clamp
 
 Exit criteria:
 
@@ -573,12 +599,10 @@ Priority cases:
 
 ## Recommended Immediate Next Steps
 
-1. Lock the coin representation decision:
-   - per-denomination inventory is the better fit for "real cash"
-2. Lock the first fee rule:
-   - coins-only fees is the fastest path
-3. Implement Phase 1 without trying to preserve old transaction compatibility
-4. Follow with Phase 2 and Phase 3 together so the ledger shape and transaction shape stay aligned
+1. Implement Phase 1 state model changes first.
+2. Keep per-denomination coin inventory as the first representation.
+3. Keep coins-only fees for the first implementation.
+4. Follow with Phase 2 and Phase 3 together so the ledger shape and transaction shape stay aligned.
 
 ## Suggested Initial Defaults
 
@@ -597,3 +621,4 @@ Unless we decide otherwise, the fastest coherent build is:
 - `2026-04-15`: Added the locked decisions that compute acts as metal, kumquats pay for production compute, coins can be broken from bills, and melting coins returns actual compute use.
 - `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.
 - `2026-04-15`: Added the fulfillment and smoothing rules: miner inventory first, no partial fills, 420-block expiry, 69-block rolling average, and a tight `+/- 10%` clamp.
+- `2026-04-15`: Locked the remaining recommended defaults around order lifecycle, visibility, failure handling, one-open-order caps, and state-model-first implementation order.

@@ -35,6 +35,36 @@ Adopt a split asset model:
 - the protocol recalculates the major conversion baseline every 420 blocks
 - per-block conversion adjustment should use a 69-block rolling average to reduce oscillation
 - per-block adjustment should be tightly bounded around the 420-block baseline, recommended at `+/- 10%`
+- once an order becomes eligible after 69 blocks, it remains eligible until cycle end
+- miners may fulfill multiple eligible orders in the same block
+- miners must commit the full fulfillment list before execution
+- if any order in the committed fulfillment list is invalid, the whole fulfillment list fails
+- the minimum invalidity set for a conversion order is:
+  - order not yet eligible
+  - order expired at cycle boundary
+  - requester no longer has required value
+  - miner no longer has enough inventory
+  - duplicated order in the same fulfillment list
+  - order already filled
+- blocks may contain both normal transfers and conversion-order fulfillments
+- execution order follows PoH order
+- the separately committed fulfillment list must preserve exact PoH order
+- miners may omit eligible orders even when they have enough inventory
+- skipped eligible orders are not exposed as a public audit surface
+- users can see the status of their own orders only
+- user-visible conversion-order statuses are:
+  - `pending`
+  - `eligible`
+  - `fulfilled`
+  - `expired`
+  - `failed`
+- a failed order remains failed and does not return to eligible
+- a replacement order may be submitted starting next block
+- a replacement order starts a fresh 69-block aging period
+- one open conversion order per account is allowed
+- the cap applies to all non-fulfilled states
+- clearing a blocked non-fulfilled order requires manual cancel or acknowledge
+- implementation should proceed state model first
 
 ## Current Chain Shape
 
@@ -313,16 +343,16 @@ The new-network path is much safer.
 
 ### Phase 1. Lock the protocol spec
 
-Decide:
+Current recommended defaults:
 
-- how the protocol represents conversion between `$1` bill form and `$1` coin form
-- are coin denominations preserved internally, or is all sub-dollar value one fungible pool in cents
-- is coin issuance tied to block PoW or separate batch PoW
-- can fees be paid in bills, coins, or both
-- how compute use returned by melting is scheduled and delivered
-- how pending coin orders are matched against pooled fulfillment
-- how the network-state inputs are weighted in dynamic conversion difficulty
-- how the 69-block rolling average and `+/- 10%` clamp are encoded in consensus rules
+- `$1` can convert between bill form and coin form
+- coin balances are preserved by denomination
+- coin issuance remains tied to PoW-backed conversion logic
+- fees are paid in coins only for the first version
+- compute use returned by melting supports immediate execution or reserved capacity
+- miners choose which eligible orders to fulfill
+- conversion difficulty uses all network-state inputs listed above
+- the rolling-average and clamp rules are consensus-visible and deterministic
 
 ### Phase 2. Implement a minimal hybrid ledger
 
@@ -362,3 +392,4 @@ That keeps the bill model you want while avoiding an unnecessary privacy system 
 - `2026-04-15`: Added the locked decisions that coins are compute-backed, kumquats pay for production compute, `$1` can exist in bill and coin form, and melting coins returns actual compute use.
 - `2026-04-15`: Added the bank-style coin-order pool and the dynamic conversion difficulty model where conversion itself acts as hash credit.
 - `2026-04-15`: Added the order-fulfillment and smoothing rules: miner inventory first, no partial fills, 420-block expiry, 69-block rolling average, and a tight `+/- 10%` adjustment clamp.
+- `2026-04-15`: Locked the remaining recommended defaults around eligibility windows, fulfillment-list failure, order visibility, one-open-order limits, and implementation priority.

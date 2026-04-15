@@ -93,8 +93,6 @@ The implementation should preserve the existing direction:
 - How will kumquats convert into launch-era units?
 - What wallet capabilities will be available before chain launch?
 - What admin workflows are required to support early-access users?
-- How much denomination control should users have when sending coin inventory?
-- Should the wallet auto-make coin change or require explicit denomination mixes?
 - How should the product explain breaking bills into coins and melting coins into compute use?
 
 ## Suggested Next Product Documents
@@ -110,3 +108,4 @@ If the team wants a fuller product documentation set, add:
 
 - `2026-04-15`: Updated product requirements to reflect the hybrid cash model with bill objects and fungible sub-dollar coin inventory.
 - `2026-04-15`: Added the product direction that compute behaves like metal for coin production and that coins can be melted into actual compute use.
+- `2026-04-15`: Removed lower-level protocol-detail questions that are now treated as locked defaults in the planning docs.
