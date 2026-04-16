@@ -91,7 +91,7 @@ NODE_LAUNCHER_KUBE_CA_CERT_B64 = env("NODE_LAUNCHER_KUBE_CA_CERT_B64", "").strip
 NODE_LAUNCHER_KUBERNETES_NAMESPACE = env("NODE_LAUNCHER_KUBERNETES_NAMESPACE", "kumquat").strip()
 NODE_LAUNCHER_IMAGE = env(
     "NODE_LAUNCHER_IMAGE",
-    "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260414-205323-f356914-syncstate",
+    "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260415-174001-9048638",
 )
 NODE_LAUNCHER_IMAGE_PULL_POLICY = env("NODE_LAUNCHER_IMAGE_PULL_POLICY", "IfNotPresent").strip().lower()
 NODE_LAUNCHER_REGISTRY_AUTH_FILE = env("NODE_LAUNCHER_REGISTRY_AUTH_FILE", "")
