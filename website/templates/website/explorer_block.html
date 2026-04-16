@@ -1,0 +1,91 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="utility-layout explorer-layout">
+    <header class="site-nav explorer-nav">
+      <div class="site-mark-wrap">
+        <a class="site-mark" href="/explorer">
+          <span class="site-mark-dot"></span>
+          Kumquat Explorer
+        </a>
+      </div>
+      <nav class="nav-links" aria-label="Explorer">
+        <a href="/">Home</a>
+        <a href="/explorer">Explorer</a>
+      </nav>
+    </header>
+
+    {% if explorer_error %}
+      <section class="explorer-hero">
+        <h1 class="section-title">Block</h1>
+        <p class="explorer-error">{{ explorer_error }}</p>
+      </section>
+    {% elif block_detail %}
+      <section class="explorer-hero">
+        <p class="section-eyebrow">Block</p>
+        <h1 class="section-title">Height {{ block_detail.block.height }}</h1>
+        <p class="body-copy">Hash <code>{{ block_detail.block.hash }}</code></p>
+      </section>
+
+      <section class="explorer-stat-grid">
+        <article class="explorer-stat-card"><span class="section-eyebrow">Timestamp</span><strong>{{ block_detail.block.timestamp }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Transactions</span><strong>{{ block_detail.block.transaction_count }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Difficulty</span><strong>{{ block_detail.block.difficulty }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Miner</span><strong><a href="/explorer/addresses/{{ block_detail.block.miner_address }}">{{ block_detail.block.miner_short }}</a></strong></article>
+      </section>
+
+      <section class="explorer-section">
+        <div class="explorer-detail-grid">
+          <article class="explorer-detail-card">
+            <p class="section-eyebrow">Header</p>
+            <dl class="explorer-detail-list">
+              <div><dt>Previous hash</dt><dd><code>{{ block_detail.block.prev_hash }}</code></dd></div>
+              <div><dt>State root</dt><dd><code>{{ block_detail.state_root }}</code></dd></div>
+              <div><dt>Pre-reward state root</dt><dd><code>{{ block_detail.pre_reward_state_root }}</code></dd></div>
+              <div><dt>Transaction root</dt><dd><code>{{ block_detail.tx_root }}</code></dd></div>
+              <div><dt>Result commitment</dt><dd><code>{{ block_detail.result_commitment }}</code></dd></div>
+              <div><dt>PoH sequence</dt><dd>{{ block_detail.poh_seq }}</dd></div>
+              <div><dt>PoH hash</dt><dd><code>{{ block_detail.poh_hash }}</code></dd></div>
+              <div><dt>Nonce</dt><dd>{{ block_detail.nonce }}</dd></div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section class="explorer-section">
+        <div class="explorer-section-head">
+          <div>
+            <p class="section-eyebrow">Included Transactions</p>
+            <h2>Block contents</h2>
+          </div>
+        </div>
+        <div class="explorer-table-wrap">
+          <table class="explorer-table">
+            <thead>
+              <tr>
+                <th>Hash</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Value</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in block_detail.transactions %}
+                <tr>
+                  <td><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
+                  <td><a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a></td>
+                  <td><a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a></td>
+                  <td>{{ tx.value_label }}</td>
+                  <td>{{ tx.status }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5">No transactions recorded in this block.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="utility-layout explorer-layout">
+    <header class="site-nav explorer-nav">
+      <div class="site-mark-wrap">
+        <a class="site-mark" href="/explorer">
+          <span class="site-mark-dot"></span>
+          Kumquat Explorer
+        </a>
+      </div>
+      <nav class="nav-links" aria-label="Explorer">
+        <a href="/">Home</a>
+        <a href="/explorer">Explorer</a>
+      </nav>
+    </header>
+
+    {% if explorer_error %}
+      <section class="explorer-hero">
+        <h1 class="section-title">Transaction</h1>
+        <p class="explorer-error">{{ explorer_error }}</p>
+      </section>
+    {% elif transaction_detail %}
+      <section class="explorer-hero">
+        <p class="section-eyebrow">Transaction</p>
+        <h1 class="section-title">{{ transaction_detail.transaction.hash|slice:":18" }}...</h1>
+        <p class="body-copy">Block <a href="/explorer/blocks/{{ transaction_detail.transaction.block_height }}">{{ transaction_detail.transaction.block_height }}</a></p>
+      </section>
+
+      <section class="explorer-stat-grid">
+        <article class="explorer-stat-card"><span class="section-eyebrow">Value</span><strong>{{ transaction_detail.transaction.value_label }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Status</span><strong>{{ transaction_detail.transaction.status }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Gas Used</span><strong>{{ transaction_detail.transaction.gas_used }}</strong></article>
+        <article class="explorer-stat-card"><span class="section-eyebrow">Nonce</span><strong>{{ transaction_detail.transaction.nonce }}</strong></article>
+      </section>
+
+      <section class="explorer-section">
+        <div class="explorer-detail-grid">
+          <article class="explorer-detail-card">
+            <p class="section-eyebrow">Parties</p>
+            <dl class="explorer-detail-list">
+              <div><dt>Sender</dt><dd><a href="/explorer/addresses/{{ transaction_detail.transaction.sender_address }}"><code>{{ transaction_detail.transaction.sender_address }}</code></a></dd></div>
+              <div><dt>Recipient</dt><dd><a href="/explorer/addresses/{{ transaction_detail.transaction.recipient_address }}"><code>{{ transaction_detail.transaction.recipient_address }}</code></a></dd></div>
+              <div><dt>Coin transfer</dt><dd>{{ transaction_detail.transaction.coin_transfer_label }}</dd></div>
+              <div><dt>Coin fee</dt><dd>{{ transaction_detail.transaction.coin_fee_label }}</dd></div>
+              <div><dt>Transfer tokens</dt><dd>{{ transaction_detail.transaction.transfer_token_count }}</dd></div>
+              <div><dt>Fee token</dt><dd>{% if transaction_detail.fee_token_id %}<code>{{ transaction_detail.fee_token_id }}</code>{% else %}None{% endif %}</dd></div>
+              <div><dt>Conversion intent</dt><dd>{{ transaction_detail.conversion_intent|default:"None" }}</dd></div>
+              <div><dt>Raw data</dt><dd>{% if transaction_detail.data_hex %}<code>{{ transaction_detail.data_hex }}</code>{% else %}None{% endif %}</dd></div>
+            </dl>
+          </article>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

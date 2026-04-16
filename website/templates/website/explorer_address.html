@@ -1,0 +1,123 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="utility-layout explorer-layout">
+    <header class="site-nav explorer-nav">
+      <div class="site-mark-wrap">
+        <a class="site-mark" href="/explorer">
+          <span class="site-mark-dot"></span>
+          Kumquat Explorer
+        </a>
+      </div>
+      <nav class="nav-links" aria-label="Explorer">
+        <a href="/">Home</a>
+        <a href="/explorer">Explorer</a>
+      </nav>
+    </header>
+
+    {% if explorer_error %}
+      <section class="explorer-hero">
+        <h1 class="section-title">Address</h1>
+        <p class="explorer-error">{{ explorer_error }}</p>
+      </section>
+    {% elif address_data %}
+      <section class="explorer-hero">
+        <p class="section-eyebrow">Address</p>
+        <h1 class="section-title">{{ address_data.address|slice:":18" }}...</h1>
+        <p class="body-copy"><code>{{ address_data.address }}</code></p>
+      </section>
+
+      {% if address_data.account %}
+        <section class="explorer-stat-grid">
+          <article class="explorer-stat-card"><span class="section-eyebrow">Balance</span><strong>{{ address_data.account.balance_label }}</strong></article>
+          <article class="explorer-stat-card"><span class="section-eyebrow">Type</span><strong>{{ address_data.account.account_type }}</strong></article>
+          <article class="explorer-stat-card"><span class="section-eyebrow">Bills</span><strong>{{ address_data.account.bill_count }}</strong></article>
+          <article class="explorer-stat-card"><span class="section-eyebrow">Coins</span><strong>{{ address_data.account.coin_value_label }}</strong></article>
+        </section>
+
+        <section class="explorer-section">
+          <div class="explorer-detail-grid">
+            <article class="explorer-detail-card">
+              <p class="section-eyebrow">Account State</p>
+              <dl class="explorer-detail-list">
+                <div><dt>Nonce</dt><dd>{{ address_data.account.nonce }}</dd></div>
+                <div><dt>Last updated</dt><dd>{{ address_data.account.last_updated }}</dd></div>
+                <div><dt>Bill value</dt><dd>{{ address_data.account.bill_value_label }}</dd></div>
+                <div><dt>Coin value</dt><dd>{{ address_data.account.coin_value_label }}</dd></div>
+                <div><dt>Compatibility tokens</dt><dd>{{ address_data.account.compatibility_token_count }}</dd></div>
+                <div><dt>Compute allocations</dt><dd>{{ address_data.account.compute_allocation_count }}</dd></div>
+                <div><dt>Contract code</dt><dd>{% if address_data.account.has_code %}Yes{% else %}No{% endif %}</dd></div>
+                <div><dt>Conversion order</dt><dd>{% if address_data.account.conversion_order %}{{ address_data.account.conversion_order.status }}{% else %}None{% endif %}</dd></div>
+              </dl>
+            </article>
+            <article class="explorer-detail-card">
+              <p class="section-eyebrow">Bill Breakdown</p>
+              <ul class="explorer-breakdown-list">
+                {% for item in address_data.account.bill_breakdown %}
+                  <li><span>{{ item.denomination }}</span><strong>{{ item.count }}</strong><em>{{ item.value_label }}</em></li>
+                {% empty %}
+                  <li><span>No bill inventory</span></li>
+                {% endfor %}
+              </ul>
+            </article>
+            <article class="explorer-detail-card">
+              <p class="section-eyebrow">Coin Breakdown</p>
+              <ul class="explorer-breakdown-list">
+                {% for item in address_data.account.coin_breakdown %}
+                  <li><span>{{ item.denomination }}</span><strong>{{ item.count }}</strong><em>{{ item.value_label }}</em></li>
+                {% empty %}
+                  <li><span>No coin inventory</span></li>
+                {% endfor %}
+              </ul>
+            </article>
+          </div>
+        </section>
+      {% else %}
+        <section class="explorer-section">
+          <p class="body-copy">No persisted account state for this address yet. Transaction activity may still exist.</p>
+        </section>
+      {% endif %}
+
+      <section class="explorer-section">
+        <div class="explorer-section-head">
+          <div>
+            <p class="section-eyebrow">Recent Activity</p>
+            <h2>Transactions for this address</h2>
+          </div>
+        </div>
+        <div class="explorer-table-wrap">
+          <table class="explorer-table">
+            <thead>
+              <tr>
+                <th>Hash</th>
+                <th>Block</th>
+                <th>Counterparty</th>
+                <th>Value</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in address_data.transactions %}
+                <tr>
+                  <td><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
+                  <td><a href="/explorer/blocks/{{ tx.block_height }}">{{ tx.block_height }}</a></td>
+                  <td>
+                    {% if tx.sender_address == address_data.address %}
+                      <a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a>
+                    {% else %}
+                      <a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a>
+                    {% endif %}
+                  </td>
+                  <td>{{ tx.value_label }}</td>
+                  <td>{{ tx.status }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5">No indexed transactions for this address yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

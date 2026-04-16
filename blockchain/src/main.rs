@@ -12,12 +12,14 @@ use kumquat::consensus::config::ConsensusConfig;
 use kumquat::consensus::start_consensus;
 use kumquat::init_logger;
 use kumquat::mempool::Mempool;
-use kumquat::network::NetworkConfig;
 use kumquat::network::start_enhanced_network;
+use kumquat::network::NetworkConfig;
 use kumquat::node_runtime::NodeRuntime;
 use kumquat::storage::state::AccountState;
 use kumquat::storage::Block;
-use kumquat::storage::{BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore};
+use kumquat::storage::{
+    BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore,
+};
 use kumquat::tools::genesis::generate_genesis;
 
 fn parse_bootstrap_target(spec: &str) -> Option<(String, u16)> {
@@ -188,7 +190,8 @@ fn ensure_local_genesis(
                 }
             };
 
-            let current_root = match state_store.calculate_state_root(0, existing_genesis.timestamp) {
+            let current_root = match state_store.calculate_state_root(0, existing_genesis.timestamp)
+            {
                 Ok(root) => root,
                 Err(err) => {
                     error!("Failed to calculate current genesis state root: {}", err);
@@ -312,11 +315,17 @@ fn ensure_tip_state_root_consistency(
     let tip_block = match block_store.get_block_by_height(tip_height) {
         Ok(Some(block)) => block,
         Ok(None) => {
-            error!("Latest block height {} is missing from block store", tip_height);
+            error!(
+                "Latest block height {} is missing from block store",
+                tip_height
+            );
             std::process::exit(1);
         }
         Err(err) => {
-            error!("Failed to load latest block at height {}: {}", tip_height, err);
+            error!(
+                "Failed to load latest block at height {}: {}",
+                tip_height, err
+            );
             std::process::exit(1);
         }
     };
@@ -324,7 +333,10 @@ fn ensure_tip_state_root_consistency(
     let persisted_root = match state_store.get_state_root_at_height(tip_height) {
         Ok(root) => root,
         Err(err) => {
-            error!("Failed to load persisted state root at height {}: {}", tip_height, err);
+            error!(
+                "Failed to load persisted state root at height {}: {}",
+                tip_height, err
+            );
             std::process::exit(1);
         }
     };
@@ -332,7 +344,10 @@ fn ensure_tip_state_root_consistency(
     let calculated_root = match state_store.calculate_state_root(tip_height, tip_block.timestamp) {
         Ok(root) => root,
         Err(err) => {
-            error!("Failed to calculate state root at height {}: {}", tip_height, err);
+            error!(
+                "Failed to calculate state root at height {}: {}",
+                tip_height, err
+            );
             std::process::exit(1);
         }
     };
@@ -342,7 +357,9 @@ fn ensure_tip_state_root_consistency(
         .map(|root| root.root_hash)
         .unwrap_or(calculated_root.root_hash);
 
-    if tip_block.state_root != persisted_root_hash || tip_block.state_root != calculated_root.root_hash {
+    if tip_block.state_root != persisted_root_hash
+        || tip_block.state_root != calculated_root.root_hash
+    {
         error!(
             "Tip state root mismatch at height {}. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start.",
             tip_height,
@@ -735,6 +752,8 @@ async fn main() {
             config.consensus.mining_threads,
             true,
             block_store.clone(),
+            tx_store.clone(),
+            state_store.clone(),
             mempool.clone(),
             network.service.clone(),
             consensus.telemetry(),
@@ -770,8 +789,9 @@ mod tests {
 
     #[test]
     fn parses_dns_multiaddr_bootstrap_targets() {
-        let target = parse_bootstrap_target("/dns4/genesis-peer.kumquat.svc.cluster.local/tcp/30380")
-            .expect("expected bootstrap target");
+        let target =
+            parse_bootstrap_target("/dns4/genesis-peer.kumquat.svc.cluster.local/tcp/30380")
+                .expect("expected bootstrap target");
         assert_eq!(target.0, "genesis-peer.kumquat.svc.cluster.local");
         assert_eq!(target.1, 30380);
     }

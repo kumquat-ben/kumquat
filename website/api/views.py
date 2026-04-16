@@ -8,7 +8,7 @@ import secrets
 import base64
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from cryptography.fernet import Fernet
@@ -71,6 +71,7 @@ DEFAULT_SEO_KEYWORDS = (
 )
 CURRENCY_SYMBOL = "¤"
 NODE_LAUNCHER_AUTH_SESSION_KEY = "node_launcher_auth"
+EXPLORER_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def _currency_label(amount):
@@ -464,6 +465,103 @@ def _home_wallet_context(request):
     }
 
 
+def _explorer_api_base_url():
+    return (settings.EXPLORER_API_URL or "").rstrip("/")
+
+
+def _explorer_available():
+    return bool(_explorer_api_base_url())
+
+
+def _explorer_json_request(path, *, query=None):
+    base_url = _explorer_api_base_url()
+    if not base_url:
+        raise RuntimeError("Explorer backend is not configured.")
+
+    url = f"{base_url}{path}"
+    if query:
+        encoded_query = urlencode({key: value for key, value in query.items() if value is not None})
+        if encoded_query:
+            url = f"{url}?{encoded_query}"
+
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "KumquatWebsiteExplorer/0.1",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        message = None
+        try:
+            message = json.loads(error_body or "{}").get("error")
+        except json.JSONDecodeError:
+            message = None
+        if exc.code == 404:
+            raise LookupError(message or "Explorer record not found.") from exc
+        raise RuntimeError(message or f"Explorer API HTTP {exc.code}.") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Explorer network error: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Explorer API returned invalid JSON.") from exc
+
+
+def _format_cents(amount_cents):
+    dollars = int(amount_cents or 0) / 100
+    return f"{CURRENCY_SYMBOL}{dollars:,.2f}"
+
+
+def _explorer_transaction_ui(transaction):
+    transaction = dict(transaction)
+    transaction["value_label"] = _format_cents(transaction.get("value_cents"))
+    transaction["coin_transfer_label"] = _format_cents(transaction.get("coin_transfer_cents"))
+    transaction["coin_fee_label"] = _format_cents(transaction.get("coin_fee_cents"))
+    return transaction
+
+
+def _explorer_block_ui(block):
+    block = dict(block)
+    block["hash_short"] = f"{block['hash'][:12]}...{block['hash'][-8:]}"
+    block["miner_short"] = f"{block['miner_address'][:10]}...{block['miner_address'][-6:]}"
+    return block
+
+
+def _explorer_guess_target(query):
+    raw_query = str(query or "").strip()
+    if not raw_query:
+        return None
+    if raw_query.isdigit():
+        return reverse("explorer-block", args=[raw_query])
+    try:
+        normalized_address = normalize_address(raw_query)
+        return reverse("explorer-address", args=[normalized_address])
+    except AddressCodecError:
+        pass
+    if EXPLORER_HASH_RE.fullmatch(raw_query):
+        normalized_hash = raw_query.lower()
+        return reverse("explorer-transaction", args=[normalized_hash])
+    return None
+
+
+def _explorer_base_context(request, *, title, description, path, query=""):
+    return {
+        "auth_user": _current_user_context(request),
+        "explorer_available": _explorer_available(),
+        "explorer_query": query,
+        **_seo_context(
+            request,
+            title=title,
+            description=description,
+            path=path,
+        ),
+    }
+
+
 def _upsert_user_wallet(*, user, wallet_material, replace_existing):
     existing_wallet = UserWallet.objects.filter(user=user).first()
     encrypted_private_key = _encrypt_wallet_private_key(wallet_material["private_key"])
@@ -574,6 +672,159 @@ def home_page_view(request):
         ),
     }
     return render(request, "website/home.html", context)
+
+
+def explorer_home_page_view(request):
+    search_query = (request.GET.get("q") or "").strip()
+    if search_query:
+        target_url = _explorer_guess_target(search_query)
+        if target_url:
+            return redirect(target_url)
+
+    context = {
+        **_explorer_base_context(
+            request,
+            title="Explorer | Kumquat",
+            description="Public Kumquat block explorer for recent blocks, transactions, and wallet addresses.",
+            path=reverse("explorer"),
+            query=search_query,
+        ),
+        "summary": None,
+        "search_error": "",
+        "explorer_error": "",
+    }
+
+    if search_query:
+        context["search_error"] = (
+            "Enter a block height, a 64-character block or transaction hash, or a Kumquat wallet address."
+        )
+
+    if not _explorer_available():
+        context["explorer_error"] = "Explorer backend is not configured yet."
+        return render(request, "website/explorer_home.html", context)
+
+    try:
+        summary = _explorer_json_request("/api/explorer/summary", query={"blocks": 12, "transactions": 20})
+    except RuntimeError as exc:
+        context["explorer_error"] = str(exc)
+        return render(request, "website/explorer_home.html", context)
+
+    summary["recent_blocks"] = [_explorer_block_ui(block) for block in summary.get("recent_blocks", [])]
+    summary["recent_transactions"] = [
+        _explorer_transaction_ui(transaction)
+        for transaction in summary.get("recent_transactions", [])
+    ]
+    context["summary"] = summary
+    return render(request, "website/explorer_home.html", context)
+
+
+def explorer_block_page_view(request, identifier):
+    context = {
+        **_explorer_base_context(
+            request,
+            title=f"Block {identifier} | Kumquat Explorer",
+            description="Kumquat block detail and included transactions.",
+            path=reverse("explorer-block", args=[identifier]),
+        ),
+        "block_detail": None,
+        "explorer_error": "",
+    }
+
+    if not _explorer_available():
+        context["explorer_error"] = "Explorer backend is not configured yet."
+        return render(request, "website/explorer_block.html", context, status=503)
+
+    try:
+        block_detail = _explorer_json_request(f"/api/explorer/blocks/{quote(str(identifier), safe='')}")
+    except LookupError:
+        context["explorer_error"] = "Block not found."
+        return render(request, "website/explorer_block.html", context, status=404)
+    except RuntimeError as exc:
+        context["explorer_error"] = str(exc)
+        return render(request, "website/explorer_block.html", context, status=502)
+
+    block_detail["block"] = _explorer_block_ui(block_detail["block"])
+    block_detail["transactions"] = [
+        _explorer_transaction_ui(transaction)
+        for transaction in block_detail.get("transactions", [])
+    ]
+    context["block_detail"] = block_detail
+    return render(request, "website/explorer_block.html", context)
+
+
+def explorer_transaction_page_view(request, tx_hash):
+    context = {
+        **_explorer_base_context(
+            request,
+            title=f"Transaction {tx_hash[:12]} | Kumquat Explorer",
+            description="Kumquat transaction detail.",
+            path=reverse("explorer-transaction", args=[tx_hash]),
+        ),
+        "transaction_detail": None,
+        "explorer_error": "",
+    }
+
+    if not _explorer_available():
+        context["explorer_error"] = "Explorer backend is not configured yet."
+        return render(request, "website/explorer_transaction.html", context, status=503)
+
+    try:
+        transaction_detail = _explorer_json_request(f"/api/explorer/transactions/{quote(str(tx_hash), safe='')}")
+    except LookupError:
+        context["explorer_error"] = "Transaction not found."
+        return render(request, "website/explorer_transaction.html", context, status=404)
+    except RuntimeError as exc:
+        context["explorer_error"] = str(exc)
+        return render(request, "website/explorer_transaction.html", context, status=502)
+
+    transaction_detail["transaction"] = _explorer_transaction_ui(transaction_detail["transaction"])
+    context["transaction_detail"] = transaction_detail
+    return render(request, "website/explorer_transaction.html", context)
+
+
+def explorer_address_page_view(request, address):
+    context = {
+        **_explorer_base_context(
+            request,
+            title=f"Address {address[:12]} | Kumquat Explorer",
+            description="Kumquat address activity and wallet state.",
+            path=reverse("explorer-address", args=[address]),
+        ),
+        "address_data": None,
+        "explorer_error": "",
+    }
+
+    if not _explorer_available():
+        context["explorer_error"] = "Explorer backend is not configured yet."
+        return render(request, "website/explorer_address.html", context, status=503)
+
+    try:
+        address_data = _explorer_json_request(
+            f"/api/explorer/addresses/{quote(str(address), safe='')}",
+            query={"transactions": 50},
+        )
+    except RuntimeError as exc:
+        message = str(exc)
+        status = 404 if "not found" in message.lower() else 502
+        context["explorer_error"] = message
+        return render(request, "website/explorer_address.html", context, status=status)
+
+    if address_data.get("account"):
+        account = dict(address_data["account"])
+        account["balance_label"] = _format_cents(account.get("balance_cents"))
+        account["bill_value_label"] = _format_cents(account.get("bill_value_cents"))
+        account["coin_value_label"] = _format_cents(account.get("coin_value_cents"))
+        for item in account.get("bill_breakdown", []):
+            item["value_label"] = _format_cents(item.get("value_cents"))
+        for item in account.get("coin_breakdown", []):
+            item["value_label"] = _format_cents(item.get("value_cents"))
+        address_data["account"] = account
+    address_data["transactions"] = [
+        _explorer_transaction_ui(transaction)
+        for transaction in address_data.get("transactions", [])
+    ]
+    context["address_data"] = address_data
+    return render(request, "website/explorer_address.html", context)
 
 
 def search_crawl_enqueue_view(request):

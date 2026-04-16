@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
@@ -22,6 +22,22 @@ struct CommandResponse {
     message: &'static str,
 }
 
+#[derive(Debug, Deserialize)]
+struct ExplorerSummaryParams {
+    blocks: Option<usize>,
+    transactions: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExplorerAddressParams {
+    transactions: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+struct ErrorResponse {
+    error: String,
+}
+
 pub async fn serve(
     runtime: Arc<NodeRuntime>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -32,6 +48,13 @@ pub async fn serve(
         .route("/health", get(health))
         .route("/api/status", get(status))
         .route("/api/commands", post(commands_placeholder))
+        .route("/api/explorer/summary", get(explorer_summary))
+        .route("/api/explorer/blocks/:identifier", get(explorer_block))
+        .route(
+            "/api/explorer/transactions/:hash",
+            get(explorer_transaction),
+        )
+        .route("/api/explorer/addresses/:address", get(explorer_address))
         .layer(TraceLayer::new_for_http())
         .with_state(runtime);
 
@@ -58,6 +81,65 @@ async fn commands_placeholder() -> impl IntoResponse {
             message: "Prompt-driven operator commands are not wired yet. Start with the read-only dashboard and status API.",
         }),
     )
+}
+
+async fn explorer_summary(
+    State(runtime): State<Arc<NodeRuntime>>,
+    Query(params): Query<ExplorerSummaryParams>,
+) -> Json<crate::node_runtime::ExplorerSummaryResponse> {
+    let block_limit = params.blocks.unwrap_or(12).clamp(1, 50);
+    let transaction_limit = params.transactions.unwrap_or(20).clamp(1, 100);
+    Json(
+        runtime
+            .explorer_summary(block_limit, transaction_limit)
+            .await,
+    )
+}
+
+async fn explorer_block(
+    State(runtime): State<Arc<NodeRuntime>>,
+    Path(identifier): Path<String>,
+) -> impl IntoResponse {
+    match runtime.explorer_block(&identifier) {
+        Ok(Some(block)) => (StatusCode::OK, Json(block)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "block not found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(ErrorResponse { error })).into_response(),
+    }
+}
+
+async fn explorer_transaction(
+    State(runtime): State<Arc<NodeRuntime>>,
+    Path(hash): Path<String>,
+) -> impl IntoResponse {
+    match runtime.explorer_transaction(&hash) {
+        Ok(Some(transaction)) => (StatusCode::OK, Json(transaction)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "transaction not found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(ErrorResponse { error })).into_response(),
+    }
+}
+
+async fn explorer_address(
+    State(runtime): State<Arc<NodeRuntime>>,
+    Path(address): Path<String>,
+    Query(params): Query<ExplorerAddressParams>,
+) -> impl IntoResponse {
+    let transaction_limit = params.transactions.unwrap_or(25).clamp(1, 100);
+    match runtime.explorer_address(&address, transaction_limit) {
+        Ok(account) => (StatusCode::OK, Json(account)).into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, Json(ErrorResponse { error })).into_response(),
+    }
 }
 
 async fn dashboard(State(runtime): State<Arc<NodeRuntime>>) -> Html<String> {

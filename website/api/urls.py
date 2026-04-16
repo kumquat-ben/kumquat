@@ -23,6 +23,10 @@ from .views import (
     admin_vonage_sms_page_view,
     auth_logout_view,
     early_access_signup_view,
+    explorer_address_page_view,
+    explorer_block_page_view,
+    explorer_home_page_view,
+    explorer_transaction_page_view,
     google_oauth_exchange_view,
     google_oauth_callback_view,
     google_oauth_start_view,
@@ -39,6 +43,10 @@ from .views import (
 
 urlpatterns = [
     path("", home_page_view, name="home"),
+    path("explorer", explorer_home_page_view, name="explorer"),
+    path("explorer/blocks/<str:identifier>", explorer_block_page_view, name="explorer-block"),
+    path("explorer/transactions/<str:tx_hash>", explorer_transaction_page_view, name="explorer-transaction"),
+    path("explorer/addresses/<str:address>", explorer_address_page_view, name="explorer-address"),
     path("search/crawl", search_crawl_enqueue_view, name="search-crawl"),
     path("robots.txt", robots_txt_view, name="robots-txt"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
