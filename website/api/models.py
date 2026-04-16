@@ -129,3 +129,72 @@ class UserWallet(models.Model):
 
     def __str__(self):
         return f"{self.user_id}:{self.address}"
+
+
+class SearchCrawlTarget(models.Model):
+    STATUS_QUEUED = "queued"
+    STATUS_RUNNING = "running"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    url = models.URLField(unique=True)
+    normalized_url = models.URLField(unique=True)
+    scope_netloc = models.CharField(max_length=255, db_index=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    max_depth = models.PositiveIntegerField(default=1)
+    max_pages = models.PositiveIntegerField(default=25)
+    created_by = models.ForeignKey(
+        get_user_model(),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="search_crawl_targets",
+    )
+    last_error = models.TextField(blank=True)
+    document_count = models.PositiveIntegerField(default=0)
+    queued_at = models.DateTimeField(default=timezone.now)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-created_at"]
+
+    def __str__(self):
+        return self.normalized_url
+
+
+class SearchDocument(models.Model):
+    crawl_target = models.ForeignKey(
+        SearchCrawlTarget,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="documents",
+    )
+    url = models.URLField(unique=True)
+    normalized_url = models.URLField(unique=True)
+    title = models.CharField(max_length=255, blank=True)
+    summary = models.TextField(blank=True)
+    content = models.TextField(blank=True)
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    depth = models.PositiveIntegerField(default=0)
+    http_status = models.PositiveIntegerField(null=True, blank=True)
+    link_count = models.PositiveIntegerField(default=0)
+    crawled_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-crawled_at", "-updated_at"]
+
+    def __str__(self):
+        return self.title or self.normalized_url

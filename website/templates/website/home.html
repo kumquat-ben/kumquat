@@ -68,21 +68,26 @@
         <div class="search-response-card" aria-live="polite" role="status">
           <div class="search-response-head">
             <p class="section-eyebrow">Reply</p>
-            <span class="search-status-pill {% if search_submitted %}search-status-pill-pending{% endif %}">
-              {% if search_submitted %}Coming soon{% else %}Standby{% endif %}
+            <span class="search-status-pill {{ search_status_class }}">
+              {{ search_status_label }}
             </span>
           </div>
           {% if search_submitted %}
             <p class="search-response-query">“{{ search_query }}”</p>
-            <p class="body-copy">
-              Search capture is live, but result retrieval is not wired yet. The next
-              step is connecting this request flow to the search backend.
-            </p>
+            <p class="body-copy">{{ search_reply }}</p>
+            {% if search_results %}
+              <div class="search-results-list">
+                {% for result in search_results %}
+                  <article class="search-result-item">
+                    <h3>{{ result.title }}</h3>
+                    <p class="body-copy">{{ result.snippet|default:result.summary }}</p>
+                    <a href="{{ result.url }}" rel="noreferrer" target="_blank">{{ result.url }}</a>
+                  </article>
+                {% endfor %}
+              </div>
+            {% endif %}
           {% else %}
-            <p class="body-copy">
-              Submit a request and the page will hold the query here. Once search is
-              connected, this panel can return the first reply directly.
-            </p>
+            <p class="body-copy">{{ search_reply }}</p>
           {% endif %}
         </div>
       </section>

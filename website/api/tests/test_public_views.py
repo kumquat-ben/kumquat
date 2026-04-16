@@ -1,6 +1,6 @@
 from django.test import Client, TestCase
 
-from api.models import EarlyAccessSignup
+from api.models import EarlyAccessSignup, SearchDocument
 
 
 class HomePageViewTests(TestCase):
@@ -22,7 +22,23 @@ class HomePageViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "find kumquat wallet docs")
-        self.assertContains(response, "Search capture is live")
+        self.assertContains(response, "The search index is empty")
+
+    def test_home_page_renders_indexed_search_results(self):
+        SearchDocument.objects.create(
+            url="https://docs.example.com/wallet",
+            normalized_url="https://docs.example.com/wallet",
+            title="Kumquat Wallet Guide",
+            summary="Wallet setup for Kumquat users.",
+            content="Kumquat wallet setup and denomination transfer guide.",
+        )
+
+        response = self.client.get("/", {"q": "wallet guide"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Live results")
+        self.assertContains(response, "Kumquat Wallet Guide")
+        self.assertContains(response, "https://docs.example.com/wallet")
 
 
 class EarlyAccessSignupViewTests(TestCase):

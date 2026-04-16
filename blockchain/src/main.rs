@@ -196,21 +196,33 @@ fn ensure_local_genesis(
                 }
             };
 
-            if existing_genesis.state_root != current_root.root_hash
-                || persisted_root
-                    .as_ref()
-                    .is_some_and(|root| root.root_hash != current_root.root_hash)
-            {
-                error!(
-                    "Local genesis root mismatch. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start. Reinitialize local data to repair the chain root.",
-                    hex::encode(existing_genesis.state_root),
-                    persisted_root
-                        .as_ref()
-                        .map(|root| hex::encode(root.root_hash))
-                        .unwrap_or_else(|| "missing".to_string()),
-                    hex::encode(current_root.root_hash),
-                );
-                std::process::exit(1);
+            let persisted_root_matches_block_store = persisted_root
+                .as_ref()
+                .is_some_and(|root| root.root_hash == existing_genesis.state_root);
+
+            if existing_genesis.state_root != current_root.root_hash {
+                if persisted_root_matches_block_store {
+                    warn!(
+                        "Local genesis root drift detected. block_store={} persisted_state_root={} calculated_state_root={}. Continuing with the persisted chain root because the block store and stored state root still agree.",
+                        hex::encode(existing_genesis.state_root),
+                        persisted_root
+                            .as_ref()
+                            .map(|root| hex::encode(root.root_hash))
+                            .unwrap_or_else(|| "missing".to_string()),
+                        hex::encode(current_root.root_hash),
+                    );
+                } else {
+                    error!(
+                        "Local genesis root mismatch. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start. Reinitialize local data to repair the chain root.",
+                        hex::encode(existing_genesis.state_root),
+                        persisted_root
+                            .as_ref()
+                            .map(|root| hex::encode(root.root_hash))
+                            .unwrap_or_else(|| "missing".to_string()),
+                        hex::encode(current_root.root_hash),
+                    );
+                    std::process::exit(1);
+                }
             }
             info!(
                 "Verified local genesis block hash matches expected chain root: {}",

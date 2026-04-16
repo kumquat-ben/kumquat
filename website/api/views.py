@@ -30,7 +30,7 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedire
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup, ManagedNode, UserWallet, VonageInboundSms
+from .models import EarlyAccessSignup, ManagedNode, SearchCrawlTarget, UserWallet, VonageInboundSms
 from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
     delete_container,
@@ -49,6 +49,8 @@ from .node_launcher import (
     tail_logs,
     upstream_rpc_url,
 )
+from .search import SearchCrawlerError, normalize_crawl_url, search_documents
+from .tasks import schedule_crawl_search_target
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -301,6 +303,71 @@ def _home_structured_data():
     ]
 
 
+def _serialize_search_crawl_target(target):
+    return {
+        "id": target.id,
+        "url": target.url,
+        "normalized_url": target.normalized_url,
+        "scope_netloc": target.scope_netloc,
+        "status": target.status,
+        "max_depth": target.max_depth,
+        "max_pages": target.max_pages,
+        "document_count": target.document_count,
+        "last_error": target.last_error,
+        "queued_at": target.queued_at.isoformat() if target.queued_at else None,
+        "started_at": target.started_at.isoformat() if target.started_at else None,
+        "finished_at": target.finished_at.isoformat() if target.finished_at else None,
+    }
+
+
+def _home_search_context(search_query):
+    if not search_query:
+        return {
+            "search_reply": "Submit a request and the first matching reply will land here.",
+            "search_results": [],
+            "search_status_label": "Standby",
+            "search_status_class": "",
+        }
+
+    search_response = search_documents(search_query)
+    results = search_response["results"]
+    document_count = search_response["document_count"]
+    match_count = search_response["match_count"]
+
+    if not document_count:
+        return {
+            "search_reply": (
+                "The search index is empty. Queue a crawl target first, then this request flow can return live results."
+            ),
+            "search_results": [],
+            "search_status_label": "Index empty",
+            "search_status_class": "search-status-pill-pending",
+        }
+
+    if not results:
+        return {
+            "search_reply": (
+                f"No indexed page matched “{search_query}” yet. The crawler has {document_count} document"
+                f"{'' if document_count == 1 else 's'} available to search."
+            ),
+            "search_results": [],
+            "search_status_label": "No match",
+            "search_status_class": "search-status-pill-pending",
+        }
+
+    top_result = results[0]
+    reply = (
+        f"Found {match_count} matching page{'' if match_count == 1 else 's'}. "
+        f"Top result: {top_result['title']}."
+    )
+    return {
+        "search_reply": reply,
+        "search_results": results,
+        "search_status_label": "Live results",
+        "search_status_class": "",
+    }
+
+
 def _is_json_request(request):
     content_type = (request.content_type or "").lower()
     accept = (request.headers.get("Accept") or "").lower()
@@ -481,6 +548,7 @@ def _build_dashboard_context(request=None):
 
 def home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
+    search_context = _home_search_context(search_query)
     context = {
         "auth_user": _current_user_context(request),
         "bill_items": BILL_ITEMS,
@@ -491,6 +559,7 @@ def home_page_view(request):
         "seo_faq_items": SEO_FAQ_ITEMS,
         "search_query": search_query,
         "search_submitted": bool(search_query),
+        **search_context,
         **_home_signup_context(request),
         **_home_wallet_context(request),
         **_seo_context(
@@ -505,6 +574,68 @@ def home_page_view(request):
         ),
     }
     return render(request, "website/home.html", context)
+
+
+def search_crawl_enqueue_view(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Authentication required."}, status=401)
+
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if "application/json" in (request.content_type or "").lower():
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    else:
+        payload = request.POST
+
+    raw_url = str(payload.get("url") or "").strip()
+    if not raw_url:
+        return JsonResponse({"error": "A crawl URL is required."}, status=400)
+
+    try:
+        normalized_url = normalize_crawl_url(raw_url)
+    except SearchCrawlerError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    try:
+        max_depth = max(0, min(int(payload.get("max_depth", 1)), 3))
+        max_pages = max(1, min(int(payload.get("max_pages", 25)), 100))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "max_depth and max_pages must be integers."}, status=400)
+
+    parsed_url = urlparse(normalized_url)
+    target, _ = SearchCrawlTarget.objects.update_or_create(
+        normalized_url=normalized_url,
+        defaults={
+            "url": normalized_url,
+            "scope_netloc": parsed_url.netloc.lower(),
+            "status": SearchCrawlTarget.STATUS_QUEUED,
+            "max_depth": max_depth,
+            "max_pages": max_pages,
+            "created_by": request.user,
+            "last_error": "",
+            "queued_at": datetime.now(timezone.utc),
+            "started_at": None,
+            "finished_at": None,
+        },
+    )
+    dispatch_mode = schedule_crawl_search_target(target.id)
+    target.refresh_from_db()
+
+    return JsonResponse(
+        {
+            "status": "ok",
+            "dispatch_mode": dispatch_mode,
+            "target": _serialize_search_crawl_target(target),
+        },
+        status=201,
+    )
 
 
 def sign_in_page_view(request):
