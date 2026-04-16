@@ -827,4 +827,50 @@ mod tests {
             BlockValidationResult::Invalid(_)
         ));
     }
+
+    #[test]
+    fn test_accepts_hybrid_features_from_genesis_activation() {
+        let (block_store, tx_store, state_store, validator) = setup_validator();
+        let genesis = genesis_block();
+        block_store.put_block(&genesis).unwrap();
+
+        let mut coin_transfer = crate::storage::CoinInventory::default();
+        coin_transfer.add(Denomination::Cents25, 1).unwrap();
+
+        let tx = TransactionRecord {
+            tx_id: [45; 32],
+            sender: [1; 32],
+            recipient: [2; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: Some([9; 32]),
+            coin_transfer,
+            coin_fee: crate::storage::CoinInventory::default(),
+            value: 25,
+            gas_price: 1,
+            gas_limit: 1,
+            gas_used: 0,
+            nonce: 0,
+            timestamp: 1,
+            block_height: 1,
+            data: None,
+            conversion_intent: None,
+            status: crate::storage::TransactionStatus::Confirmed,
+        };
+        tx_store.put_transaction(&tx).unwrap();
+        let block = build_block(
+            &state_store,
+            vec![tx.tx_id],
+            &[tx],
+            genesis.hash,
+            1,
+            10,
+            [8u8; 32],
+        );
+
+        let target = Target::from_difficulty(1);
+        assert_eq!(
+            validator.validate_block(&block, &target),
+            BlockValidationResult::Valid
+        );
+    }
 }

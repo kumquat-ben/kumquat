@@ -420,6 +420,7 @@ pub fn build_genesis_ceremony_record<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::Denomination;
     use tempfile::tempdir;
 
     #[test]
@@ -434,5 +435,19 @@ mod tests {
         assert_eq!(first.genesis_hash, second.genesis_hash);
         assert_eq!(first.state_root, second.state_root);
         assert_eq!(first.accounts, second.accounts);
+    }
+
+    #[test]
+    fn genesis_account_states_start_in_hybrid_mode() {
+        let config = GenesisConfig::default();
+        let account_states = config.generate_account_states();
+
+        assert!(!account_states.is_empty());
+        for (_, state) in account_states {
+            assert_eq!(state.total_account_value(), state.balance);
+            assert_eq!(state.total_account_value(), state.total_bill_value() + state.total_coin_value());
+            assert!(!state.bills.is_empty());
+            assert!(state.coin_inventory.count(Denomination::Cents25) > 0);
+        }
     }
 }

@@ -28,6 +28,7 @@ pub struct ConsensusConfig {
     pub miner_address: [u8; 32],
 
     /// Block height where hybrid cash rules become active.
+    /// `0` means hybrid mode is live from genesis.
     pub hybrid_activation_height: u64,
 }
 
@@ -102,6 +103,7 @@ impl ConsensusConfig {
     }
 
     /// Set the hybrid cash activation height.
+    /// `0` means hybrid mode is live from genesis.
     pub fn with_hybrid_activation_height(mut self, height: u64) -> Self {
         self.hybrid_activation_height = height;
         self

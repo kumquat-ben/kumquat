@@ -46,6 +46,7 @@ pub struct ConsensusConfig {
     pub poh_ticks_per_block: u64,
 
     /// Block height where hybrid cash rules activate.
+    /// `0` means hybrid mode is live from genesis.
     #[serde(default)]
     pub hybrid_activation_height: u64,
 }
