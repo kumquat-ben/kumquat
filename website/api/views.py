@@ -710,6 +710,7 @@ def explorer_home_page_view(request):
         return render(request, "website/explorer_home.html", context)
 
     summary["recent_blocks"] = [_explorer_block_ui(block) for block in summary.get("recent_blocks", [])]
+    summary["latest_block"] = summary["recent_blocks"][0] if summary["recent_blocks"] else None
     summary["recent_transactions"] = [
         _explorer_transaction_ui(transaction)
         for transaction in summary.get("recent_transactions", [])

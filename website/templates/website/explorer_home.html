@@ -47,6 +47,52 @@
     </section>
 
     {% if summary %}
+      {% if summary.latest_block %}
+        <section class="explorer-section">
+          <div class="explorer-section-head">
+            <div>
+              <p class="section-eyebrow">Latest Mined Block</p>
+              <h2>Chain tip block {{ summary.latest_block.height }}</h2>
+            </div>
+            <a class="button button-secondary" href="/explorer/blocks/{{ summary.latest_block.height }}">Open block</a>
+          </div>
+          <div class="explorer-detail-grid">
+            <article class="explorer-detail-card">
+              <dl class="explorer-detail-list">
+                <div>
+                  <dt>Block Hash</dt>
+                  <dd><a href="/explorer/blocks/{{ summary.latest_block.hash }}"><code>{{ summary.latest_block.hash }}</code></a></dd>
+                </div>
+                <div>
+                  <dt>Mined By</dt>
+                  <dd><a href="/explorer/addresses/{{ summary.latest_block.miner_address }}"><code>{{ summary.latest_block.miner_address }}</code></a></dd>
+                </div>
+                <div>
+                  <dt>Timestamp</dt>
+                  <dd>{{ summary.latest_block.timestamp }}</dd>
+                </div>
+              </dl>
+            </article>
+            <article class="explorer-detail-card">
+              <dl class="explorer-detail-list">
+                <div>
+                  <dt>Transactions</dt>
+                  <dd>{{ summary.latest_block.transaction_count }}</dd>
+                </div>
+                <div>
+                  <dt>Reward Tokens</dt>
+                  <dd>{{ summary.latest_block.reward_token_count }}</dd>
+                </div>
+                <div>
+                  <dt>Difficulty</dt>
+                  <dd>{{ summary.latest_block.difficulty }}</dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+        </section>
+      {% endif %}
+
       <section class="explorer-stat-grid">
         <article class="explorer-stat-card">
           <span class="section-eyebrow">Height</span>

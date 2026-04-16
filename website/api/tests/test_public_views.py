@@ -181,7 +181,9 @@ class ExplorerPageViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Public Chain Monitor")
+        self.assertContains(response, "Latest Mined Block")
         self.assertContains(response, "259")
+        self.assertContains(response, "/explorer/blocks/259")
         self.assertContains(response, "caught-up")
         self.assertContains(response, "12.34")
 
