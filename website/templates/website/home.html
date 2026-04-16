@@ -36,6 +36,49 @@
         visible denominations, and transfer flows that behave more like physical money
         than an abstract account balance.
       </p>
+      <section class="search-shell" aria-labelledby="search-box-title">
+        <div class="search-shell-copy">
+          <p class="section-eyebrow">Agent-Friendly Search</p>
+          <h2 class="search-shell-title" id="search-box-title">One request in. One reply out.</h2>
+          <p class="body-copy">
+            Start with a simple request. Search execution comes next, but the interface
+            is ready for an agent-friendly request-and-reply flow now.
+          </p>
+        </div>
+        <form action="/" class="search-form" method="get" role="search">
+          <label class="search-input-wrap" for="search-request">
+            <span class="search-input-label">Request</span>
+            <input
+              id="search-request"
+              name="q"
+              placeholder="Ask for a wallet, transaction, denomination, or answer"
+              type="search"
+              value="{{ search_query }}"
+            />
+          </label>
+          <button class="button button-primary search-submit" type="submit">Request reply</button>
+        </form>
+        <div class="search-response-card" aria-live="polite" role="status">
+          <div class="search-response-head">
+            <p class="section-eyebrow">Reply</p>
+            <span class="search-status-pill {% if search_submitted %}search-status-pill-pending{% endif %}">
+              {% if search_submitted %}Coming soon{% else %}Standby{% endif %}
+            </span>
+          </div>
+          {% if search_submitted %}
+            <p class="search-response-query">“{{ search_query }}”</p>
+            <p class="body-copy">
+              Search capture is live, but result retrieval is not wired yet. The next
+              step is connecting this request flow to the search backend.
+            </p>
+          {% else %}
+            <p class="body-copy">
+              Submit a request and the page will hold the query here. Once search is
+              connected, this panel can return the first reply directly.
+            </p>
+          {% endif %}
+        </div>
+      </section>
       <div class="hero-actions">
         <a class="button button-primary" href="{% if auth_user %}#wallet{% else %}/auth/sign-in{% endif %}">
           {% if auth_user %}Generate your wallet{% else %}Sign in with Google{% endif %}

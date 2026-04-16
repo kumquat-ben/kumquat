@@ -3,6 +3,26 @@ from django.test import Client, TestCase
 from api.models import EarlyAccessSignup
 
 
+class HomePageViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_home_page_renders_search_box(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'role="search"', html=False)
+        self.assertContains(response, 'name="q"', html=False)
+        self.assertContains(response, "Request reply")
+
+    def test_home_page_echoes_submitted_query_in_reply_panel(self):
+        response = self.client.get("/", {"q": "find kumquat wallet docs"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "find kumquat wallet docs")
+        self.assertContains(response, "Search capture is live")
+
+
 class EarlyAccessSignupViewTests(TestCase):
     def setUp(self):
         self.client = Client()

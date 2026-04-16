@@ -480,6 +480,7 @@ def _build_dashboard_context(request=None):
 
 
 def home_page_view(request):
+    search_query = (request.GET.get("q") or "").strip()
     context = {
         "auth_user": _current_user_context(request),
         "bill_items": BILL_ITEMS,
@@ -488,6 +489,8 @@ def home_page_view(request):
         "wallet_rows": WALLET_ROWS,
         "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
         "seo_faq_items": SEO_FAQ_ITEMS,
+        "search_query": search_query,
+        "search_submitted": bool(search_query),
         **_home_signup_context(request),
         **_home_wallet_context(request),
         **_seo_context(
