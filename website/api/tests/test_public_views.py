@@ -21,14 +21,15 @@ class HomePageViewTests(TestCase):
         self.assertContains(response, "currently in beta")
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
-        self.assertContains(response, "Request reply")
+        self.assertContains(response, "Search Kumquat.")
+        self.assertContains(response, ">Search<", html=False)
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):
         response = self.client.get("/", {"q": "find kumquat wallet docs"})
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "find kumquat wallet docs")
-        self.assertContains(response, "The search index is empty")
+        self.assertContains(response, "No search results are available yet.")
 
     def test_home_page_renders_indexed_search_results(self):
         SearchDocument.objects.create(

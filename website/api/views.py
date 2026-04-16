@@ -324,7 +324,7 @@ def _serialize_search_crawl_target(target):
 def _home_search_context(search_query):
     if not search_query:
         return {
-            "search_reply": "Submit a request and the first matching reply will land here.",
+            "search_reply": "Search results will appear here.",
             "search_results": [],
             "search_status_label": "Standby",
             "search_status_class": "",
@@ -337,9 +337,7 @@ def _home_search_context(search_query):
 
     if not document_count:
         return {
-            "search_reply": (
-                "The search index is empty. Queue a crawl target first, then this request flow can return live results."
-            ),
+            "search_reply": "No search results are available yet.",
             "search_results": [],
             "search_status_label": "Index empty",
             "search_status_class": "search-status-pill-pending",

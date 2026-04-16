@@ -41,34 +41,33 @@
         than an abstract account balance.
       </p>
       <p class="hero-beta-note">
-        Kumquat is currently in beta. Features, search replies, and wallet flows are
-        still being actively built and refined.
+        Kumquat is currently in beta. Search and wallet flows are still being actively
+        built and refined.
       </p>
       <section class="search-shell" aria-labelledby="search-box-title">
         <div class="search-shell-copy">
-          <p class="section-eyebrow">Agent-Friendly Search</p>
-          <h2 class="search-shell-title" id="search-box-title">One request in. One reply out.</h2>
+          <p class="section-eyebrow">Search</p>
+          <h2 class="search-shell-title" id="search-box-title">Search Kumquat.</h2>
           <p class="body-copy">
-            Start with a simple request. Search execution comes next, but the interface
-            is ready for an agent-friendly request-and-reply flow now.
+            Search for wallets, transactions, denominations, and answers in one simple box.
           </p>
         </div>
         <form action="/" class="search-form" method="get" role="search">
           <label class="search-input-wrap" for="search-request">
-            <span class="search-input-label">Request</span>
+            <span class="search-input-label">Search</span>
             <input
               id="search-request"
               name="q"
-              placeholder="Ask for a wallet, transaction, denomination, or answer"
+              placeholder="Search wallets, transactions, denominations, and answers"
               type="search"
               value="{{ search_query }}"
             />
           </label>
-          <button class="button button-primary search-submit" type="submit">Request reply</button>
+          <button class="button button-primary search-submit" type="submit">Search</button>
         </form>
         <div class="search-response-card" aria-live="polite" role="status">
           <div class="search-response-head">
-            <p class="section-eyebrow">Reply</p>
+            <p class="section-eyebrow">Results</p>
             <span class="search-status-pill {{ search_status_class }}">
               {{ search_status_label }}
             </span>
