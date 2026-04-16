@@ -11,6 +11,8 @@ class HomePageViewTests(TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beta")
+        self.assertContains(response, "currently in beta")
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
         self.assertContains(response, "Request reply")
