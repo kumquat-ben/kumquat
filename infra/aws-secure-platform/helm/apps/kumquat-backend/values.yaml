@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260415-230517-b4c352c
+  tag: backend-20260415-232930-16fa295
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
