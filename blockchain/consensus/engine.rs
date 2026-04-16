@@ -190,6 +190,7 @@ impl ConsensusEngine {
             tx_store.clone(),
             state_store.clone(),
             config.poh_tick_rate,
+            config.hybrid_activation_height,
         ));
 
         let tx_validator = Arc::new(TransactionValidator::new(
@@ -280,6 +281,7 @@ impl ConsensusEngine {
             batch_manager.clone(),
             block_validator.clone(),
             Some(mempool.clone()),
+            config.hybrid_activation_height,
         ));
 
         // Create the block producer

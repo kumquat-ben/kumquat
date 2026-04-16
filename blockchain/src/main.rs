@@ -642,6 +642,7 @@ async fn main() {
             config.node.node_id.as_deref(),
             &config.node.node_name,
         ),
+        hybrid_activation_height: config.consensus.hybrid_activation_height,
     };
 
     let consensus = start_consensus(

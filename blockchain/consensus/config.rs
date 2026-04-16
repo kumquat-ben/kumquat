@@ -26,6 +26,9 @@ pub struct ConsensusConfig {
 
     /// Reward recipient for newly mined blocks
     pub miner_address: [u8; 32],
+
+    /// Block height where hybrid cash rules become active.
+    pub hybrid_activation_height: u64,
 }
 
 impl Default for ConsensusConfig {
@@ -39,6 +42,7 @@ impl Default for ConsensusConfig {
             enable_mining: false,
             mining_threads: num_cpus::get().max(1),
             miner_address: [0u8; 32],
+            hybrid_activation_height: 0,
         }
     }
 }
@@ -97,6 +101,17 @@ impl ConsensusConfig {
         self
     }
 
+    /// Set the hybrid cash activation height.
+    pub fn with_hybrid_activation_height(mut self, height: u64) -> Self {
+        self.hybrid_activation_height = height;
+        self
+    }
+
+    /// Return whether hybrid cash rules are active at a given block height.
+    pub fn hybrid_active_at(&self, height: u64) -> bool {
+        height >= self.hybrid_activation_height
+    }
+
     /// Get the target block time as a Duration
     pub fn target_block_time_duration(&self) -> Duration {
         Duration::from_secs(self.target_block_time)
@@ -126,6 +141,7 @@ mod tests {
         assert_eq!(config.poh_tick_rate, 400_000);
         assert_eq!(config.enable_mining, false);
         assert!(config.mining_threads > 0);
+        assert_eq!(config.hybrid_activation_height, 0);
     }
 
     #[test]
@@ -137,7 +153,8 @@ mod tests {
             .with_max_transactions_per_block(500)
             .with_poh_tick_rate(200_000)
             .with_mining_enabled(true)
-            .with_mining_threads(4);
+            .with_mining_threads(4)
+            .with_hybrid_activation_height(42);
 
         assert_eq!(config.target_block_time, 30);
         assert_eq!(config.initial_difficulty, 200);
@@ -146,6 +163,7 @@ mod tests {
         assert_eq!(config.poh_tick_rate, 200_000);
         assert_eq!(config.enable_mining, true);
         assert_eq!(config.mining_threads, 4);
+        assert_eq!(config.hybrid_activation_height, 42);
     }
 
     #[test]

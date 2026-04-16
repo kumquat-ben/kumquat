@@ -42,6 +42,9 @@ pub struct BlockValidator<'a> {
 
     /// Expected PoH tick rate used for warning thresholds.
     poh_tick_rate: u64,
+
+    /// Block height where hybrid cash rules activate.
+    hybrid_activation_height: u64,
 }
 
 impl<'a> BlockValidator<'a> {
@@ -51,6 +54,7 @@ impl<'a> BlockValidator<'a> {
         tx_store: Arc<TxStore<'a>>,
         state_store: Arc<StateStore<'a>>,
         poh_tick_rate: u64,
+        hybrid_activation_height: u64,
     ) -> Self {
         Self {
             block_store,
@@ -58,7 +62,18 @@ impl<'a> BlockValidator<'a> {
             state_store,
             poh_verifier: PoHVerifier::new(),
             poh_tick_rate,
+            hybrid_activation_height,
         }
+    }
+
+    fn hybrid_active_at(&self, block_height: u64) -> bool {
+        block_height >= self.hybrid_activation_height
+    }
+
+    fn transaction_uses_hybrid_features(tx: &TransactionRecord) -> bool {
+        !tx.coin_transfer.is_empty()
+            || !tx.coin_fee.is_empty()
+            || tx.conversion_intent.is_some()
     }
 
     /// Validate a block
@@ -276,6 +291,21 @@ impl<'a> BlockValidator<'a> {
                 hex::encode(&calculated_tx_root)
             );
             return false;
+        }
+
+        if !self.hybrid_active_at(block.height) {
+            if !block.conversion_fulfillment_order_ids.is_empty()
+                || transactions
+                    .iter()
+                    .any(Self::transaction_uses_hybrid_features)
+            {
+                error!(
+                    "Hybrid transaction features are not active at height {}",
+                    block.height
+                );
+                return false;
+            }
+            return true;
         }
 
         if let Err(err) = self.state_store.validate_conversion_fulfillment_order_ids(
@@ -528,6 +558,7 @@ mod tests {
     use crate::storage::block_store::{
         pow_hash, result_commitment, reward_outcome, CanonicalBlockHeader,
     };
+    use crate::storage::Denomination;
     use crate::storage::kv_store::RocksDBStore;
     use tempfile::tempdir;
 
@@ -548,6 +579,7 @@ mod tests {
                 tx_store.clone(),
                 state_store.clone(),
                 100,
+                0,
             );
         std::mem::forget(temp_dir);
         (block_store, tx_store, state_store, validator)
@@ -741,5 +773,58 @@ mod tests {
             validator.validate_block(&competing_block_one, &target),
             BlockValidationResult::Valid
         );
+    }
+
+    #[test]
+    fn test_rejects_hybrid_features_before_activation_height() {
+        let (block_store, tx_store, state_store, _validator) = setup_validator();
+        let validator = BlockValidator::new(
+            block_store.clone(),
+            tx_store.clone(),
+            state_store.clone(),
+            100,
+            10,
+        );
+        let genesis = genesis_block();
+        block_store.put_block(&genesis).unwrap();
+
+        let mut coin_transfer = crate::storage::CoinInventory::default();
+        coin_transfer.add(Denomination::Cents25, 1).unwrap();
+
+        let tx = TransactionRecord {
+            tx_id: [44; 32],
+            sender: [1; 32],
+            recipient: [2; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: Some([9; 32]),
+            coin_transfer,
+            coin_fee: crate::storage::CoinInventory::default(),
+            value: 25,
+            gas_price: 1,
+            gas_limit: 1,
+            gas_used: 0,
+            nonce: 0,
+            timestamp: 1,
+            block_height: 1,
+            data: None,
+            conversion_intent: None,
+            status: crate::storage::TransactionStatus::Confirmed,
+        };
+        tx_store.put_transaction(&tx).unwrap();
+        let block = build_block(
+            &state_store,
+            vec![tx.tx_id],
+            &[tx],
+            genesis.hash,
+            1,
+            10,
+            [7u8; 32],
+        );
+
+        let target = Target::from_difficulty(1);
+        assert!(matches!(
+            validator.validate_block(&block, &target),
+            BlockValidationResult::Invalid(_)
+        ));
     }
 }

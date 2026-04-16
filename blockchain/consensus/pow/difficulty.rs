@@ -237,6 +237,18 @@ pub fn calculate_next_target(
     // Calculate the new difficulty
     let time_adjusted_difficulty = (current_difficulty as f64 * clamped_factor) as u64;
 
+    if !config.hybrid_active_at(current_height + 1) {
+        let new_difficulty = time_adjusted_difficulty.max(config.initial_difficulty);
+        info!(
+            "Difficulty adjustment: {} -> {} (time_factor: {:.2}, hybrid_inactive_until_height: {})",
+            current_difficulty,
+            new_difficulty,
+            clamped_factor,
+            config.hybrid_activation_height,
+        );
+        return Target::from_difficulty(new_difficulty);
+    }
+
     let tracked_miners = collect_tracked_miner_addresses(
         block_store,
         current_height,

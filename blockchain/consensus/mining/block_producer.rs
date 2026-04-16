@@ -43,6 +43,12 @@ pub struct BlockProducer<'a> {
     config: ConsensusConfig,
 }
 
+fn transaction_uses_hybrid_features(tx: &crate::storage::TransactionRecord) -> bool {
+    !tx.coin_transfer.is_empty()
+        || !tx.coin_fee.is_empty()
+        || tx.conversion_intent.is_some()
+}
+
 impl<'a> BlockProducer<'a> {
     /// Create a new block producer
     pub fn new(
@@ -74,28 +80,45 @@ impl<'a> BlockProducer<'a> {
     /// Create a block template
     pub async fn create_block_template(&self) -> BlockTemplate {
         // Get pending transactions from the mempool
-        let transactions = self
+        let mut transactions = self
             .mempool
             .get_pending_transactions(self.config.max_transactions_per_block);
 
+        let next_height = self.chain_state.height + 1;
+        let hybrid_active = self.config.hybrid_active_at(next_height);
+        if !hybrid_active {
+            transactions.retain(|tx| !transaction_uses_hybrid_features(tx));
+        } else {
+            if self.config.hybrid_activation_height > 0
+                && next_height == self.config.hybrid_activation_height
+            {
+                if let Err(err) = self.state_store.migrate_legacy_state_to_hybrid(next_height) {
+                    error!("Failed to migrate legacy state at activation height: {}", err);
+                }
+            }
+            if let Err(err) = self.state_store.sweep_conversion_order_lifecycle(next_height) {
+                error!("Failed to sweep conversion lifecycle before block assembly: {}", err);
+            }
+        }
+
         // Keep the full transaction records
         let selected_transactions = transactions.clone();
-
-        let next_height = self.chain_state.height + 1;
         let timestamp = chrono::Utc::now().timestamp() as u64;
 
-        let conversion_fulfillment_order_ids = match self
-            .state_store
-            .select_conversion_fulfillment_order_ids(
+        let conversion_fulfillment_order_ids = if hybrid_active {
+            match self.state_store.select_conversion_fulfillment_order_ids(
                 next_height,
                 &selected_transactions,
                 &self.config.miner_address,
             ) {
-            Ok(order_ids) => order_ids,
-            Err(e) => {
-                error!("Failed to select conversion fulfillments: {}", e);
-                Vec::new()
+                Ok(order_ids) => order_ids,
+                Err(e) => {
+                    error!("Failed to select conversion fulfillments: {}", e);
+                    Vec::new()
+                }
             }
+        } else {
+            Vec::new()
         };
 
         // Calculate the provisional state root before the hash-derived reward is known.

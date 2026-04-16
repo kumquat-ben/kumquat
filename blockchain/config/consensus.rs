@@ -44,6 +44,10 @@ pub struct ConsensusConfig {
 
     /// PoH ticks per block
     pub poh_ticks_per_block: u64,
+
+    /// Block height where hybrid cash rules activate.
+    #[serde(default)]
+    pub hybrid_activation_height: u64,
 }
 
 impl Default for ConsensusConfig {
@@ -63,6 +67,7 @@ impl Default for ConsensusConfig {
             enable_poh: true,
             poh_tick_interval: 10,     // 10ms
             poh_ticks_per_block: 1000, // 10s worth of ticks
+            hybrid_activation_height: 0,
         }
     }
 }

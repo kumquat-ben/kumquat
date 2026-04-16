@@ -524,6 +524,29 @@ mod regression_tests {
             ConversionOrderStatus::Expired
         );
     }
+
+    #[test]
+    fn migrate_legacy_state_to_hybrid_persists_normalized_accounts() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+        let owner = [53; 32];
+        let key = format!("state:account:{}", hex::encode(owner));
+
+        let mut legacy_state = AccountState::new_user(136, 5);
+        legacy_state.bills.clear();
+        legacy_state.coin_inventory = CoinInventory::default();
+        let bytes = bincode::serialize(&legacy_state).unwrap();
+        kv_store.put(key.as_bytes(), &bytes).unwrap();
+
+        let updated = state_store.migrate_legacy_state_to_hybrid(99).unwrap();
+        assert_eq!(updated, 1);
+
+        let migrated = state_store.get_account_state(&owner).unwrap();
+        assert_eq!(migrated.last_updated, 99);
+        assert!(!migrated.bills.is_empty());
+        assert!(!migrated.coin_inventory.is_empty());
+    }
 }
 
 // StateRoot is now imported from the state module
@@ -1175,6 +1198,46 @@ impl<'a> StateStore<'a> {
                 updated = updated.saturating_add(1);
             }
         }
+        Ok(updated)
+    }
+
+    /// Persist hybrid bill and coin fields for legacy token-only accounts.
+    pub fn migrate_legacy_state_to_hybrid(
+        &self,
+        block_height: u64,
+    ) -> Result<u64, StateStoreError> {
+        let mut updated = 0u64;
+        for (key, value) in self.store.scan_prefix(b"state:account:")? {
+            let key_str = String::from_utf8_lossy(&key);
+            let parts: Vec<&str> = key_str.split(':').collect();
+            if parts.len() != 3 {
+                continue;
+            }
+            let address_bytes = match hex::decode(parts[2]) {
+                Ok(bytes) if bytes.len() == 32 => bytes,
+                _ => continue,
+            };
+            let mut address = [0u8; 32];
+            address.copy_from_slice(&address_bytes);
+
+            let mut account: AccountState = bincode::deserialize(&value)
+                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            let needs_migration = !account.tokens.is_empty()
+                && account.bills.is_empty()
+                && account.coin_inventory.is_empty()
+                && account.conversion_order.is_none()
+                && account.compute_allocations.is_empty();
+            if !needs_migration {
+                continue;
+            }
+
+            account.assign_token_owner(address);
+            account.sync_hybrid_from_tokens();
+            account.last_updated = block_height;
+            self.set_account_state(&address, &account)?;
+            updated = updated.saturating_add(1);
+        }
+
         Ok(updated)
     }
 
@@ -1869,6 +1932,8 @@ impl<'a> StateStore<'a> {
             block.height,
             block.transactions.len()
         );
+
+        self.sweep_conversion_order_lifecycle(block.height)?;
 
         let mut block_transactions = Vec::with_capacity(block.transactions.len());
         for tx_hash in &block.transactions {

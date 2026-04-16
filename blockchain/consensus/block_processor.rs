@@ -48,6 +48,9 @@ pub struct BlockProcessor<'a> {
 
     /// Mempool
     mempool: Option<Arc<Mempool>>,
+
+    /// Block height where hybrid cash rules activate.
+    hybrid_activation_height: u64,
 }
 
 impl<'a> BlockProcessor<'a> {
@@ -59,6 +62,7 @@ impl<'a> BlockProcessor<'a> {
         batch_manager: Arc<BatchOperationManager<'a>>,
         validator: Arc<BlockValidator<'a>>,
         mempool: Option<Arc<Mempool>>,
+        hybrid_activation_height: u64,
     ) -> Self {
         Self {
             block_store,
@@ -67,7 +71,29 @@ impl<'a> BlockProcessor<'a> {
             batch_manager,
             validator,
             mempool,
+            hybrid_activation_height,
         }
+    }
+
+    fn hybrid_active_at(&self, block_height: u64) -> bool {
+        block_height >= self.hybrid_activation_height
+    }
+
+    fn prepare_hybrid_state_for_block(&self, block_height: u64) -> Result<(), String> {
+        if !self.hybrid_active_at(block_height) {
+            return Ok(());
+        }
+
+        if self.hybrid_activation_height > 0 && block_height == self.hybrid_activation_height {
+            self.state_store
+                .migrate_legacy_state_to_hybrid(block_height)
+                .map_err(|e| format!("Failed to migrate legacy hybrid state: {}", e))?;
+        }
+
+        self.state_store
+            .sweep_conversion_order_lifecycle(block_height)
+            .map_err(|e| format!("Failed to sweep conversion lifecycle: {}", e))?;
+        Ok(())
     }
 
     /// Process a new block
@@ -78,6 +104,11 @@ impl<'a> BlockProcessor<'a> {
         chain_state: &ChainState,
     ) -> BlockProcessingResult {
         info!("Processing block at height {}", block.height);
+
+        if let Err(err) = self.prepare_hybrid_state_for_block(block.height) {
+            error!("{}", err);
+            return BlockProcessingResult::Error(err);
+        }
 
         // Validate the block
         match self.validator.validate_block(block, target) {
@@ -328,6 +359,7 @@ mod tests {
             tx_store.clone(),
             state_store.clone(),
             100,
+            0,
         ));
 
         // Create block processor
@@ -338,6 +370,7 @@ mod tests {
             batch_manager.clone(),
             validator.clone(),
             None,
+            0,
         );
         let chain_state = ChainState::new(
             0,
