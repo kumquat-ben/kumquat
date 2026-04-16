@@ -275,6 +275,7 @@ fn ensure_local_genesis(
         &genesis_block.hash,
         &genesis_block.state_root,
         &genesis_block.reward_token_ids,
+        &genesis_block.conversion_fulfillment_order_ids,
     );
 
     if let Err(err) = block_store.put_block(&genesis_block) {
