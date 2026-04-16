@@ -68,10 +68,42 @@ DEFAULT_SEO_KEYWORDS = (
     "digital denominations, wallet software, crypto wallet, parallel ledger"
 )
 CURRENCY_SYMBOL = "¤"
+NODE_LAUNCHER_AUTH_SESSION_KEY = "node_launcher_auth"
 
 
 def _currency_label(amount):
     return f"{CURRENCY_SYMBOL}{amount}"
+
+
+def _launcher_auth_from_request(request):
+    auth = request.session.get(NODE_LAUNCHER_AUTH_SESSION_KEY, {}) if hasattr(request, "session") else {}
+    return {
+        "NODE_LAUNCHER_KUBECONFIG": (auth.get("kubeconfig_path") or "").strip(),
+        "NODE_LAUNCHER_KUBE_API_SERVER": (auth.get("api_server") or "").strip(),
+        "NODE_LAUNCHER_KUBE_BEARER_TOKEN": (auth.get("bearer_token") or "").strip(),
+        "NODE_LAUNCHER_KUBE_CA_CERT_B64": (auth.get("ca_cert_b64") or "").strip(),
+        "namespace": (auth.get("namespace") or "").strip(),
+    }
+
+
+def _save_launcher_auth(request, payload):
+    request.session[NODE_LAUNCHER_AUTH_SESSION_KEY] = {
+        "api_server": (payload.get("api_server") or "").strip(),
+        "bearer_token": (payload.get("bearer_token") or "").strip(),
+        "ca_cert_b64": (payload.get("ca_cert_b64") or "").strip(),
+        "namespace": (payload.get("namespace") or "").strip(),
+        "kubeconfig_path": (payload.get("kubeconfig_path") or "").strip(),
+    }
+    request.session.modified = True
+
+
+def _mask_launcher_token(token):
+    token = (token or "").strip()
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return "configured"
+    return f"{token[:4]}...{token[-4:]}"
 
 BILL_ITEMS = [
     {"label": _currency_label("100"), "kind": "bill", "id": "KMQ-00100000"},
@@ -388,7 +420,7 @@ def _upsert_user_wallet(*, user, wallet_material, replace_existing):
     return wallet, True, False
 
 
-def _build_dashboard_context():
+def _build_dashboard_context(request=None):
     User = get_user_model()
     users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
     signups = [
@@ -404,7 +436,9 @@ def _build_dashboard_context():
         _serialize_vonage_sms(message)
         for message in VonageInboundSms.objects.order_by("-received_at", "-created_at")[:10]
     ]
-    managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes()]
+    auth_context = _launcher_auth_from_request(request) if request is not None else None
+    managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes(auth_context)]
+    launcher_auth = auth_context or {}
     return {
         "stats": {
             "users": len(users),
@@ -423,6 +457,24 @@ def _build_dashboard_context():
             "default_image": settings.NODE_LAUNCHER_IMAGE,
             "default_network": settings.NODE_LAUNCHER_NETWORK,
             "default_chain_id": settings.NODE_LAUNCHER_CHAIN_ID,
+            "default_namespace": settings.NODE_LAUNCHER_KUBERNETES_NAMESPACE,
+            "auth_mode": (
+                "bearer"
+                if launcher_auth.get("NODE_LAUNCHER_KUBE_API_SERVER")
+                and launcher_auth.get("NODE_LAUNCHER_KUBE_BEARER_TOKEN")
+                else "kubeconfig"
+                if launcher_auth.get("NODE_LAUNCHER_KUBECONFIG") or settings.NODE_LAUNCHER_KUBECONFIG
+                else "environment"
+            ),
+            "auth_configured": bool(
+                launcher_auth.get("NODE_LAUNCHER_KUBE_API_SERVER")
+                and launcher_auth.get("NODE_LAUNCHER_KUBE_BEARER_TOKEN")
+            ),
+            "auth_api_server": launcher_auth.get("NODE_LAUNCHER_KUBE_API_SERVER", ""),
+            "auth_namespace": launcher_auth.get("namespace") or settings.NODE_LAUNCHER_KUBERNETES_NAMESPACE,
+            "auth_token_masked": _mask_launcher_token(
+                launcher_auth.get("NODE_LAUNCHER_KUBE_BEARER_TOKEN", "")
+            ),
         },
     }
 
@@ -470,40 +522,6 @@ def sign_in_page_view(request):
     )
 
 
-def admin_dashboard_page_view(request):
-    if not request.user.is_authenticated:
-        return HttpResponseRedirect("/auth/sign-in")
-
-    if not request.user.is_superuser:
-        return JsonResponse({"error": "Superuser access required."}, status=403)
-
-    dashboard = _build_dashboard_context()
-    active_tab = request.GET.get("tab", "signups")
-    if active_tab not in {"signups", "users"}:
-        active_tab = "signups"
-    items = dashboard["signups"] if active_tab == "signups" else dashboard["users"]
-    page_obj = Paginator(items, 8 if active_tab == "signups" else 6).get_page(request.GET.get("page") or 1)
-
-    return render(
-        request,
-        "website/dashboard.html",
-        {
-            "auth_user": _current_user_context(request),
-            "dashboard": dashboard,
-            "active_tab": active_tab,
-            "page_obj": page_obj,
-            "page_numbers": _pagination_window(page_obj),
-            **_seo_context(
-                request,
-                title="Dashboard | Kumquat",
-                description="Internal Kumquat administration dashboard.",
-                path=reverse("dashboard"),
-                index=False,
-            ),
-        },
-    )
-
-
 def admin_containers_page_view(request):
     if not request.user.is_authenticated:
         return HttpResponseRedirect("/auth/sign-in")
@@ -511,8 +529,9 @@ def admin_containers_page_view(request):
     if not request.user.is_superuser:
         return JsonResponse({"error": "Superuser access required."}, status=403)
 
-    dashboard = _build_dashboard_context()
-    runtime_containers = _load_runtime_containers()
+    auth_context = _launcher_auth_from_request(request)
+    dashboard = _build_dashboard_context(request)
+    runtime_containers = _load_runtime_containers(auth_context)
     return render(
         request,
         "website/containers.html",
@@ -837,23 +856,23 @@ def _build_managed_node_name(display_name):
     return candidate[:63]
 
 
-def _load_managed_nodes():
+def _load_managed_nodes(auth_context=None):
     nodes = list(ManagedNode.objects.select_related("launched_by").order_by("-created_at"))
     hydrated = []
     for node in nodes:
         try:
-            hydrated.append(refresh_node(node))
+            hydrated.append(refresh_node(node, auth_context))
         except NodeLauncherError:
             hydrated.append(node)
     return hydrated
 
 
-def _load_runtime_containers():
+def _load_runtime_containers(auth_context=None):
     try:
-        runtime = list_runtime_containers()
+        runtime = list_runtime_containers(auth_context)
     except NodeLauncherError:
         return []
-    managed_nodes = {node.id: node for node in _load_managed_nodes()}
+    managed_nodes = {node.id: node for node in _load_managed_nodes(auth_context)}
     for item in runtime:
         node_id = item.get("managed_node_id")
         managed_node = managed_nodes.get(node_id) if node_id else None
@@ -1218,6 +1237,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
       const mount = document.getElementById("app");
       const endpoint = window.__KUMQUAT_BOOTSTRAP_URL__;
       const ADMIN_NODE_LAUNCH_URL = "/nodes/launch";
+      const ADMIN_NODE_LAUNCHER_AUTH_URL = "/nodes/launcher-auth";
 
       function escapeHtml(value) {{
         return String(value ?? "")
@@ -1249,7 +1269,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <p class="meta">Reward address: <code>${{escapeHtml(node.reward_address || "node-derived default")}}</code></p>
             ${{node.last_error ? `<p class="error">${{escapeHtml(node.last_error)}}</p>` : ""}}
             <div class="actions">
-              <a class="button" href="${{escapeHtml(node.dashboard_url || node.dashboard_proxy_url || "#")}}">Open GUI</a>
+              <a class="button" href="${{escapeHtml(node.dashboard_proxy_url || node.dashboard_url || "#")}}">Open GUI</a>
             </div>
             <pre>${{escapeHtml(node.logs_tail || "No logs available yet.")}}</pre>
           </div>
@@ -1260,6 +1280,33 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <p class="label">Node Launcher</p>
             <h2 class="section-heading">Launch managed node</h2>
             <p class="meta">Default image: <code>${{escapeHtml(launcher.default_image || "Unavailable")}}</code></p>
+            <p class="meta">Kubernetes auth: <strong>${{escapeHtml(launcher.auth_mode || "environment")}}</strong>${{launcher.auth_api_server ? ` via <code>${{escapeHtml(launcher.auth_api_server)}}</code>` : ""}}</p>
+            <p class="meta">Namespace: <code>${{escapeHtml(launcher.auth_namespace || launcher.default_namespace || "kumquat")}}</code></p>
+            <form id="managed-node-auth-form">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="launcher-api-server">API server</label>
+                  <input id="launcher-api-server" name="api_server" placeholder="https://cluster.example:6443" value="${{escapeHtml(launcher.auth_api_server || "")}}" />
+                </div>
+                <div class="field">
+                  <label for="launcher-namespace">Namespace</label>
+                  <input id="launcher-namespace" name="namespace" placeholder="kumquat" value="${{escapeHtml(launcher.auth_namespace || launcher.default_namespace || "kumquat")}}" />
+                </div>
+                <div class="field">
+                  <label for="launcher-token">Bearer token</label>
+                  <input id="launcher-token" name="bearer_token" type="password" placeholder="${{escapeHtml(launcher.auth_token_masked || "Paste service-account token")}}" />
+                </div>
+                <div class="field">
+                  <label for="launcher-ca-cert">CA cert (base64)</label>
+                  <input id="launcher-ca-cert" name="ca_cert_b64" placeholder="LS0tLS1CRUdJTi..." />
+                </div>
+              </div>
+              <div class="actions">
+                <button class="button button-secondary button-plain" type="submit">Save launcher auth</button>
+                <button id="managed-node-auth-clear" class="button button-plain" type="button">Clear auth</button>
+                <span id="managed-node-auth-status" class="status">${{launcher.auth_configured ? "Session bearer auth saved." : "Using environment or kubeconfig auth until overridden."}}</span>
+              </div>
+            </form>
             <form id="managed-node-launch-form">
               <div class="form-grid">
                 <div class="field">
@@ -1275,6 +1322,10 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
                 <div class="field">
                   <label for="node-reward-address">Reward address</label>
                   <input id="node-reward-address" name="reward_address" placeholder="kmq1... wallet address" />
+                </div>
+                <div class="field">
+                  <label for="node-mining-threads">Mining threads</label>
+                  <input id="node-mining-threads" name="mining_threads" type="number" min="1" value="1" />
                 </div>
               </div>
               <label class="checkbox-row">
@@ -1301,8 +1352,67 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
       function attachDashboardHandlers() {{
         const launchForm = document.getElementById("managed-node-launch-form");
         const launchStatus = document.getElementById("managed-node-launch-status");
+        const authForm = document.getElementById("managed-node-auth-form");
+        const authStatus = document.getElementById("managed-node-auth-status");
+        const authClear = document.getElementById("managed-node-auth-clear");
         if (!launchForm || !launchStatus) {{
           return;
+        }}
+
+        if (authForm && authStatus) {{
+          authForm.addEventListener("submit", async (event) => {{
+            event.preventDefault();
+            const formData = new FormData(authForm);
+            const payload = {{
+              api_server: (formData.get("api_server") || "").toString().trim(),
+              namespace: (formData.get("namespace") || "").toString().trim(),
+              bearer_token: (formData.get("bearer_token") || "").toString().trim(),
+              ca_cert_b64: (formData.get("ca_cert_b64") || "").toString().trim(),
+            }};
+            authStatus.textContent = "Saving launcher auth...";
+            try {{
+              const response = await fetch(ADMIN_NODE_LAUNCHER_AUTH_URL, {{
+                method: "POST",
+                credentials: "same-origin",
+                headers: {{
+                  "Content-Type": "application/json",
+                }},
+                body: JSON.stringify(payload),
+              }});
+              const data = await response.json().catch(() => ({{}}));
+              if (!response.ok) {{
+                throw new Error(data.error || "Failed to save launcher auth.");
+              }}
+              authStatus.textContent = "Launcher auth saved. Refreshing dashboard...";
+              await loadDashboard();
+            }} catch (error) {{
+              authStatus.textContent = error.message;
+            }}
+          }});
+        }}
+
+        if (authClear && authStatus) {{
+          authClear.addEventListener("click", async () => {{
+            authStatus.textContent = "Clearing launcher auth...";
+            try {{
+              const response = await fetch(ADMIN_NODE_LAUNCHER_AUTH_URL, {{
+                method: "POST",
+                credentials: "same-origin",
+                headers: {{
+                  "Content-Type": "application/json",
+                }},
+                body: JSON.stringify({{ action: "clear" }}),
+              }});
+              const data = await response.json().catch(() => ({{}}));
+              if (!response.ok) {{
+                throw new Error(data.error || "Failed to clear launcher auth.");
+              }}
+              authStatus.textContent = "Launcher auth cleared. Refreshing dashboard...";
+              await loadDashboard();
+            }} catch (error) {{
+              authStatus.textContent = error.message;
+            }}
+          }});
         }}
 
         launchForm.addEventListener("submit", async (event) => {{
@@ -1312,6 +1422,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             display_name: (formData.get("display_name") || "").toString().trim(),
             chain_id: Number(formData.get("chain_id") || 0),
             reward_address: (formData.get("reward_address") || "").toString().trim(),
+            mining_threads: Number(formData.get("mining_threads") || 1),
             enable_mining: formData.get("enable_mining") === "on",
           }};
 
@@ -1868,7 +1979,39 @@ def admin_dashboard_view(request):
     if admin_error:
         return admin_error
 
-    return JsonResponse(_build_dashboard_context())
+    return JsonResponse(_build_dashboard_context(request))
+
+
+@csrf_exempt
+def admin_node_launcher_auth_view(request):
+    admin_error = _admin_required_response(request)
+    if admin_error:
+        return admin_error
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    if _is_json_request(request):
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    else:
+        payload = request.POST
+
+    action = (payload.get("action") or "save").strip().lower()
+    if action == "clear":
+        request.session.pop(NODE_LAUNCHER_AUTH_SESSION_KEY, None)
+        request.session.modified = True
+        if _is_json_request(request):
+            return JsonResponse({"status": "ok", "cleared": True})
+        messages.success(request, "Launcher Kubernetes auth cleared from this session.")
+        return HttpResponseRedirect("/dashboard")
+
+    _save_launcher_auth(request, payload)
+    if _is_json_request(request):
+        return JsonResponse({"status": "ok", "saved": True})
+    messages.success(request, "Launcher Kubernetes auth saved for this session.")
+    return HttpResponseRedirect("/dashboard")
 
 
 def admin_dashboard_page_view(request):
@@ -1962,7 +2105,7 @@ def admin_node_launch_view(request):
     )
 
     try:
-        node = launch_node(node)
+        node = launch_node(node, _launcher_auth_from_request(request))
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)}, status=201)
         messages.success(request, f"Managed node '{node.display_name}' launch requested successfully.")
@@ -1995,7 +2138,7 @@ def admin_node_stop_view(request, node_id):
         return HttpResponseRedirect("/containers")
 
     try:
-        node = stop_node(node)
+        node = stop_node(node, _launcher_auth_from_request(request))
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
         messages.success(request, f"Managed node '{node.display_name}' stop requested successfully.")
@@ -2025,7 +2168,7 @@ def admin_node_restart_view(request, node_id):
         return HttpResponseRedirect("/containers")
 
     try:
-        node = restart_node(node)
+        node = restart_node(node, _launcher_auth_from_request(request))
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
         messages.success(request, f"Managed node '{node.display_name}' restarted successfully.")
@@ -2055,7 +2198,7 @@ def admin_node_delete_container_view(request, node_id):
         return HttpResponseRedirect("/containers")
 
     try:
-        node = delete_container(node)
+        node = delete_container(node, _launcher_auth_from_request(request))
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "node": _serialize_managed_node(node)})
         messages.success(request, f"Pod for '{node.display_name}' cleared successfully.")
@@ -2086,7 +2229,7 @@ def admin_node_delete_deployment_view(request, node_id):
 
     display_name = node.display_name
     try:
-        delete_deployment(node)
+        delete_deployment(node, _launcher_auth_from_request(request))
         if _is_json_request(request):
             return JsonResponse({"status": "ok", "deleted": True, "node_id": node_id})
         messages.success(request, f"Deployment '{display_name}' deleted successfully.")
@@ -2106,7 +2249,7 @@ def admin_runtime_container_restart_view(request, container_id):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     try:
-        restart_runtime_container(container_id)
+        restart_runtime_container(container_id, _launcher_auth_from_request(request))
         messages.success(request, f"Pod '{container_id[:12]}' restarted successfully.")
     except NodeLauncherError as exc:
         messages.error(request, str(exc))
@@ -2121,7 +2264,7 @@ def admin_runtime_container_delete_view(request, container_id):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     try:
-        delete_runtime_container(container_id)
+        delete_runtime_container(container_id, _launcher_auth_from_request(request))
         messages.success(request, f"Pod '{container_id[:12]}' deleted successfully.")
     except NodeLauncherError as exc:
         messages.error(request, str(exc))
@@ -2139,8 +2282,9 @@ def admin_node_logs_view(request, node_id):
         return JsonResponse({"error": "Managed node not found."}, status=404)
 
     try:
-        node = refresh_node(node)
-        logs = tail_logs(node)
+        auth_context = _launcher_auth_from_request(request)
+        node = refresh_node(node, auth_context)
+        logs = tail_logs(node, auth_context=auth_context)
     except NodeLauncherError as exc:
         return JsonResponse({"error": str(exc)}, status=502)
 
@@ -2158,7 +2302,7 @@ def admin_node_proxy_view(request, node_id, subpath=""):
         return JsonResponse({"error": "Managed node not found."}, status=404)
 
     try:
-        node = refresh_node(node)
+        node = refresh_node(node, _launcher_auth_from_request(request))
     except NodeLauncherError as exc:
         return JsonResponse({"error": str(exc)}, status=502)
 
@@ -2169,7 +2313,7 @@ def admin_node_proxy_view(request, node_id, subpath=""):
     if request.GET:
         target_path = f"{target_path}?{request.META.get('QUERY_STRING', '')}"
 
-    upstream_url = upstream_rpc_url(node, target_path)
+    upstream_url = upstream_rpc_url(node, target_path, _launcher_auth_from_request(request))
 
     try:
         with urlopen(

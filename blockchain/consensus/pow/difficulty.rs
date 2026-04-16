@@ -128,14 +128,25 @@ fn conversion_market_signal(
         snapshot.bill_to_coins_demand_cents,
         snapshot.coins_to_bill_demand_cents,
     );
-    let inventory_reference = snapshot
-        .bill_to_coins_demand_cents
-        .max(snapshot.coins_to_bill_demand_cents)
-        .max(1);
-    let inventory_signal = ((snapshot.bill_to_coins_demand_cents as f64
-        - snapshot.tracked_miner_coin_inventory_cents as f64)
-        / inventory_reference as f64)
-        .clamp(-1.0, 1.0);
+    let dominant_bill_to_coins =
+        snapshot.bill_to_coins_demand_cents >= snapshot.coins_to_bill_demand_cents;
+    let dominant_demand = if dominant_bill_to_coins {
+        snapshot.bill_to_coins_demand_cents
+    } else {
+        snapshot.coins_to_bill_demand_cents
+    };
+    let dominant_inventory = if dominant_bill_to_coins {
+        snapshot.tracked_miner_coin_inventory_cents
+    } else {
+        snapshot.tracked_miner_bill_inventory_cents
+    };
+    let inventory_signal = if dominant_demand == 0 && dominant_inventory == 0 {
+        0.0
+    } else {
+        ((dominant_demand as f64 - dominant_inventory as f64)
+            / dominant_demand.max(dominant_inventory).max(1) as f64)
+            .clamp(-1.0, 1.0)
+    };
     let backlog_ratio = (snapshot.open_order_count as f64 / CONVERSION_ORDER_CYCLE_BLOCKS as f64)
         .clamp(0.0, 1.0);
     let cycle_signal = normalized_delta(
@@ -150,13 +161,31 @@ fn conversion_market_signal(
         cycle_flow.bill_to_coins_fulfilled_cents,
         cycle_flow.coins_to_bill_fulfilled_cents,
     );
+    let dominant_requested_cycle = if dominant_bill_to_coins {
+        cycle_flow.bill_to_coins_requested_cents
+    } else {
+        cycle_flow.coins_to_bill_requested_cents
+    };
+    let dominant_fulfilled_cycle = if dominant_bill_to_coins {
+        cycle_flow.bill_to_coins_fulfilled_cents
+    } else {
+        cycle_flow.coins_to_bill_fulfilled_cents
+    };
+    let settlement_gap_signal = if dominant_requested_cycle == 0 {
+        0.0
+    } else {
+        ((dominant_requested_cycle.saturating_sub(dominant_fulfilled_cycle)) as f64
+            / dominant_requested_cycle as f64)
+            .clamp(0.0, 1.0)
+    };
     let smoothed_flow_signal = 0.7 * cycle_signal + 0.3 * rolling_signal;
 
-    (0.40 * demand_signal
-        + 0.25 * inventory_signal
-        + 0.20 * (backlog_ratio * demand_signal)
-        + 0.10 * smoothed_flow_signal
-        + 0.05 * fulfillment_signal)
+    (0.28 * demand_signal.abs()
+        + 0.27 * inventory_signal
+        + 0.20 * settlement_gap_signal
+        + 0.15 * (backlog_ratio * demand_signal.abs())
+        + 0.05 * smoothed_flow_signal.abs()
+        + 0.05 * fulfillment_signal.abs())
         .clamp(-1.0, 1.0)
 }
 
@@ -551,6 +580,145 @@ mod tests {
         assert!(
             target.to_difficulty() < 100,
             "expected shortage-driven conversion pressure to ease difficulty"
+        );
+    }
+
+    #[test]
+    fn test_coins_to_bill_shortage_also_eases_difficulty() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+        let block_store = BlockStore::new(&kv_store);
+        let state_store = StateStore::new(&kv_store);
+        let tx_store = TxStore::new(&kv_store);
+
+        let config = ConsensusConfig::default()
+            .with_target_block_time(10)
+            .with_initial_difficulty(100)
+            .with_difficulty_adjustment_window(2);
+
+        let miner = [17u8; 32];
+        let requester = [18u8; 32];
+
+        state_store
+            .create_account(&requester, 100, crate::storage::AccountType::User)
+            .unwrap();
+        state_store
+            .create_account(&miner, 0, crate::storage::AccountType::User)
+            .unwrap();
+
+        let mut requester_state = state_store.get_account_state(&requester).unwrap();
+        let mut requested_coins = CoinInventory::default();
+        requested_coins.add(crate::storage::Denomination::Cents50, 2).unwrap();
+        requester_state.conversion_order = Some(ConversionOrder::new(
+            [19u8; 32],
+            requester,
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::CoinsToBill,
+                requested_value_cents: 100,
+                requested_coin_inventory: requested_coins,
+                requested_bill_denominations: vec![crate::storage::Denomination::Dollars1],
+            },
+            1,
+        ));
+        state_store
+            .set_account_state(&requester, &requester_state)
+            .unwrap();
+
+        let block0 = Block {
+            height: 0,
+            hash: [20u8; 32],
+            prev_hash: [0u8; 32],
+            timestamp: 0,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 100,
+        };
+        let block1 = Block {
+            height: 1,
+            hash: [21u8; 32],
+            prev_hash: [20u8; 32],
+            timestamp: 10,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 1,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 200,
+        };
+        let create_tx = TransactionRecord {
+            tx_id: [22u8; 32],
+            sender: requester,
+            recipient: [0u8; 32],
+            transfer_token_ids: vec![],
+            fee_token_id: None,
+            coin_transfer: CoinInventory::default(),
+            coin_fee: CoinInventory::default(),
+            value: 0,
+            gas_price: 1,
+            gas_limit: 21_000,
+            gas_used: 10,
+            nonce: 0,
+            timestamp: 20,
+            block_height: 2,
+            data: None,
+            conversion_intent: Some(ConversionTransaction::Create(ConversionOrderRequest {
+                kind: ConversionOrderKind::CoinsToBill,
+                requested_value_cents: 100,
+                requested_coin_inventory: {
+                    let mut inventory = CoinInventory::default();
+                    inventory.add(crate::storage::Denomination::Cents50, 2).unwrap();
+                    inventory
+                },
+                requested_bill_denominations: vec![crate::storage::Denomination::Dollars1],
+            })),
+            status: TransactionStatus::Confirmed,
+        };
+        tx_store.put_transaction(&create_tx).unwrap();
+        let block2 = Block {
+            height: 2,
+            hash: [23u8; 32],
+            prev_hash: [21u8; 32],
+            timestamp: 20,
+            transactions: vec![create_tx.tx_id],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            state_root: [0u8; 32],
+            result_commitment: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 2,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 300,
+        };
+
+        block_store.put_block(&block0).unwrap();
+        block_store.put_block(&block1).unwrap();
+        block_store.put_block(&block2).unwrap();
+
+        let target = calculate_next_target(&config, &block_store, &state_store, &tx_store, 2);
+        assert!(
+            target.to_difficulty() < 100,
+            "expected bill-shortage conversion pressure to ease difficulty"
         );
     }
 }

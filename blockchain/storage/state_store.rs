@@ -67,7 +67,9 @@ pub struct ConversionMarketSnapshot {
     pub at_block_height: u64,
     pub tracked_miner_count: usize,
     pub tracked_miner_coin_inventory_cents: u64,
+    pub tracked_miner_bill_inventory_cents: u64,
     pub total_coin_inventory_cents: u64,
+    pub total_bill_inventory_cents: u64,
     pub open_order_count: u64,
     pub pending_order_count: u64,
     pub eligible_order_count: u64,
@@ -546,6 +548,24 @@ mod regression_tests {
         assert_eq!(migrated.last_updated, 99);
         assert!(!migrated.bills.is_empty());
         assert!(!migrated.coin_inventory.is_empty());
+    }
+
+    #[test]
+    fn conversion_bill_denominations_rejects_coin_requests() {
+        let order = ConversionOrder::new(
+            [61; 32],
+            [62; 32],
+            ConversionOrderRequest {
+                kind: ConversionOrderKind::CoinsToBill,
+                requested_value_cents: 100,
+                requested_coin_inventory: CoinInventory::default(),
+                requested_bill_denominations: vec![Denomination::Cents25, Denomination::Cents25],
+            },
+            1,
+        );
+
+        let err = conversion_bill_denominations(&order).unwrap_err();
+        assert!(err.to_string().contains("non-bill denominations"));
     }
 }
 
@@ -1129,15 +1149,22 @@ impl<'a> StateStore<'a> {
 
         for (address, account) in self.get_all_accounts() {
             let coin_value = account.coin_inventory.total_value_cents();
+            let bill_value = account.total_bill_value();
             snapshot.total_coin_inventory_cents = snapshot
                 .total_coin_inventory_cents
                 .saturating_add(coin_value);
+            snapshot.total_bill_inventory_cents = snapshot
+                .total_bill_inventory_cents
+                .saturating_add(bill_value);
 
             if tracked_miner_addresses.contains(&address) {
                 snapshot.tracked_miner_count += 1;
                 snapshot.tracked_miner_coin_inventory_cents = snapshot
                     .tracked_miner_coin_inventory_cents
                     .saturating_add(coin_value);
+                snapshot.tracked_miner_bill_inventory_cents = snapshot
+                    .tracked_miner_bill_inventory_cents
+                    .saturating_add(bill_value);
             }
 
             if let Some(mut order) = account.conversion_order {
@@ -2149,8 +2176,19 @@ fn conversion_bill_denominations(order: &ConversionOrder) -> Result<Vec<Denomina
     if order.requested_bill_denominations.is_empty() {
         canonical_bill_denominations_for_amount(order.requested_value_cents)
     } else {
-        let requested_total = order
+        if order
             .requested_bill_denominations
+            .iter()
+            .any(|denomination| !denomination.is_bill())
+        {
+            return Err(StateStoreError::Other(format!(
+                "conversion order {} contains non-bill denominations",
+                hex::encode(order.order_id)
+            )));
+        }
+        let mut normalized = order.requested_bill_denominations.clone();
+        normalized.sort_by_key(|denomination| std::cmp::Reverse(denomination.value_cents()));
+        let requested_total = normalized
             .iter()
             .map(|denomination| denomination.value_cents())
             .sum::<u64>();
@@ -2160,7 +2198,7 @@ fn conversion_bill_denominations(order: &ConversionOrder) -> Result<Vec<Denomina
                 hex::encode(order.order_id)
             )));
         }
-        Ok(order.requested_bill_denominations.clone())
+        Ok(normalized)
     }
 }
 

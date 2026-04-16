@@ -1,6 +1,9 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
+import base64
+import hashlib
 from pathlib import Path
+from tempfile import gettempdir
 import time
 from typing import Optional
 
@@ -18,45 +21,69 @@ class NodeLauncherError(Exception):
     pass
 
 
-_KUBE_CONFIG_LOADED = False
-
-
 def launcher_enabled():
     return getattr(settings, "NODE_LAUNCHER_ENABLED", False)
 
 
-def _load_kubernetes_config():
-    global _KUBE_CONFIG_LOADED
-    if _KUBE_CONFIG_LOADED:
-        return
+def _auth_value(auth_context, key: str, default: str = "") -> str:
+    if auth_context and auth_context.get(key) is not None:
+        return (auth_context.get(key) or "").strip()
+    return (getattr(settings, key, default) or default).strip()
 
-    kubeconfig_path = (getattr(settings, "NODE_LAUNCHER_KUBECONFIG", "") or "").strip()
+
+def _auth_namespace(auth_context) -> str:
+    if auth_context and auth_context.get("namespace") is not None:
+        return (auth_context.get("namespace") or "").strip() or _launcher_namespace()
+    return _launcher_namespace()
+
+
+def _materialize_ca_cert(ca_cert_b64: str) -> str:
+    digest = hashlib.sha256(ca_cert_b64.encode("utf-8")).hexdigest()
+    path = Path(gettempdir()) / f"kumquat-kube-ca-{digest}.crt"
+    if not path.exists():
+        path.write_bytes(base64.b64decode(ca_cert_b64))
+    return str(path)
+
+
+def _api_client(auth_context=None):
+    kubeconfig_path = _auth_value(auth_context, "NODE_LAUNCHER_KUBECONFIG")
+    api_server = _auth_value(auth_context, "NODE_LAUNCHER_KUBE_API_SERVER")
+    bearer_token = _auth_value(auth_context, "NODE_LAUNCHER_KUBE_BEARER_TOKEN")
+    ca_cert_b64 = _auth_value(auth_context, "NODE_LAUNCHER_KUBE_CA_CERT_B64")
+
     try:
         if kubeconfig_path:
-            k8s_config.load_kube_config(config_file=kubeconfig_path)
-        else:
-            try:
-                k8s_config.load_incluster_config()
-            except ConfigException:
-                k8s_config.load_kube_config()
+            return k8s_config.new_client_from_config(config_file=kubeconfig_path)
+        if api_server and bearer_token:
+            configuration = k8s_client.Configuration()
+            configuration.host = api_server
+            configuration.api_key = {"authorization": bearer_token}
+            configuration.api_key_prefix = {"authorization": "Bearer"}
+            if ca_cert_b64:
+                configuration.ssl_ca_cert = _materialize_ca_cert(ca_cert_b64)
+                configuration.verify_ssl = True
+            else:
+                configuration.verify_ssl = False
+            return k8s_client.ApiClient(configuration)
+        try:
+            k8s_config.load_incluster_config()
+            return k8s_client.ApiClient()
+        except ConfigException:
+            return k8s_config.new_client_from_config()
     except Exception as exc:
         raise NodeLauncherError(f"Kubernetes client is unavailable: {exc}") from exc
 
-    _KUBE_CONFIG_LOADED = True
 
-
-def _core_api():
+def _core_api(auth_context=None):
     if not launcher_enabled():
         raise NodeLauncherError("Node launcher is disabled.")
-    _load_kubernetes_config()
-    return k8s_client.CoreV1Api()
+    return k8s_client.CoreV1Api(_api_client(auth_context))
 
 
-def _apps_api():
+def _apps_api(auth_context=None):
     if not launcher_enabled():
         raise NodeLauncherError("Node launcher is disabled.")
-    _load_kubernetes_config()
-    return k8s_client.AppsV1Api()
+    return k8s_client.AppsV1Api(_api_client(auth_context))
 
 
 def _launcher_namespace() -> str:
@@ -81,12 +108,12 @@ def peer_service_name(node: ManagedNode) -> str:
     return _suffix_name(node.name, "peer")
 
 
-def peer_service_host(node: ManagedNode) -> str:
-    return f"{peer_service_name(node)}.{_launcher_namespace()}.svc.cluster.local"
+def peer_service_host(node: ManagedNode, auth_context=None) -> str:
+    return f"{peer_service_name(node)}.{_auth_namespace(auth_context)}.svc.cluster.local"
 
 
-def _service_host(service_name: str) -> str:
-    return f"{service_name}.{_launcher_namespace()}.svc.cluster.local"
+def _service_host(service_name: str, namespace: str) -> str:
+    return f"{service_name}.{namespace}.svc.cluster.local"
 
 
 def rpc_service_name(node: ManagedNode) -> str:
@@ -101,12 +128,12 @@ def pvc_name(node: ManagedNode) -> str:
     return f"data-{workload_name(node)}-0"
 
 
-def rpc_service_host(node: ManagedNode) -> str:
-    return f"{rpc_service_name(node)}.{_launcher_namespace()}.svc.cluster.local"
+def rpc_service_host(node: ManagedNode, auth_context=None) -> str:
+    return f"{rpc_service_name(node)}.{_auth_namespace(auth_context)}.svc.cluster.local"
 
 
-def upstream_rpc_url(node: ManagedNode, path: str) -> str:
-    return f"http://{rpc_service_host(node)}:{node.api_port}{path}"
+def upstream_rpc_url(node: ManagedNode, path: str, auth_context=None) -> str:
+    return f"http://{rpc_service_host(node, auth_context)}:{node.api_port}{path}"
 
 
 def dashboard_proxy_path(node: ManagedNode) -> str:
@@ -200,7 +227,7 @@ def _shared_genesis_contents() -> str:
         raise NodeLauncherError(f"Failed to read shared genesis file: {exc}") from exc
 
 
-def _bootstrap_nodes(node: ManagedNode) -> list[str]:
+def _bootstrap_nodes(node: ManagedNode, auth_context=None) -> list[str]:
     if node.name == "genesis" or not node.pk:
         return []
 
@@ -218,15 +245,15 @@ def _bootstrap_nodes(node: ManagedNode) -> list[str]:
         .first()
     )
     if seed:
-        return [f"{peer_service_host(seed)}:{seed.p2p_port}"]
+        return [f"{peer_service_host(seed, auth_context)}:{seed.p2p_port}"]
 
     service_name = (
         getattr(settings, "NODE_LAUNCHER_GENESIS_SEED_SERVICE_NAME", "") or "kumquat-blockchain-headless"
     ).strip()
-    return [f"{_service_host(service_name)}:{configured_seed_port}"]
+    return [f"{_service_host(service_name, _auth_namespace(auth_context))}:{configured_seed_port}"]
 
 
-def render_config(node: ManagedNode) -> str:
+def render_config(node: ManagedNode, auth_context=None) -> str:
     data_dir = "/data/kumquat/data"
     node_id_line = f'node_id = "{node.reward_address}"\n' if node.reward_address else ""
     shared_chain_id = int(getattr(settings, "NODE_LAUNCHER_CHAIN_ID", 1337))
@@ -236,7 +263,7 @@ def render_config(node: ManagedNode) -> str:
             f"but the launcher is pinned to shared chain_id={shared_chain_id}."
         )
     genesis_hash = _shared_genesis_hash()
-    bootstrap_nodes = _bootstrap_nodes(node)
+    bootstrap_nodes = _bootstrap_nodes(node, auth_context)
     bootstrap_nodes_block = ",\n".join(f'  "{entry}"' for entry in bootstrap_nodes)
     return f"""[node]
 node_name = "{node.name}"
@@ -269,6 +296,7 @@ chain_id = {node.chain_id}
 genesis_hash = "{genesis_hash}"
 enable_mining = {"true" if node.enable_mining else "false"}
 mining_threads = {node.mining_threads}
+hybrid_activation_height = {int(getattr(settings, "NODE_LAUNCHER_HYBRID_ACTIVATION_HEIGHT", 0))}
 target_block_time = 5
 initial_difficulty = 100
 difficulty_adjustment_interval = 2016
@@ -319,20 +347,23 @@ def _managed_label_selector(node: ManagedNode) -> str:
     return f"kumquat.managed-node-id={node.id}"
 
 
-def _read_pod(node: ManagedNode):
+def _read_pod(node: ManagedNode, auth_context=None):
     try:
-        return _core_api().read_namespaced_pod(name=pod_name(node), namespace=_launcher_namespace())
+        return _core_api(auth_context).read_namespaced_pod(
+            name=pod_name(node),
+            namespace=_auth_namespace(auth_context),
+        )
     except ApiException as exc:
         if exc.status == 404:
             return None
         raise NodeLauncherError(f"Failed to inspect pod for {node.name}: {exc}") from exc
 
 
-def _read_statefulset(node: ManagedNode):
+def _read_statefulset(node: ManagedNode, auth_context=None):
     try:
-        return _apps_api().read_namespaced_stateful_set(
+        return _apps_api(auth_context).read_namespaced_stateful_set(
             name=workload_name(node),
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
         )
     except ApiException as exc:
         if exc.status == 404:
@@ -340,7 +371,7 @@ def _read_statefulset(node: ManagedNode):
         raise NodeLauncherError(f"Failed to inspect workload for {node.name}: {exc}") from exc
 
 
-def _build_configmap(node: ManagedNode):
+def _build_configmap(node: ManagedNode, auth_context=None):
     return k8s_client.V1ConfigMap(
         metadata=k8s_client.V1ObjectMeta(
             name=configmap_name(node),
@@ -348,7 +379,7 @@ def _build_configmap(node: ManagedNode):
             labels=_managed_labels(node),
         ),
         data={
-            "config.toml": render_config(node),
+            "config.toml": render_config(node, auth_context),
             "genesis.toml": render_genesis(node),
         },
     )
@@ -458,25 +489,29 @@ exec /usr/local/bin/kumquat \
     )
 
 
-def _create_or_replace_configmap(node: ManagedNode):
-    core = _core_api()
-    configmap = _build_configmap(node)
+def _create_or_replace_configmap(node: ManagedNode, auth_context=None):
+    namespace = _auth_namespace(auth_context)
+    core = _core_api(auth_context)
+    configmap = _build_configmap(node, auth_context)
+    configmap.metadata.namespace = namespace
     try:
-        core.create_namespaced_config_map(namespace=_launcher_namespace(), body=configmap)
+        core.create_namespaced_config_map(namespace=namespace, body=configmap)
     except ApiException as exc:
         if exc.status != 409:
             raise NodeLauncherError(f"Failed to create config for {node.name}: {exc}") from exc
         core.replace_namespaced_config_map(
             name=configmap_name(node),
-            namespace=_launcher_namespace(),
+            namespace=namespace,
             body=configmap,
         )
 
 
-def _create_service_if_missing(node: ManagedNode, service_body):
-    core = _core_api()
+def _create_service_if_missing(node: ManagedNode, service_body, auth_context=None):
+    namespace = _auth_namespace(auth_context)
+    core = _core_api(auth_context)
+    service_body.metadata.namespace = namespace
     try:
-        core.create_namespaced_service(namespace=_launcher_namespace(), body=service_body)
+        core.create_namespaced_service(namespace=namespace, body=service_body)
     except ApiException as exc:
         if exc.status != 409:
             raise NodeLauncherError(
@@ -484,40 +519,52 @@ def _create_service_if_missing(node: ManagedNode, service_body):
             ) from exc
         core.patch_namespaced_service(
             name=service_body.metadata.name,
-            namespace=_launcher_namespace(),
+            namespace=namespace,
             body={"spec": {"ports": [{"name": port.name, "port": port.port, "targetPort": port.target_port} for port in service_body.spec.ports]}},
         )
 
 
-def _delete_named_service(name: str):
+def _delete_named_service(name: str, auth_context=None):
     try:
-        _core_api().delete_namespaced_service(name=name, namespace=_launcher_namespace())
+        _core_api(auth_context).delete_namespaced_service(
+            name=name,
+            namespace=_auth_namespace(auth_context),
+        )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete service {name}: {exc}") from exc
 
 
-def _delete_named_configmap(name: str):
+def _delete_named_configmap(name: str, auth_context=None):
     try:
-        _core_api().delete_namespaced_config_map(name=name, namespace=_launcher_namespace())
+        _core_api(auth_context).delete_namespaced_config_map(
+            name=name,
+            namespace=_auth_namespace(auth_context),
+        )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete configmap {name}: {exc}") from exc
 
 
-def _delete_pod(name: str):
+def _delete_pod(name: str, auth_context=None):
     try:
-        _core_api().delete_namespaced_pod(name=name, namespace=_launcher_namespace())
+        _core_api(auth_context).delete_namespaced_pod(
+            name=name,
+            namespace=_auth_namespace(auth_context),
+        )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete pod {name}: {exc}") from exc
 
 
-def _wait_for_statefulset_absence(name: str, timeout_seconds: int = 60):
+def _wait_for_statefulset_absence(name: str, auth_context=None, timeout_seconds: int = 60):
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         try:
-            _apps_api().read_namespaced_stateful_set(name=name, namespace=_launcher_namespace())
+            _apps_api(auth_context).read_namespaced_stateful_set(
+                name=name,
+                namespace=_auth_namespace(auth_context),
+            )
         except ApiException as exc:
             if exc.status == 404:
                 return
@@ -526,10 +573,10 @@ def _wait_for_statefulset_absence(name: str, timeout_seconds: int = 60):
     raise NodeLauncherError(f"Timed out waiting for workload {name} to be deleted.")
 
 
-def _list_managed_pvcs(node: ManagedNode):
+def _list_managed_pvcs(node: ManagedNode, auth_context=None):
     try:
-        pvc_list = _core_api().list_namespaced_persistent_volume_claim(
-            namespace=_launcher_namespace(),
+        pvc_list = _core_api(auth_context).list_namespaced_persistent_volume_claim(
+            namespace=_auth_namespace(auth_context),
             label_selector=_managed_label_selector(node),
         )
     except ApiException as exc:
@@ -540,24 +587,24 @@ def _list_managed_pvcs(node: ManagedNode):
     return sorted(names)
 
 
-def _delete_named_pvc(name: str):
+def _delete_named_pvc(name: str, auth_context=None):
     try:
-        _core_api().delete_namespaced_persistent_volume_claim(
+        _core_api(auth_context).delete_namespaced_persistent_volume_claim(
             name=name,
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
         )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete PVC {name}: {exc}") from exc
 
 
-def _wait_for_pvc_absence(name: str, timeout_seconds: int = 60):
+def _wait_for_pvc_absence(name: str, auth_context=None, timeout_seconds: int = 60):
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         try:
-            _core_api().read_namespaced_persistent_volume_claim(
+            _core_api(auth_context).read_namespaced_persistent_volume_claim(
                 name=name,
-                namespace=_launcher_namespace(),
+                namespace=_auth_namespace(auth_context),
             )
         except ApiException as exc:
             if exc.status == 404:
@@ -567,29 +614,33 @@ def _wait_for_pvc_absence(name: str, timeout_seconds: int = 60):
     raise NodeLauncherError(f"Timed out waiting for PVC {name} to be deleted.")
 
 
-def _ensure_workload(node: ManagedNode) -> str:
+def _ensure_workload(node: ManagedNode, auth_context=None) -> str:
     image = _resolve_node_image(node)
-    _create_or_replace_configmap(node)
+    namespace = _auth_namespace(auth_context)
+    _create_or_replace_configmap(node, auth_context)
     _create_service_if_missing(
         node,
         _build_service(node, peer_service_name(node), "p2p", node.p2p_port, headless=True),
+        auth_context,
     )
     _create_service_if_missing(
         node,
         _build_service(node, rpc_service_name(node), "rpc", node.api_port),
+        auth_context,
     )
 
-    apps = _apps_api()
+    apps = _apps_api(auth_context)
     body = _build_statefulset(node, image)
+    body.metadata.namespace = namespace
     try:
-        apps.create_namespaced_stateful_set(namespace=_launcher_namespace(), body=body)
+        apps.create_namespaced_stateful_set(namespace=namespace, body=body)
     except ApiException as exc:
         if exc.status != 409:
             raise NodeLauncherError(f"Failed to create workload for {node.name}: {exc}") from exc
 
         apps.patch_namespaced_stateful_set(
             name=workload_name(node),
-            namespace=_launcher_namespace(),
+            namespace=namespace,
             body={
                 "spec": {
                     "replicas": 1,
@@ -611,19 +662,19 @@ def _ensure_workload(node: ManagedNode) -> str:
     return image
 
 
-def launch_node(node: ManagedNode) -> ManagedNode:
-    image = _ensure_workload(node)
+def launch_node(node: ManagedNode, auth_context=None) -> ManagedNode:
+    image = _ensure_workload(node, auth_context)
     node.image = image
     node.status = ManagedNode.STATUS_PENDING
     node.last_error = ""
     node.stopped_at = None
     node.last_status_at = timezone.now()
     node.save(update_fields=["image", "status", "last_error", "stopped_at", "last_status_at", "updated_at"])
-    return refresh_node(node)
+    return refresh_node(node, auth_context)
 
 
-def stop_node(node: ManagedNode) -> ManagedNode:
-    statefulset = _read_statefulset(node)
+def stop_node(node: ManagedNode, auth_context=None) -> ManagedNode:
+    statefulset = _read_statefulset(node, auth_context)
     if statefulset is None:
         node.status = ManagedNode.STATUS_STOPPED
         node.stopped_at = timezone.now()
@@ -631,106 +682,106 @@ def stop_node(node: ManagedNode) -> ManagedNode:
         node.save(update_fields=["status", "stopped_at", "last_status_at", "updated_at"])
         return node
 
-    _apps_api().patch_namespaced_stateful_set(
+    _apps_api(auth_context).patch_namespaced_stateful_set(
         name=workload_name(node),
-        namespace=_launcher_namespace(),
+        namespace=_auth_namespace(auth_context),
         body={"spec": {"replicas": 0}},
     )
     node.status = ManagedNode.STATUS_STOPPED
     node.stopped_at = timezone.now()
     node.last_status_at = timezone.now()
     node.save(update_fields=["status", "stopped_at", "last_status_at", "updated_at"])
-    return refresh_node(node)
+    return refresh_node(node, auth_context)
 
 
-def restart_node(node: ManagedNode) -> ManagedNode:
-    statefulset = _read_statefulset(node)
+def restart_node(node: ManagedNode, auth_context=None) -> ManagedNode:
+    statefulset = _read_statefulset(node, auth_context)
     if statefulset is None:
-        return launch_node(node)
+        return launch_node(node, auth_context)
 
     replicas = getattr(statefulset.spec, "replicas", 0) or 0
     if replicas == 0:
-        _apps_api().patch_namespaced_stateful_set(
+        _apps_api(auth_context).patch_namespaced_stateful_set(
             name=workload_name(node),
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
             body={"spec": {"replicas": 1}},
         )
     else:
-        _delete_pod(pod_name(node))
+        _delete_pod(pod_name(node), auth_context)
 
     node.stopped_at = None
     node.last_error = ""
     node.last_status_at = timezone.now()
     node.save(update_fields=["stopped_at", "last_error", "last_status_at", "updated_at"])
-    return refresh_node(node)
+    return refresh_node(node, auth_context)
 
 
-def delete_container(node: ManagedNode) -> ManagedNode:
-    stop_node(node)
+def delete_container(node: ManagedNode, auth_context=None) -> ManagedNode:
+    stop_node(node, auth_context)
     node.container_name = ""
     node.container_id = ""
     node.save(update_fields=["container_name", "container_id", "updated_at"])
     return node
 
 
-def delete_deployment(node: ManagedNode):
+def delete_deployment(node: ManagedNode, auth_context=None):
     workload = workload_name(node)
 
     try:
-        _apps_api().patch_namespaced_stateful_set(
+        _apps_api(auth_context).patch_namespaced_stateful_set(
             name=workload,
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
             body={"spec": {"replicas": 0}},
         )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to scale down workload for {node.name}: {exc}") from exc
 
-    _delete_pod(pod_name(node))
+    _delete_pod(pod_name(node), auth_context)
 
     try:
-        _apps_api().delete_namespaced_stateful_set(
+        _apps_api(auth_context).delete_namespaced_stateful_set(
             name=workload,
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
             propagation_policy="Foreground",
         )
     except ApiException as exc:
         if exc.status != 404:
             raise NodeLauncherError(f"Failed to delete workload for {node.name}: {exc}") from exc
 
-    _wait_for_statefulset_absence(workload)
+    _wait_for_statefulset_absence(workload, auth_context)
 
-    _delete_named_service(rpc_service_name(node))
-    _delete_named_service(peer_service_name(node))
-    _delete_named_configmap(configmap_name(node))
+    _delete_named_service(rpc_service_name(node), auth_context)
+    _delete_named_service(peer_service_name(node), auth_context)
+    _delete_named_configmap(configmap_name(node), auth_context)
 
-    for pvc in _list_managed_pvcs(node):
-        _delete_named_pvc(pvc)
-    for pvc in _list_managed_pvcs(node):
-        _wait_for_pvc_absence(pvc)
+    for pvc in _list_managed_pvcs(node, auth_context):
+        _delete_named_pvc(pvc, auth_context)
+    for pvc in _list_managed_pvcs(node, auth_context):
+        _wait_for_pvc_absence(pvc, auth_context)
 
     node.delete()
 
 
-def restart_runtime_container(container_id: str):
-    _delete_pod(container_id)
+def restart_runtime_container(container_id: str, auth_context=None):
+    _delete_pod(container_id, auth_context)
     return True
 
 
-def delete_runtime_container(container_id: str):
-    _delete_pod(container_id)
+def delete_runtime_container(container_id: str, auth_context=None):
+    _delete_pod(container_id, auth_context)
     return True
 
 
-def tail_logs(node: ManagedNode, lines: int = 120) -> str:
-    pod = _read_pod(node)
+def tail_logs(node: ManagedNode, lines: int = 120, auth_context=None) -> str:
+    pod = _read_pod(node, auth_context)
     if pod is None:
         return node.last_logs or ""
 
     try:
-        output = _core_api().read_namespaced_pod_log(
+        output = _core_api(auth_context).read_namespaced_pod_log(
             name=pod.metadata.name,
-            namespace=_launcher_namespace(),
+            namespace=_auth_namespace(auth_context),
             tail_lines=lines,
         )
     except ApiException as exc:
@@ -762,8 +813,8 @@ def _extract_pod_status_details(pod) -> tuple[str, str]:
     return map_container_status(pod.status.phase or "Pending"), ""
 
 
-def refresh_node(node: ManagedNode) -> ManagedNode:
-    statefulset = _read_statefulset(node)
+def refresh_node(node: ManagedNode, auth_context=None) -> ManagedNode:
+    statefulset = _read_statefulset(node, auth_context)
     if statefulset is None:
         if node.status == ManagedNode.STATUS_RUNNING:
             node.status = ManagedNode.STATUS_EXITED
@@ -783,7 +834,7 @@ def refresh_node(node: ManagedNode) -> ManagedNode:
         node.save(update_fields=["status", "container_name", "container_id", "stopped_at", "last_status_at", "updated_at"])
         return node
 
-    pod = _read_pod(node)
+    pod = _read_pod(node, auth_context)
     if pod is None:
         node.status = ManagedNode.STATUS_PENDING
         node.container_name = ""
@@ -806,9 +857,9 @@ def refresh_node(node: ManagedNode) -> ManagedNode:
 
     try:
         node.last_logs = (
-            _core_api().read_namespaced_pod_log(
+            _core_api(auth_context).read_namespaced_pod_log(
                 name=pod.metadata.name,
-                namespace=_launcher_namespace(),
+                namespace=_auth_namespace(auth_context),
                 tail_lines=120,
             )
             or ""
@@ -820,10 +871,10 @@ def refresh_node(node: ManagedNode) -> ManagedNode:
     return node
 
 
-def list_runtime_containers():
+def list_runtime_containers(auth_context=None):
     try:
-        pods = _core_api().list_namespaced_pod(
-            namespace=_launcher_namespace(),
+        pods = _core_api(auth_context).list_namespaced_pod(
+            namespace=_auth_namespace(auth_context),
             label_selector="kumquat.managed-node=true",
         ).items
     except ApiException as exc:

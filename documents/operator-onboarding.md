@@ -42,6 +42,14 @@ If any of those are missing, stop before attempting deployment work.
 6. Deploy the backend platform add-on if backend or platform changes are included.
 7. Verify `https://kumquat.info/` and `https://kumquat.info/api/healthz`.
 
+## Managed Node Launcher
+
+The website admin dashboard can launch blockchain nodes into an already-provisioned cluster.
+
+- use the existing kubeconfig path in backend env when possible
+- if kubeconfig is not mounted into the backend, a superuser can save a Kubernetes API server, bearer token, base64 CA cert, and namespace in the dashboard for the current session
+- this launcher path is for node and miner deployment only; it does not replace Terraform or cluster provisioning
+
 ## Files And Paths Operators Use Often
 
 - [`infra/aws-secure-platform/environments/production`](../infra/aws-secure-platform/environments/production)
