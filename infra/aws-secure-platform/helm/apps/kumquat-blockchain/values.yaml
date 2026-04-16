@@ -24,6 +24,7 @@ service:
     type: ClusterIP
 
 config:
+  nodeId: ""
   logLevel: info
   enableApi: true
   enableMetrics: true

@@ -10,6 +10,9 @@ data:
   config.toml.tpl: |
     [node]
     node_name = "__NODE_NAME__"
+    {{- if .Values.config.nodeId }}
+    node_id = {{ .Values.config.nodeId | quote }}
+    {{- end }}
     data_dir = "/data/kumquat"
     log_level = {{ .Values.config.logLevel | quote }}
     enable_metrics = {{ .Values.config.enableMetrics }}
