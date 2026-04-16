@@ -97,6 +97,7 @@ You do not need production access for every task, but you should understand the 
 - Do not commit generated VPN profiles or embedded keys
 - Do not assume production cluster access is public
 - When editing product copy, check the homepage source before changing repo-level messaging
+- When creating a Git commit, include a short commit body that states what was done and what remains to be finished so the next developer can pick up the work cleanly
 
 ## Suggested Next Reads
 

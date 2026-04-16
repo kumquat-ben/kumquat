@@ -2,6 +2,7 @@ import hashlib
 import json
 from unittest.mock import patch
 
+from urllib.error import HTTPError
 from django.test import Client, TestCase
 
 from api.models import EarlyAccessSignup, SearchDocument
@@ -183,6 +184,22 @@ class ExplorerPageViewTests(TestCase):
         self.assertContains(response, "259")
         self.assertContains(response, "caught-up")
         self.assertContains(response, "12.34")
+
+    @patch("api.views.urlopen")
+    def test_explorer_home_handles_missing_upstream_summary(self, mock_urlopen):
+        mock_urlopen.side_effect = HTTPError(
+            url="http://explorer.test/api/explorer/summary",
+            code=404,
+            msg="Not Found",
+            hdrs=None,
+            fp=None,
+        )
+
+        with self.settings(EXPLORER_API_URL="http://explorer.test"):
+            response = self.client.get("/explorer")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Explorer record not found.")
 
     def test_explorer_home_redirects_address_search_to_canonical_page(self):
         address = encode_address(hashlib.sha256(b"wallet").digest())

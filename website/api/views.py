@@ -705,7 +705,7 @@ def explorer_home_page_view(request):
 
     try:
         summary = _explorer_json_request("/api/explorer/summary", query={"blocks": 12, "transactions": 20})
-    except RuntimeError as exc:
+    except (LookupError, RuntimeError) as exc:
         context["explorer_error"] = str(exc)
         return render(request, "website/explorer_home.html", context)
 
