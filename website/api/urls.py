@@ -30,6 +30,7 @@ from .views import (
     home_page_view,
     messages_view,
     robots_txt_view,
+    search_crawl_enqueue_view,
     sign_in_page_view,
     vonage_sms_callback_view,
     wallet_generate_view,
@@ -38,6 +39,7 @@ from .views import (
 
 urlpatterns = [
     path("", home_page_view, name="home"),
+    path("search/crawl", search_crawl_enqueue_view, name="search-crawl"),
     path("robots.txt", robots_txt_view, name="robots-txt"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="sitemap"),
     path("auth/sign-in", sign_in_page_view, name="sign-in"),
