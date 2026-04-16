@@ -2,7 +2,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use crate::network::codec::frame::{FramedReader, FramedWriter};
@@ -79,6 +79,9 @@ pub struct PeerHandler {
     /// Channel for outgoing messages
     outgoing_tx: mpsc::Sender<NetMessage>,
 
+    /// Receiver for outgoing messages
+    outgoing_rx: Option<mpsc::Receiver<NetMessage>>,
+
     /// Channel for incoming messages
     incoming_tx: mpsc::Sender<(String, NetMessage)>,
 
@@ -87,9 +90,6 @@ pub struct PeerHandler {
 
     /// Whether this is an outbound connection
     is_outbound: bool,
-
-    /// Channel for direct message responses
-    response_tx: Option<mpsc::Sender<(NetMessage, oneshot::Sender<NetMessage>)>>,
 
     /// Reader for the TCP stream
     reader: Option<FramedReader<tokio::io::ReadHalf<TcpStream>>>,
@@ -111,7 +111,7 @@ impl PeerHandler {
         incoming_tx: mpsc::Sender<(String, NetMessage)>,
         is_outbound: bool,
     ) -> Self {
-        let (outgoing_tx, _) = mpsc::channel(100);
+        let (outgoing_tx, outgoing_rx) = mpsc::channel(100);
 
         let handler = Self {
             stream: Some(stream),
@@ -122,10 +122,10 @@ impl PeerHandler {
             peer_registry,
             broadcaster,
             outgoing_tx,
+            outgoing_rx: Some(outgoing_rx),
             incoming_tx,
             last_activity: Instant::now(),
             is_outbound,
-            response_tx: None,
             reader: None,
             writer: None,
         };
@@ -215,17 +215,7 @@ impl PeerHandler {
                             info!("Peer {} disconnected: {:?}", self.peer_addr, reason);
                             return Err(PeerHandlerError::PeerDisconnected(reason.clone()));
                         }
-                        NetMessage::Ping(nonce) => {
-                            // Automatically respond to pings
-                            let nonce_copy = *nonce;
-
-                            // We need to break out of the loop to avoid borrowing issues
-                            // Send the pong response
-                            let _ = self.send(NetMessage::Pong(nonce_copy)).await;
-
-                            // Return the ping message so the caller knows we received something
-                            return Ok(Some(message));
-                        }
+                        NetMessage::Ping(_) => return Ok(Some(message)),
                         NetMessage::Pong(_) => {
                             // Ignore pongs in recv() - they're handled by the main loop
                             continue;
@@ -258,7 +248,10 @@ impl PeerHandler {
         }
     }
 
-    /// Send a request and wait for a specific response
+    /// Send a request and wait for a specific response.
+    ///
+    /// The running network routes responses through the message router instead
+    /// of using this direct request/response helper.
     pub async fn send_request(
         &mut self,
         request: NetMessage,
@@ -309,17 +302,9 @@ impl PeerHandler {
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Connected);
 
-        // Set up message channels
-        let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
-        self.outgoing_tx = outgoing_tx.clone();
-
-        // Set up response channels
-        let (response_tx, mut response_rx) = mpsc::channel(100);
-        self.response_tx = Some(response_tx);
-
         // Register with the broadcaster
         self.broadcaster
-            .register_peer(&self.peer_id, outgoing_tx)
+            .register_peer(&self.peer_id, self.outgoing_tx.clone())
             .await;
 
         // Perform handshake
@@ -335,78 +320,98 @@ impl PeerHandler {
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Ready);
 
+        let mut outgoing_rx = match self.outgoing_rx.take() {
+            Some(rx) => rx,
+            None => {
+                error!("Outgoing channel missing for peer {}", self.peer_addr);
+                self.peer_registry
+                    .update_peer_state(&self.peer_id, ConnectionState::Failed);
+                self.broadcaster.unregister_peer(&self.peer_id).await;
+                return;
+            }
+        };
+
+        let mut writer = match self.writer.take() {
+            Some(writer) => writer,
+            None => {
+                error!("Writer missing for peer {}", self.peer_addr);
+                self.peer_registry
+                    .update_peer_state(&self.peer_id, ConnectionState::Failed);
+                self.broadcaster.unregister_peer(&self.peer_id).await;
+                return;
+            }
+        };
+
+        let writer_peer_addr = self.peer_addr;
+        let writer_peer_id = self.peer_id.clone();
+        let writer_peer_registry = self.peer_registry.clone();
+
+        let writer_task = tokio::spawn(async move {
+            while let Some(message) = outgoing_rx.recv().await {
+                debug!("Sending message to peer {}: {:?}", writer_peer_addr, message);
+                if let Err(err) = writer.write_message(&message).await {
+                    error!(
+                        "Failed to send message to peer {}: {:?}",
+                        writer_peer_addr, err
+                    );
+                    writer_peer_registry
+                        .update_peer_state(&writer_peer_id, ConnectionState::Disconnected);
+                    return;
+                }
+                writer_peer_registry.update_peer_last_seen(&writer_peer_id);
+            }
+        });
+
         // Main message loop
         loop {
             // Check for idle timeout
             if self.last_activity.elapsed() > Duration::from_secs(IDLE_TIMEOUT) {
                 warn!("Connection with peer {} timed out", self.peer_addr);
-                let _ = self.send_disconnect(DisconnectReason::Timeout).await;
+                let _ = self
+                    .outgoing_tx
+                    .send(NetMessage::Disconnect(DisconnectReason::Timeout))
+                    .await;
                 break;
             }
 
-            tokio::select! {
-                // Handle outgoing messages
-                Some(message) = outgoing_rx.recv() => {
-                    if let Err(e) = self.send(message).await {
-                        error!("Failed to send message to peer {}: {:?}", self.peer_addr, e);
+            if writer_task.is_finished() {
+                warn!("Writer task for peer {} exited", self.peer_addr);
+                break;
+            }
+
+            match self.recv().await {
+                Ok(Some(NetMessage::Ping(nonce))) => {
+                    let _ = self.outgoing_tx.send(NetMessage::Pong(nonce)).await;
+                }
+                Ok(Some(message)) => {
+                    if let Err(e) = self.incoming_tx.send((self.peer_id.clone(), message)).await {
+                        error!("Failed to route message from peer {}: {:?}", self.peer_addr, e);
                         break;
                     }
                 }
-
-                // Handle response requests
-                Some((request, response_tx)) = response_rx.recv() => {
-                    match self.send_request(request).await {
-                        Ok(response) => {
-                            if response_tx.send(response).is_err() {
-                                error!("Failed to send response to requester");
-                            }
-                        },
-                        Err(e) => {
-                            error!("Failed to get response from peer {}: {:?}", self.peer_addr, e);
-                            break;
-                        }
-                    }
+                Ok(None) => {
+                    info!("Peer {} closed the connection", self.peer_addr);
+                    break;
                 }
-
-                // Handle incoming messages
-                result = self.recv() => {
-                    match result {
-                        Ok(Some(message)) => {
-                            // Route the message
-                            if let Err(e) = self.incoming_tx.send((self.peer_id.clone(), message)).await {
-                                error!("Failed to route message from peer {}: {:?}", self.peer_addr, e);
-                                break;
-                            }
-                        },
-                        Ok(None) => {
-                            info!("Peer {} closed the connection", self.peer_addr);
-                            break;
-                        },
-                        Err(PeerHandlerError::PeerDisconnected(reason)) => {
-                            info!("Peer {} disconnected: {:?}", self.peer_addr, reason);
-                            break;
-                        },
-                        Err(PeerHandlerError::Timeout) => {
-                            debug!(
-                                "No message received from peer {} before message timeout; keeping connection alive",
-                                self.peer_addr
-                            );
-                        },
-                        Err(e) => {
-                            error!("Error receiving message from peer {}: {:?}", self.peer_addr, e);
-                            break;
-                        }
-                    }
+                Err(PeerHandlerError::PeerDisconnected(reason)) => {
+                    info!("Peer {} disconnected: {:?}", self.peer_addr, reason);
+                    break;
                 }
-
-                // Add a timeout to avoid blocking forever
-                _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                    // Just a timeout to check for idle connections
+                Err(PeerHandlerError::Timeout) => {
+                    debug!(
+                        "No message received from peer {} before message timeout; keeping connection alive",
+                        self.peer_addr
+                    );
+                }
+                Err(e) => {
+                    error!("Error receiving message from peer {}: {:?}", self.peer_addr, e);
+                    break;
                 }
             }
         }
 
         // Clean up
+        writer_task.abort();
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Disconnected);
         self.broadcaster.unregister_peer(&self.peer_id).await;

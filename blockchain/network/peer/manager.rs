@@ -282,46 +282,15 @@ impl PeerManager {
 
     /// Broadcast a message to all connected peers
     pub async fn broadcast(&self, message: NetMessage) {
-        let peer_senders = self.peer_senders.read().await;
-
-        for (addr, sender) in peer_senders.iter() {
-            if let Err(e) = sender.send(message.clone()).await {
-                error!("Failed to broadcast message to peer {}: {:?}", addr, e);
-            }
-        }
+        self.broadcaster.broadcast(message).await;
     }
 
     /// Send a message to a specific peer by node ID
     pub async fn send_to_peer(&self, node_id: &str, message: NetMessage) -> bool {
-        // Look up the peer address
-        let addr = {
-            let node_id_to_addr = self.node_id_to_addr.read().await;
-            match node_id_to_addr.get(node_id) {
-                Some(addr) => *addr,
-                None => {
-                    warn!("Unknown peer node ID: {}", node_id);
-                    return false;
-                }
-            }
-        };
-
-        // Get the sender
-        let sender = {
-            let peer_senders = self.peer_senders.read().await;
-            match peer_senders.get(&addr) {
-                Some(sender) => sender.clone(),
-                None => {
-                    warn!("No sender for peer {}", addr);
-                    return false;
-                }
-            }
-        };
-
-        // Send the message
-        match sender.send(message).await {
-            Ok(_) => true,
-            Err(e) => {
-                error!("Failed to send message to peer {}: {:?}", addr, e);
+        match self.broadcaster.send_to_peer(node_id, message).await {
+            Ok(sent) => sent,
+            Err(err) => {
+                warn!("Failed to send message to peer {}: {}", node_id, err);
                 false
             }
         }
