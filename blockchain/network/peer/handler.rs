@@ -386,6 +386,12 @@ impl PeerHandler {
                             info!("Peer {} disconnected: {:?}", self.peer_addr, reason);
                             break;
                         },
+                        Err(PeerHandlerError::Timeout) => {
+                            debug!(
+                                "No message received from peer {} before message timeout; keeping connection alive",
+                                self.peer_addr
+                            );
+                        },
                         Err(e) => {
                             error!("Error receiving message from peer {}: {:?}", self.peer_addr, e);
                             break;
