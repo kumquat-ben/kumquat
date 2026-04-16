@@ -40,6 +40,7 @@ config:
   chainId: 1337
   enableMining: true
   miningThreads: 1
+  hybridActivationHeight: 0
   targetBlockTime: 5
   initialDifficulty: 100
   difficultyAdjustmentInterval: 2016

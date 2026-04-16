@@ -46,6 +46,7 @@ data:
     chain_id = {{ int .Values.config.chainId }}
     enable_mining = {{ .Values.config.enableMining }}
     mining_threads = {{ int .Values.config.miningThreads }}
+    hybrid_activation_height = {{ int .Values.config.hybridActivationHeight }}
     target_block_time = {{ int .Values.config.targetBlockTime }}
     initial_difficulty = {{ int .Values.config.initialDifficulty }}
     difficulty_adjustment_interval = {{ int .Values.config.difficultyAdjustmentInterval }}
