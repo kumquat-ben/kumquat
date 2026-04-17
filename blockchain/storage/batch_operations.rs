@@ -151,6 +151,85 @@ mod regression_tests {
 
         assert_eq!(projected.root_hash, recomputed.root_hash);
     }
+
+    #[test]
+    fn reward_only_commit_root_matches_recalculated_persisted_root() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Arc::new(RocksDBStore::new(temp_dir.path()).unwrap());
+        let block_store = Arc::new(BlockStore::new(kv_store.as_ref()));
+        let tx_store = Arc::new(TxStore::new(kv_store.as_ref()));
+        let state_store = Arc::new(StateStore::new(kv_store.as_ref()));
+        let batch_manager = BatchOperationManager::new(
+            kv_store.clone(),
+            block_store.clone(),
+            tx_store,
+            state_store.clone(),
+        );
+
+        let miner = [9; 32];
+        let block_hash = [4; 32];
+        let timestamp = 12345;
+        let reward_token_ids = crate::storage::block_store::reward_outcome(miner, 1, &block_hash)
+            .into_iter()
+            .map(|token| token.token_id)
+            .collect::<Vec<_>>();
+
+        let projected = state_store
+            .calculate_projected_state_root_with_block_reward(
+                1,
+                timestamp,
+                &[],
+                &miner,
+                &[],
+                &block_hash,
+            )
+            .unwrap();
+        let state_changes = state_store
+            .project_state_changes(1, &[], &miner, &[], Some(&block_hash))
+            .unwrap();
+
+        let block = Block {
+            height: 1,
+            hash: block_hash,
+            prev_hash: [0; 32],
+            timestamp,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: state_store
+                .calculate_projected_state_root(1, timestamp, &[], &miner, &[])
+                .unwrap()
+                .root_hash,
+            reward_token_ids: reward_token_ids.clone(),
+            result_commitment: crate::storage::block_store::result_commitment(
+                &block_hash,
+                &projected.root_hash,
+                &reward_token_ids,
+                &[],
+            ),
+            state_root: projected.root_hash,
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 1,
+            poh_seq: 1,
+            poh_hash: [0; 32],
+            difficulty: 1,
+            total_difficulty: 1,
+        };
+
+        batch_manager
+            .commit_block(&block, &[], &state_changes)
+            .unwrap();
+
+        let persisted_root = state_store
+            .get_state_root_at_height(block.height)
+            .unwrap()
+            .unwrap();
+        let recalculated_root = state_store.calculate_state_root(block.height, timestamp).unwrap();
+
+        assert_eq!(persisted_root.root_hash, block.state_root);
+        assert_eq!(recalculated_root.root_hash, block.state_root);
+        assert_eq!(block_store.get_latest_height(), Some(block.height));
+    }
 }
 
 /// Batch operations manager for atomic updates
@@ -293,8 +372,10 @@ impl<'a> BatchOperationManager<'a> {
 
         // Add state changes to batch
         for (address, state) in state_changes {
+            let normalized_state =
+                StateStore::normalize_account_state(state.clone(), Some(*address));
             let state_key = format!("state:account:{}", hex::encode(address));
-            let state_value = bincode::serialize(state).map_err(|e| {
+            let state_value = bincode::serialize(&normalized_state).map_err(|e| {
                 BatchOperationError::Other(format!("Failed to serialize state: {}", e))
             })?;
 

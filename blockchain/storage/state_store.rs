@@ -620,7 +620,7 @@ impl<'a> StateStore<'a> {
         }
     }
 
-    fn normalize_account_state(
+    pub(crate) fn normalize_account_state(
         mut state: AccountState,
         fallback_owner: Option<Hash>,
     ) -> AccountState {
@@ -1676,7 +1676,10 @@ impl<'a> StateStore<'a> {
         let mut accounts: HashMap<Hash, AccountState> =
             self.get_all_accounts().into_iter().collect();
         for (address, state) in overrides {
-            accounts.insert(*address, state.clone());
+            accounts.insert(
+                *address,
+                Self::normalize_account_state(state.clone(), Some(*address)),
+            );
         }
 
         let mut trie = MerklePatriciaTrie::new();

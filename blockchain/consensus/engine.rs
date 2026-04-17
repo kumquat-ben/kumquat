@@ -756,7 +756,11 @@ mod tests {
         let validation = engine
             .block_validator
             .validate_block(&block, &chain_state.current_target);
-        assert_eq!(validation, BlockValidationResult::Valid);
+        assert_eq!(
+            validation,
+            BlockValidationResult::Valid,
+            "mined block should validate against its projected state root",
+        );
         let result = engine
             .block_processor
             .process_block(&block, &chain_state.current_target, &chain_state)
