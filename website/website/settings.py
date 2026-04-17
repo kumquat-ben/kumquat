@@ -55,6 +55,18 @@ def env_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def static_version():
+    configured = env("STATIC_VERSION", "").strip()
+    if configured:
+        return configured
+
+    css_path = PROJECT_STATIC_DIR / "website" / "css" / "site.css"
+    try:
+        return str(int(css_path.stat().st_mtime))
+    except OSError:
+        return "1"
+
+
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
 ALLOWED_HOSTS = [host.strip() for host in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if host.strip()]
@@ -142,6 +154,7 @@ SEARCH_CRAWLER_USER_AGENT = env(
     "SEARCH_CRAWLER_USER_AGENT",
     "KumquatSearchBot/0.1 (+https://kumquat.info)",
 )
+STATIC_VERSION = static_version()
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -178,6 +191,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "api.context_processors.asset_context",
             ],
         },
     },

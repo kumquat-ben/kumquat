@@ -49,7 +49,7 @@
     {% for json_ld in seo.structured_data_json %}
       <script type="application/ld+json">{{ json_ld|safe }}</script>
     {% endfor %}
-    <link rel="stylesheet" href="{% static 'website/css/site.css' %}" />
+    <link rel="stylesheet" href="{% static 'website/css/site.css' %}?v={{ asset_version }}" />
   </head>
   <body>
     <main class="app-shell">
