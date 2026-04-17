@@ -95,6 +95,33 @@ pub struct ConsensusEngine {
 }
 
 impl ConsensusEngine {
+    pub async fn process_network_block(&self, block: Block) -> BlockProcessingResult {
+        let chain_state = self.chain_state.lock().await.clone();
+        let result = self
+            .block_processor
+            .process_block(&block, &chain_state.current_target, &chain_state)
+            .await;
+
+        if result == BlockProcessingResult::Success {
+            self.update_chain_state(&block).await;
+        }
+
+        result
+    }
+
+    pub async fn rollback_to_height(&self, height: u64) -> Result<(), String> {
+        let latest_height = self.block_store.get_latest_height().unwrap_or(0);
+        if latest_height <= height {
+            return Ok(());
+        }
+
+        for rollback_height in (height + 1..=latest_height).rev() {
+            self.block_processor.rollback_block(rollback_height).await?;
+        }
+
+        self.sync_chain_state_with_committed_tip().await
+    }
+
     fn committed_chain_state(&self) -> Result<ChainState, String> {
         let Some(tip_height) = self.block_store.get_latest_height() else {
             return Err("No committed tip found in block store".to_string());
@@ -103,17 +130,37 @@ impl ConsensusEngine {
         let tip_block = self
             .block_store
             .get_block_by_height(tip_height)
-            .map_err(|err| format!("Failed to load committed tip at height {}: {}", tip_height, err))?
-            .ok_or_else(|| format!("Committed tip height {} missing from block store", tip_height))?;
+            .map_err(|err| {
+                format!(
+                    "Failed to load committed tip at height {}: {}",
+                    tip_height, err
+                )
+            })?
+            .ok_or_else(|| {
+                format!(
+                    "Committed tip height {} missing from block store",
+                    tip_height
+                )
+            })?;
 
         let persisted_root = self
             .state_store
             .get_state_root_at_height(tip_height)
-            .map_err(|err| format!("Failed to load persisted state root at height {}: {}", tip_height, err))?;
+            .map_err(|err| {
+                format!(
+                    "Failed to load persisted state root at height {}: {}",
+                    tip_height, err
+                )
+            })?;
         let calculated_root = self
             .state_store
             .calculate_state_root(tip_height, tip_block.timestamp)
-            .map_err(|err| format!("Failed to calculate state root at height {}: {}", tip_height, err))?;
+            .map_err(|err| {
+                format!(
+                    "Failed to calculate state root at height {}: {}",
+                    tip_height, err
+                )
+            })?;
 
         let selected_root = match persisted_root {
             Some(root) => {
@@ -356,19 +403,7 @@ impl ConsensusEngine {
             let mut block_rx = rx;
             while let Some(block) = block_rx.recv().await {
                 debug!("Received block from network: height={}", block.height);
-
-                // Get the chain state
-                let chain_state_guard = engine.chain_state.lock().await;
-
-                // Process the block
-                let result = engine
-                    .block_processor
-                    .process_block(
-                        &block,
-                        &chain_state_guard.current_target,
-                        &chain_state_guard,
-                    )
-                    .await;
+                let result = engine.process_network_block(block).await;
                 match result {
                     BlockProcessingResult::Success => {
                         debug!("Block processed: Success");
@@ -449,20 +484,10 @@ impl ConsensusEngine {
     async fn handle_new_block(&self, block: Block) {
         info!("Received new block at height {}", block.height);
 
-        // Get the current chain state
-        let chain_state = self.chain_state.lock().await.clone();
-
-        // Process the block using the block processor
-        let result = self
-            .block_processor
-            .process_block(&block, &chain_state.current_target, &chain_state)
-            .await;
+        let result = self.process_network_block(block.clone()).await;
 
         match result {
             BlockProcessingResult::Success => {
-                // Update the chain state
-                self.update_chain_state(&block).await;
-
                 info!("Block processed successfully at height {}", block.height);
             }
             BlockProcessingResult::AlreadyKnown => {
@@ -506,7 +531,10 @@ impl ConsensusEngine {
                 );
             }
             Err(err) => {
-                error!("Failed to synchronize chain state after block {}: {}", block.height, err);
+                error!(
+                    "Failed to synchronize chain state after block {}: {}",
+                    block.height, err
+                );
             }
         }
     }
@@ -534,7 +562,10 @@ impl ConsensusEngine {
         }
 
         if let Err(err) = self.sync_chain_state_with_committed_tip().await {
-            error!("Refusing to mine with inconsistent committed tip state: {}", err);
+            error!(
+                "Refusing to mine with inconsistent committed tip state: {}",
+                err
+            );
             let mut telemetry = self.telemetry.write().await;
             telemetry.failed_mining_attempts += 1;
             telemetry.last_error = Some(err);
@@ -618,8 +649,8 @@ mod tests {
     use super::*;
     use crate::consensus::telemetry::new_consensus_telemetry;
     use crate::consensus::validation::BlockValidationResult;
-    use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
     use tempfile::tempdir;
     use tokio::time::{sleep, Duration};
 
@@ -768,12 +799,7 @@ mod tests {
             miner: [0u8; 32],
             pre_reward_state_root: genesis_root.root_hash,
             reward_token_ids: vec![],
-            result_commitment: result_commitment(
-                &[9u8; 32],
-                &genesis_root.root_hash,
-                &[],
-                &[],
-            ),
+            result_commitment: result_commitment(&[9u8; 32], &genesis_root.root_hash, &[], &[]),
             state_root: genesis_root.root_hash,
             tx_root: [0u8; 32],
             nonce: 0,
@@ -803,7 +829,10 @@ mod tests {
 
         let first_block = {
             let producer = engine.block_producer.lock().await;
-            producer.mine_block().await.expect("expected first mined block")
+            producer
+                .mine_block()
+                .await
+                .expect("expected first mined block")
         };
         assert_eq!(first_block.pre_reward_state_root, genesis_root.root_hash);
         let first_state = engine.chain_state.lock().await.clone();
@@ -824,7 +853,10 @@ mod tests {
 
         let second_block = {
             let producer = engine.block_producer.lock().await;
-            producer.mine_block().await.expect("expected second mined block")
+            producer
+                .mine_block()
+                .await
+                .expect("expected second mined block")
         };
         assert_eq!(second_block.pre_reward_state_root, first_block.state_root);
         let second_state = engine.chain_state.lock().await.clone();

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 
+use crate::consensus::block_processor::BlockProcessingResult;
 use crate::consensus::engine::ConsensusEngine;
 use crate::network::events::event_bus::EventBus;
 use crate::network::events::event_types::{NetworkEvent, SyncResult};
@@ -155,6 +156,32 @@ impl SyncService {
         state.last_progress_at = None;
     }
 
+    async fn process_synced_block(
+        block_store: &BlockStore<'static>,
+        consensus: Option<&Arc<ConsensusEngine>>,
+        block: &Block,
+    ) -> Result<BlockProcessingResult, String> {
+        if let Some(consensus) = consensus {
+            if let Ok(Some(existing)) = block_store.get_block_by_height(block.height) {
+                if existing.hash != block.hash {
+                    let rollback_height = block.height.saturating_sub(1);
+                    warn!(
+                        "Detected divergent block at height {}; rolling back to {} before retrying sync",
+                        block.height, rollback_height
+                    );
+                    consensus.rollback_to_height(rollback_height).await?;
+                }
+            }
+
+            Ok(consensus.process_network_block(block.clone()).await)
+        } else {
+            block_store
+                .put_block(block)
+                .map_err(|err| format!("Failed to store synced block {}: {}", block.height, err))?;
+            Ok(BlockProcessingResult::Success)
+        }
+    }
+
     async fn reconcile_sync_state(
         block_store: &BlockStore<'static>,
         sync_state: &Arc<RwLock<SyncState>>,
@@ -206,7 +233,7 @@ impl SyncService {
                 return Ok(false);
             };
 
-            let start_height = latest_height.saturating_add(1);
+            let start_height = latest_height;
             let end_height = state.target_height.max(latest_height);
 
             (
@@ -480,28 +507,39 @@ impl SyncService {
                                 peer_id, block.height
                             );
 
-                            if let Some(consensus) = &consensus {
-                                if let Err(err) = consensus.block_channel().send(block.clone()).await {
+                            let processing_result = match Self::process_synced_block(
+                                &block_store,
+                                consensus.as_ref(),
+                                &block,
+                            )
+                            .await
+                            {
+                                Ok(result) => result,
+                                Err(err) => {
                                     error!(
-                                        "Failed to forward synced block {} to consensus: {}",
-                                        block.height, err
+                                        "Failed to process synced block {} from peer {}: {}",
+                                        block.height, peer_id, err
                                     );
+                                    let mut state = sync_state.write().await;
+                                    if state.in_progress {
+                                        state.failed_requests += 1;
+                                        state.last_progress_at = Some(Instant::now());
+                                    }
                                     continue;
                                 }
-                            } else {
-                                let _ = block_store.put_block(&block);
-                            }
+                            };
 
                             // Update sync state
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
-                                    let awaiting_latest_height =
-                                        state.target_height == state.current_height
-                                            && state.blocks_synced == 0;
+                                    let awaiting_latest_height = state.target_height
+                                        == state.current_height
+                                        && state.blocks_synced == 0;
 
-                                    if awaiting_latest_height && block.height > state.current_height {
-                                        let start_height = state.current_height + 1;
+                                    if awaiting_latest_height && block.height > state.current_height
+                                    {
+                                        let start_height = state.current_height;
                                         let end_height = block.height;
                                         match broadcaster
                                             .send_to_peer(
@@ -540,6 +578,22 @@ impl SyncService {
                                         continue;
                                     }
 
+                                    if !matches!(
+                                        processing_result,
+                                        BlockProcessingResult::Success
+                                            | BlockProcessingResult::AlreadyKnown
+                                    ) {
+                                        warn!(
+                                            "Rejected synced block {} from peer {} with result {:?}",
+                                            block.height, peer_id, processing_result
+                                        );
+                                        state.failed_requests += 1;
+                                        state.last_progress_at = Some(Instant::now());
+                                        continue;
+                                    }
+
+                                    let start_height = state.current_height;
+                                    let end_height = state.target_height.max(block.height);
                                     state.current_height = block.height;
                                     if block.height > state.target_height {
                                         state.target_height = block.height;
@@ -556,8 +610,8 @@ impl SyncService {
                                             let result = SyncResult {
                                                 success: true,
                                                 blocks_synced: state.blocks_synced,
-                                                start_height: state.current_height,
-                                                end_height: state.target_height,
+                                                start_height,
+                                                end_height,
                                                 error: None,
                                             };
 
@@ -610,20 +664,36 @@ impl SyncService {
                         Some((blocks, peer_id)) => {
                             debug!("Received {} blocks from peer {}", blocks.len(), peer_id);
 
-                            if let Some(consensus) = &consensus {
-                                let block_tx = consensus.block_channel();
-                                for block in &blocks {
-                                    if let Err(err) = block_tx.send(block.clone()).await {
-                                        error!(
-                                            "Failed to forward synced block {} to consensus: {}",
-                                            block.height, err
+                            let mut applied_blocks = 0u64;
+                            let mut last_applied_height = None;
+
+                            for block in &blocks {
+                                match Self::process_synced_block(
+                                    &block_store,
+                                    consensus.as_ref(),
+                                    block,
+                                )
+                                .await
+                                {
+                                    Ok(BlockProcessingResult::Success)
+                                    | Ok(BlockProcessingResult::AlreadyKnown) => {
+                                        applied_blocks += 1;
+                                        last_applied_height = Some(block.height);
+                                    }
+                                    Ok(result) => {
+                                        warn!(
+                                            "Rejected synced block {} from peer {} with result {:?}",
+                                            block.height, peer_id, result
                                         );
                                         break;
                                     }
-                                }
-                            } else {
-                                for block in &blocks {
-                                    let _ = block_store.put_block(block);
+                                    Err(err) => {
+                                        error!(
+                                            "Failed to process synced block {} from peer {}: {}",
+                                            block.height, peer_id, err
+                                        );
+                                        break;
+                                    }
                                 }
                             }
 
@@ -631,18 +701,29 @@ impl SyncService {
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
-                                    if let Some(last_block) = blocks.last() {
-                                        state.current_height = last_block.height;
-                                        if last_block.height > state.target_height {
-                                            state.target_height = last_block.height;
+                                    if applied_blocks == 0 {
+                                        state.failed_requests += 1;
+                                        state.last_progress_at = Some(Instant::now());
+                                        continue;
+                                    }
+
+                                    let start_height = state.current_height;
+                                    let end_height = state
+                                        .target_height
+                                        .max(last_applied_height.unwrap_or(state.current_height));
+
+                                    if let Some(last_height) = last_applied_height {
+                                        state.current_height = last_height;
+                                        if last_height > state.target_height {
+                                            state.target_height = last_height;
                                         }
                                     }
-                                    state.blocks_synced += blocks.len() as u64;
+                                    state.blocks_synced += applied_blocks;
                                     state.last_progress_at = Some(Instant::now());
 
                                     // Check if we've reached the target height
-                                    if let Some(last_block) = blocks.last() {
-                                        if last_block.height >= state.target_height {
+                                    if let Some(last_height) = last_applied_height {
+                                        if last_height >= state.target_height {
                                             Self::complete_sync_state(&mut state);
 
                                             // Publish sync completed event
@@ -650,8 +731,8 @@ impl SyncService {
                                                 let result = SyncResult {
                                                     success: true,
                                                     blocks_synced: state.blocks_synced,
-                                                    start_height: state.current_height,
-                                                    end_height: state.target_height,
+                                                    start_height,
+                                                    end_height,
                                                     error: None,
                                                 };
 
@@ -820,7 +901,7 @@ impl SyncService {
         };
 
         // Request blocks from the peer
-        let start_height = current_height + 1;
+        let start_height = current_height;
         let end_height = target_height;
 
         match self
@@ -941,11 +1022,7 @@ mod tests {
         let block_store = Arc::new(BlockStore::new(kv_store));
         let peer_registry = Arc::new(PeerRegistry::new());
         let broadcaster = Arc::new(PeerBroadcaster::new());
-        let service = SyncService::new(
-            block_store.clone(),
-            peer_registry,
-            broadcaster,
-        );
+        let service = SyncService::new(block_store.clone(), peer_registry, broadcaster);
 
         let block = Block {
             height: 100,
