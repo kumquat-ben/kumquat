@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 use crate::storage::block_store::Hash;
 use crate::storage::state::{
-    assignment_index_to_token_id, Denomination, DenominationToken, TokenMintSource,
+    Denomination, DenominationToken, TokenMintSource,
 };
 
 const MAX_MULTI_UNIT_REWARD: u32 = 8;
@@ -95,7 +95,10 @@ fn sample_reward_count(era: &EraWeights, block_hash: &Hash) -> u32 {
         return 0;
     }
 
-    let unit_entropy = uniform_from_word(entropy_word(block_hash, 0));
+    // The raw PoW hash is biased in its leading bytes by the difficulty target, so
+    // reward count must use domain-separated entropy derived from the solved hash
+    // instead of reading the first 32-bit window directly.
+    let unit_entropy = uniform_from_word(reward_entropy_word(block_hash, 0));
     if era.multi_unit_blocks_possible {
         sample_poisson(era.avg_units_per_block, unit_entropy).min(MAX_MULTI_UNIT_REWARD)
     } else if unit_entropy < era.avg_units_per_block {
@@ -139,22 +142,13 @@ fn sample_poisson(lambda: f64, uniform: f64) -> u32 {
     k
 }
 
-fn entropy_word(block_hash: &Hash, window_index: usize) -> u32 {
-    let byte_offset = window_index * 4;
-    if byte_offset + 4 <= block_hash.len() {
-        return u32::from_be_bytes([
-            block_hash[byte_offset],
-            block_hash[byte_offset + 1],
-            block_hash[byte_offset + 2],
-            block_hash[byte_offset + 3],
-        ]);
-    }
-
-    let mut data = Vec::with_capacity(block_hash.len() + 8);
+fn reward_entropy_word(block_hash: &Hash, window_index: usize) -> u32 {
+    let mut data = Vec::with_capacity(block_hash.len() + 32);
     data.extend_from_slice(block_hash);
+    data.extend_from_slice(b"kumquat/reward-count");
     data.extend_from_slice(&(window_index as u64).to_be_bytes());
-    let expanded = crate::crypto::hash::sha256(&data);
-    u32::from_be_bytes([expanded[0], expanded[1], expanded[2], expanded[3]])
+    let digest = crate::crypto::hash::sha256(&data);
+    u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]])
 }
 
 fn uniform_from_word(word: u32) -> f64 {
@@ -164,6 +158,7 @@ fn uniform_from_word(word: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::state::assignment_index_to_token_id;
 
     #[test]
     fn uses_second_era_at_boundary_height() {
@@ -208,5 +203,50 @@ mod tests {
             let minted = reward_tokens_for_block([5u8; 32], block_height, &block_hash);
             assert!(minted.len() <= 1);
         }
+    }
+
+    #[test]
+    fn reward_count_entropy_is_not_coupled_to_low_pow_prefixes() {
+        let hashes = [
+            hex::decode("008dc2505a81759cba2efdac632ff5cdfe75ebe90f6d4f90b68acdac254eb5be")
+                .unwrap(),
+            hex::decode("03b9d64bd9f5d0e0b3c024323775db206ef1214ef7e05c0982434a4011265ffc")
+                .unwrap(),
+            hex::decode("03f3c0440e87a483c4799466500feb7e7af8b364f05bd9ecd36cdb3bd0ca5afe")
+                .unwrap(),
+            hex::decode("0254931c1e54d99ce7ec3307df715ee582d4d8a6cd3b5629e65fc79ae3f3e4b7")
+                .unwrap(),
+            hex::decode("02ebabd0531519428b8edebd57805f22bda72df766c173b4aa2bbd7b5ca01096")
+                .unwrap(),
+            hex::decode("01b2502129fcffcdba0ec2989d8849b545f1585dbbe47abd8d649750c898795b")
+                .unwrap(),
+            hex::decode("022ace8c79a1c201ba31082486f7bf42308225a2faef259e6711dd35cd45d9d4")
+                .unwrap(),
+            hex::decode("02f759d97768422b707bccbfba1e9c06cc85442ba1fcf985fe030fe647a6dad1")
+                .unwrap(),
+            hex::decode("005b449b86bd24d5776dda979113cd28efa2e797e135ff21212505398a21fb54")
+                .unwrap(),
+            hex::decode("004142c3c49b0f2c25c673a7fabc2b9a6e8d91a1ee76493d3d32d836ca225dc9")
+                .unwrap(),
+            hex::decode("0207efaa9bec33274ee80e384036d3372bd67934c98432a433df8954483a7b25")
+                .unwrap(),
+            hex::decode("0144e30223e2b5f1b1b4779c5d72446ccc750c8f34bdab4c41818b0300f613d3")
+                .unwrap(),
+        ];
+
+        let non_zero_rewards = hashes
+            .iter()
+            .enumerate()
+            .filter(|(index, bytes)| {
+                let mut hash = [0u8; 32];
+                hash.copy_from_slice(bytes);
+                !reward_tokens_for_block([9u8; 32], *index as u64 + 1, &hash).is_empty()
+            })
+            .count();
+
+        assert!(
+            non_zero_rewards > 0,
+            "low-prefix PoW hashes should still yield some rewards under era 1"
+        );
     }
 }

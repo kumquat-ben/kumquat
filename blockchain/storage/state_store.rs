@@ -2051,8 +2051,7 @@ impl<'a> StateStore<'a> {
                 .into_iter()
                 .map(|token| token.token_id)
                 .collect::<Vec<_>>();
-        if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids
-        {
+        if block.reward_token_ids != expected_reward_token_ids {
             return Err(StateStoreError::Other(format!(
                 "reward token ids mismatch for block {}",
                 block.height
