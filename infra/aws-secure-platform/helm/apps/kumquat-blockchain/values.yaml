@@ -23,6 +23,11 @@ service:
     enabled: true
     type: ClusterIP
 
+networkPolicy:
+  enabled: false
+  allowRpcFromNamespaces: []
+  allowMetricsFromNamespaces: []
+
 config:
   nodeId: ""
   logLevel: info

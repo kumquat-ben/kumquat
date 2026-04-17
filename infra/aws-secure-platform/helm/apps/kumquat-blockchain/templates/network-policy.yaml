@@ -1,0 +1,52 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kumquat-blockchain.fullname" . }}
+  labels:
+    {{- include "kumquat-blockchain.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kumquat-blockchain.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if or .Values.networkPolicy.allowRpcFromNamespaces .Values.networkPolicy.allowMetricsFromNamespaces }}
+    {{- if .Values.networkPolicy.allowRpcFromNamespaces }}
+    - from:
+        {{- range .Values.networkPolicy.allowRpcFromNamespaces }}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ int .Values.ports.rpc }}
+    {{- end }}
+    {{- if .Values.networkPolicy.allowMetricsFromNamespaces }}
+    - from:
+        {{- range .Values.networkPolicy.allowMetricsFromNamespaces }}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ int .Values.ports.metrics }}
+    {{- end }}
+    {{- else }}
+    []
+    {{- end }}
+  egress:
+    []
+{{- end }}
