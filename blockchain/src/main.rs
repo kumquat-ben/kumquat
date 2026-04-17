@@ -459,7 +459,6 @@ async fn main() {
                 config.consensus.chain_id = 1337;
                 config.consensus.target_block_time = 5;
                 config.consensus.initial_difficulty = 100;
-                config.consensus.enable_mining = true;
             }
             "testnet" => {
                 config.consensus.chain_id = 2;
