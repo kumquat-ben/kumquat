@@ -305,7 +305,7 @@ input:focus {
 
 .explorer-hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(20rem, 0.95fr);
+  grid-template-columns: minmax(0, 1.9fr) minmax(19rem, 0.85fr);
   gap: 0;
   align-items: stretch;
 }
@@ -317,9 +317,28 @@ input:focus {
 
 .explorer-hero-copy {
   display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.9fr);
+  gap: 2.25rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.explorer-hero-main,
+.explorer-hero-support {
+  min-width: 0;
+}
+
+.explorer-hero-main {
+  display: grid;
   align-content: start;
   gap: 1rem;
-  min-width: 0;
+}
+
+.explorer-hero-support {
+  display: grid;
+  align-content: end;
+  gap: 1rem;
+  padding-top: 0.25rem;
 }
 
 .explorer-hero-panel {
@@ -333,12 +352,12 @@ input:focus {
 }
 
 .explorer-hero-copy .section-title {
-  max-width: 7ch;
-  font-size: clamp(3.2rem, 7vw, 6.4rem);
+  max-width: 9ch;
+  font-size: clamp(2.8rem, 5.2vw, 5rem);
 }
 
 .explorer-hero-copy .body-copy {
-  max-width: 34rem;
+  max-width: 22rem;
   margin-top: 0;
 }
 
@@ -398,8 +417,8 @@ input:focus {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.85rem;
   align-items: end;
-  width: min(100%, 40rem);
-  margin-top: 0.5rem;
+  width: 100%;
+  margin-top: 0;
 }
 
 .search-input-wrap {
@@ -586,6 +605,11 @@ input:focus {
   .explorer-hero-copy,
   .explorer-hero-panel {
     padding: 1.3rem;
+  }
+
+  .explorer-hero-copy {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
   }
 
   .explorer-hero-copy .section-title {

@@ -22,30 +22,34 @@
     <section class="explorer-hero explorer-hero-home">
       <div class="explorer-hero-grid">
         <div class="explorer-hero-copy">
-          <p class="section-eyebrow">Public Chain Monitor</p>
-          <h1 class="section-title">Search blocks, transactions, and wallet addresses.</h1>
-          <p class="body-copy">
-            This explorer reads from a dedicated Kumquat node so public traffic stays isolated from mining and operator infrastructure.
-          </p>
-          <form action="/explorer" class="explorer-search-form" method="get" role="search">
-            <label class="search-input-wrap" for="explorer-query">
-              <span class="search-input-label">Search</span>
-              <input
-                id="explorer-query"
-                name="q"
-                placeholder="Block height, tx hash, block hash, or kmq1 address"
-                type="search"
-                value="{{ explorer_query }}"
-              />
-            </label>
-            <button class="button button-primary" type="submit">Open</button>
-          </form>
-          {% if search_error %}
-            <p class="explorer-error">{{ search_error }}</p>
-          {% endif %}
-          {% if explorer_error %}
-            <p class="explorer-error">{{ explorer_error }}</p>
-          {% endif %}
+          <div class="explorer-hero-main">
+            <p class="section-eyebrow">Public Chain Monitor</p>
+            <h1 class="section-title">Search blocks, transactions, and wallet addresses.</h1>
+          </div>
+          <div class="explorer-hero-support">
+            <p class="body-copy">
+              This explorer reads from a dedicated Kumquat node so public traffic stays isolated from mining and operator infrastructure.
+            </p>
+            <form action="/explorer" class="explorer-search-form" method="get" role="search">
+              <label class="search-input-wrap" for="explorer-query">
+                <span class="search-input-label">Search</span>
+                <input
+                  id="explorer-query"
+                  name="q"
+                  placeholder="Block height, tx hash, block hash, or kmq1 address"
+                  type="search"
+                  value="{{ explorer_query }}"
+                />
+              </label>
+              <button class="button button-primary" type="submit">Open</button>
+            </form>
+            {% if search_error %}
+              <p class="explorer-error">{{ search_error }}</p>
+            {% endif %}
+            {% if explorer_error %}
+              <p class="explorer-error">{{ explorer_error }}</p>
+            {% endif %}
+          </div>
         </div>
         {% if summary %}
           <aside class="explorer-hero-panel">
