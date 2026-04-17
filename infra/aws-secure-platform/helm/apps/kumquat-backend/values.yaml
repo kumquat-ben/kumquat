@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260416-144756-be7195a
+  tag: backend-20260417-130522-062cf52-amd64
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -30,7 +30,7 @@ env:
     EXPLORER_API_URL: "http://kumquat-blockchain.kumquat.svc.cluster.local:8545"
     NODE_LAUNCHER_ENABLED: "true"
     NODE_LAUNCHER_KUBERNETES_NAMESPACE: "kumquat"
-    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260416-233200-c727fb4"
+    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260415-174001-9048638"
     NODE_LAUNCHER_IMAGE_PULL_POLICY: "IfNotPresent"
     NODE_LAUNCHER_IMAGE_PULL_SECRETS: "ecr-pull-secret"
     NODE_LAUNCHER_RUST_LOG: "info,kumquat=debug"
