@@ -45,5 +45,6 @@ id_rsa.pub
 id_ed25519
 id_ed25519.pub
 blockchain/data/
+data/
 __pycache__/
 *.py[cod]

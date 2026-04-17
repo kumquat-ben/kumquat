@@ -86,26 +86,6 @@ impl<'a> BlockProducer<'a> {
         let hybrid_active = self.config.hybrid_active_at(next_height);
         if !hybrid_active {
             transactions.retain(|tx| !transaction_uses_hybrid_features(tx));
-        } else {
-            if self.config.hybrid_activation_height > 0
-                && next_height == self.config.hybrid_activation_height
-            {
-                if let Err(err) = self.state_store.migrate_legacy_state_to_hybrid(next_height) {
-                    error!(
-                        "Failed to migrate legacy state at activation height: {}",
-                        err
-                    );
-                }
-            }
-            if let Err(err) = self
-                .state_store
-                .sweep_conversion_order_lifecycle(next_height)
-            {
-                error!(
-                    "Failed to sweep conversion lifecycle before block assembly: {}",
-                    err
-                );
-            }
         }
 
         // Keep the full transaction records

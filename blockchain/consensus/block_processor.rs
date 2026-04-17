@@ -105,11 +105,6 @@ impl<'a> BlockProcessor<'a> {
     ) -> BlockProcessingResult {
         info!("Processing block at height {}", block.height);
 
-        if let Err(err) = self.prepare_hybrid_state_for_block(block.height) {
-            error!("{}", err);
-            return BlockProcessingResult::Error(err);
-        }
-
         // Validate the block
         match self.validator.validate_block(block, target) {
             BlockValidationResult::Valid => {
