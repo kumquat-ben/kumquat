@@ -1443,6 +1443,12 @@ input:focus {
   align-items: center;
 }
 
+.utility-layout.explorer-layout {
+  min-height: 0;
+  display: block;
+  padding: 0 1.25rem 4rem;
+}
+
 .utility-layout-single {
   grid-template-columns: minmax(0, 36rem);
   justify-content: center;
