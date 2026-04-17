@@ -16,6 +16,7 @@ use kumquat::network::start_enhanced_network;
 use kumquat::network::NetworkConfig;
 use kumquat::node_runtime::NodeRuntime;
 use kumquat::storage::state::AccountState;
+use kumquat::storage::block_store::pow_hash;
 use kumquat::storage::Block;
 use kumquat::storage::{
     BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore,
@@ -286,6 +287,7 @@ fn ensure_local_genesis(
 
     genesis_block.pre_reward_state_root = genesis_state_root.root_hash;
     genesis_block.state_root = genesis_state_root.root_hash;
+    genesis_block.hash = pow_hash(&genesis_block.canonical_header());
     genesis_block.result_commitment = kumquat::storage::block_store::result_commitment(
         &genesis_block.hash,
         &genesis_block.state_root,

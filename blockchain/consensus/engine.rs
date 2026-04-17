@@ -870,5 +870,111 @@ mod tests {
                 .validate_block(&second_block, &second_state.current_target),
             BlockValidationResult::Valid
         );
+        assert_eq!(
+            engine
+                .block_processor
+                .process_block(&second_block, &second_state.current_target, &second_state)
+                .await,
+            BlockProcessingResult::Success
+        );
+        engine.update_chain_state(&second_block).await;
+        assert_eq!(block_store.get_latest_height(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn generated_genesis_state_stays_consistent_across_second_mined_block() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let genesis_path = temp_dir.path().join("genesis.toml");
+        let mut genesis_config = crate::tools::genesis::GenesisConfig::default();
+        genesis_config.chain_id = 1337;
+        genesis_config.timestamp = 1_744_067_299;
+        genesis_config.initial_difficulty = 100;
+        genesis_config.save(&genesis_path).unwrap();
+
+        let (mut genesis_block, genesis_accounts) =
+            crate::tools::genesis::generate_genesis(&genesis_path).unwrap();
+        for (address, state) in genesis_accounts {
+            let mut state = state;
+            state.assign_token_owner(address);
+            state.sync_balance_from_tokens();
+            state_store.set_account_state(&address, &state).unwrap();
+        }
+        let genesis_root = state_store
+            .calculate_state_root(0, genesis_block.timestamp)
+            .unwrap();
+        state_store.put_state_root(&genesis_root).unwrap().unwrap();
+        genesis_block.pre_reward_state_root = genesis_root.root_hash;
+        genesis_block.state_root = genesis_root.root_hash;
+        genesis_block.hash = crate::storage::block_store::pow_hash(&genesis_block.canonical_header());
+        genesis_block.result_commitment = result_commitment(
+            &genesis_block.hash,
+            &genesis_block.state_root,
+            &genesis_block.reward_token_ids,
+            &genesis_block.conversion_fulfillment_order_ids,
+        );
+        block_store.put_block(&genesis_block).unwrap();
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        config.initial_difficulty = 100;
+        config.target_block_time = 1;
+        config.mining_threads = 1;
+        let telemetry = new_consensus_telemetry(false);
+
+        let engine = ConsensusEngine::new(
+            config,
+            manager_store,
+            block_store.clone(),
+            tx_store,
+            state_store.clone(),
+            network_tx,
+            telemetry,
+        );
+
+        let first_block = {
+            let producer = engine.block_producer.lock().await;
+            producer.mine_block().await.expect("expected first mined block")
+        };
+        let first_state = engine.chain_state.lock().await.clone();
+        assert_eq!(
+            engine
+                .block_processor
+                .process_block(&first_block, &first_state.current_target, &first_state)
+                .await,
+            BlockProcessingResult::Success
+        );
+        engine.update_chain_state(&first_block).await;
+
+        let second_block = {
+            let producer = engine.block_producer.lock().await;
+            producer
+                .mine_block()
+                .await
+                .expect("expected second mined block")
+        };
+        let second_state = engine.chain_state.lock().await.clone();
+        assert_eq!(
+            engine
+                .block_processor
+                .process_block(&second_block, &second_state.current_target, &second_state)
+                .await,
+            BlockProcessingResult::Success
+        );
+        engine.update_chain_state(&second_block).await;
+
+        let committed_state = engine.committed_chain_state();
+        assert!(
+            committed_state.is_ok(),
+            "committed chain state should remain consistent after second block: {:?}",
+            committed_state,
+        );
     }
 }

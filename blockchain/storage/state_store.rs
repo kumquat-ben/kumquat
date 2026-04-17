@@ -9,8 +9,9 @@ use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
 use crate::storage::state::{
-    AccountState, AccountType, CoinInventory, ConversionOrder, ConversionOrderKind,
-    ConversionOrderStatus, ConversionTransaction, Denomination, StateResult, StateRoot,
+    AccountState, AccountType, CoinInventory, ComputeUseMode, ConversionOrder,
+    ConversionOrderKind, ConversionOrderStatus, ConversionTransaction, Denomination,
+    StateResult, StateRoot, TokenMintSource,
 };
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::tx_store::TransactionRecord;
@@ -627,12 +628,206 @@ impl<'a> StateStore<'a> {
         if let Some(owner) = fallback_owner {
             state.assign_token_owner(owner);
         }
+        state.tokens.sort_by_key(|token| token.token_id);
+        state.bills.sort_by_key(|bill| bill.bill_id);
+        state
+            .compute_allocations
+            .sort_by_key(|allocation| allocation.allocation_id);
+        if let Some(order) = state.conversion_order.as_mut() {
+            order.requested_bill_denominations.sort();
+        }
         if state.bills.is_empty() && state.coin_inventory.is_empty() {
             state.sync_hybrid_from_tokens();
         } else {
             state.sync_balance_from_hybrid();
         }
         state
+    }
+
+    pub(crate) fn canonical_account_state_bytes(
+        state: &AccountState,
+    ) -> Result<Vec<u8>, StateStoreError> {
+        #[derive(serde::Serialize)]
+        struct CanonicalCoinInventory {
+            counts: Vec<(Denomination, u64)>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct CanonicalDenominationToken {
+            token_id: Hash,
+            version: u64,
+            assignment_index: u64,
+            owner: Hash,
+            minted_at_block: u64,
+            mint_source: TokenMintSource,
+            metadata: Vec<(String, String)>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct CanonicalBillToken {
+            bill_id: Hash,
+            version: u64,
+            denomination: Denomination,
+            owner: Hash,
+            minted_at_block: u64,
+            mint_source: TokenMintSource,
+            metadata: Vec<(String, String)>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct CanonicalComputeAllocation {
+            allocation_id: Hash,
+            value_cents: u64,
+            mode: ComputeUseMode,
+            created_at_block: u64,
+            expires_at_block: Option<u64>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct CanonicalConversionOrder {
+            order_id: Hash,
+            requester: Hash,
+            kind: ConversionOrderKind,
+            requested_value_cents: u64,
+            requested_coin_inventory: CanonicalCoinInventory,
+            requested_bill_denominations: Vec<Denomination>,
+            created_at_block: u64,
+            eligible_at_block: u64,
+            cycle_end_block: u64,
+            status: ConversionOrderStatus,
+            failure_reason: Option<String>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct CanonicalAccountState {
+            balance: u64,
+            nonce: u64,
+            code: Option<Vec<u8>>,
+            storage: Vec<(Vec<u8>, Vec<u8>)>,
+            last_updated: u64,
+            account_type: AccountType,
+            staked_amount: Option<u64>,
+            delegations: Option<Vec<(Hash, u64)>>,
+            metadata: Vec<(String, String)>,
+            tokens: Vec<CanonicalDenominationToken>,
+            bills: Vec<CanonicalBillToken>,
+            coin_inventory: CanonicalCoinInventory,
+            conversion_order: Option<CanonicalConversionOrder>,
+            compute_allocations: Vec<CanonicalComputeAllocation>,
+        }
+
+        fn canonical_string_map(map: &HashMap<String, String>) -> Vec<(String, String)> {
+            let mut ordered = map
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<Vec<_>>();
+            ordered.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+            ordered
+        }
+
+        fn canonical_coin_inventory(inventory: &CoinInventory) -> CanonicalCoinInventory {
+            let mut counts = inventory
+                .counts
+                .iter()
+                .map(|(denomination, count)| (*denomination, *count))
+                .collect::<Vec<_>>();
+            counts.sort_by(|left, right| left.0.cmp(&right.0));
+            CanonicalCoinInventory { counts }
+        }
+
+        let mut storage = state
+            .storage
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>();
+        storage.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+
+        let delegations = state.delegations.as_ref().map(|entries| {
+            let mut ordered = entries
+                .iter()
+                .map(|(delegator, amount)| (*delegator, *amount))
+                .collect::<Vec<_>>();
+            ordered.sort_by(|left, right| left.0.cmp(&right.0));
+            ordered
+        });
+
+        let tokens = state
+            .tokens
+            .iter()
+            .map(|token| CanonicalDenominationToken {
+                token_id: token.token_id,
+                version: token.version,
+                assignment_index: token.assignment_index,
+                owner: token.owner,
+                minted_at_block: token.minted_at_block,
+                mint_source: token.mint_source,
+                metadata: canonical_string_map(&token.metadata),
+            })
+            .collect::<Vec<_>>();
+
+        let bills = state
+            .bills
+            .iter()
+            .map(|bill| CanonicalBillToken {
+                bill_id: bill.bill_id,
+                version: bill.version,
+                denomination: bill.denomination,
+                owner: bill.owner,
+                minted_at_block: bill.minted_at_block,
+                mint_source: bill.mint_source,
+                metadata: canonical_string_map(&bill.metadata),
+            })
+            .collect::<Vec<_>>();
+
+        let conversion_order = state.conversion_order.as_ref().map(|order| {
+            let mut requested_bill_denominations = order.requested_bill_denominations.clone();
+            requested_bill_denominations.sort();
+            CanonicalConversionOrder {
+                order_id: order.order_id,
+                requester: order.requester,
+                kind: order.kind,
+                requested_value_cents: order.requested_value_cents,
+                requested_coin_inventory: canonical_coin_inventory(&order.requested_coin_inventory),
+                requested_bill_denominations,
+                created_at_block: order.created_at_block,
+                eligible_at_block: order.eligible_at_block,
+                cycle_end_block: order.cycle_end_block,
+                status: order.status,
+                failure_reason: order.failure_reason.clone(),
+            }
+        });
+
+        let compute_allocations = state
+            .compute_allocations
+            .iter()
+            .map(|allocation| CanonicalComputeAllocation {
+                allocation_id: allocation.allocation_id,
+                value_cents: allocation.value_cents,
+                mode: allocation.mode,
+                created_at_block: allocation.created_at_block,
+                expires_at_block: allocation.expires_at_block,
+            })
+            .collect::<Vec<_>>();
+
+        let canonical = CanonicalAccountState {
+            balance: state.balance,
+            nonce: state.nonce,
+            code: state.code.clone(),
+            storage,
+            last_updated: state.last_updated,
+            account_type: state.account_type,
+            staked_amount: state.staked_amount,
+            delegations,
+            metadata: canonical_string_map(&state.metadata),
+            tokens,
+            bills,
+            coin_inventory: canonical_coin_inventory(&state.coin_inventory),
+            conversion_order,
+            compute_allocations,
+        };
+
+        bincode::serialize(&canonical)
+            .map_err(|e| StateStoreError::SerializationError(e.to_string()))
     }
 
     /// Get the state of an account
@@ -1326,8 +1521,7 @@ impl<'a> StateStore<'a> {
         // Insert each account into the trie
         for (addr, state) in sorted_accounts {
             // Serialize the account state
-            let state_bytes = bincode::serialize(&state)
-                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            let state_bytes = Self::canonical_account_state_bytes(&state)?;
 
             // Insert into the trie (address -> state)
             trie.insert(&addr, state_bytes);
@@ -1415,8 +1609,7 @@ impl<'a> StateStore<'a> {
         // Insert each account into the trie
         for (addr, state) in sorted_accounts {
             // Serialize the account state
-            let state_bytes = bincode::serialize(&state)
-                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            let state_bytes = Self::canonical_account_state_bytes(&state)?;
 
             // Insert into the trie (address -> state)
             trie.insert(&addr, state_bytes);
@@ -1687,8 +1880,7 @@ impl<'a> StateStore<'a> {
         sorted_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
 
         for (addr, state) in sorted_accounts {
-            let state_bytes = bincode::serialize(&state)
-                .map_err(|e| StateStoreError::SerializationError(e.to_string()))?;
+            let state_bytes = Self::canonical_account_state_bytes(&state)?;
             trie.insert(&addr, state_bytes);
         }
 

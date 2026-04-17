@@ -230,6 +230,194 @@ mod regression_tests {
         assert_eq!(recalculated_root.root_hash, block.state_root);
         assert_eq!(block_store.get_latest_height(), Some(block.height));
     }
+
+    #[test]
+    fn second_reward_only_commit_stays_consistent_with_realistic_genesis_accounts() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Arc::new(RocksDBStore::new(temp_dir.path()).unwrap());
+        let block_store = Arc::new(BlockStore::new(kv_store.as_ref()));
+        let tx_store = Arc::new(TxStore::new(kv_store.as_ref()));
+        let state_store = Arc::new(StateStore::new(kv_store.as_ref()));
+        let batch_manager = BatchOperationManager::new(
+            kv_store.clone(),
+            block_store.clone(),
+            tx_store,
+            state_store.clone(),
+        );
+
+        let genesis_path = temp_dir.path().join("genesis.toml");
+        let mut genesis_config = crate::tools::genesis::GenesisConfig::default();
+        genesis_config.chain_id = 1337;
+        genesis_config.timestamp = 1_744_067_299;
+        genesis_config.initial_difficulty = 100;
+        genesis_config.save(&genesis_path).unwrap();
+
+        let (mut genesis_block, genesis_accounts) =
+            crate::tools::genesis::generate_genesis(&genesis_path).unwrap();
+        for (address, state) in genesis_accounts {
+            let mut state = state;
+            state.assign_token_owner(address);
+            state.sync_balance_from_tokens();
+            state_store.set_account_state(&address, &state).unwrap();
+        }
+        let genesis_root = state_store
+            .calculate_state_root(0, genesis_block.timestamp)
+            .unwrap();
+        state_store.put_state_root(&genesis_root).unwrap().unwrap();
+        genesis_block.pre_reward_state_root = genesis_root.root_hash;
+        genesis_block.state_root = genesis_root.root_hash;
+        block_store.put_block(&genesis_block).unwrap();
+
+        let miner = [9; 32];
+        let first_hash = [4; 32];
+        let second_hash = [5; 32];
+        let first_timestamp = genesis_block.timestamp + 5;
+        let second_timestamp = first_timestamp + 5;
+
+        let first_projected = state_store
+            .calculate_projected_state_root_with_block_reward(
+                1,
+                first_timestamp,
+                &[],
+                &miner,
+                &[],
+                &first_hash,
+            )
+            .unwrap();
+        let first_state_changes = state_store
+            .project_state_changes(1, &[], &miner, &[], Some(&first_hash))
+            .unwrap();
+        let first_state_changes_again = state_store
+            .project_state_changes(1, &[], &miner, &[], Some(&first_hash))
+            .unwrap();
+        let first_recomputed_again = state_store
+            .calculate_state_root_with_overrides(1, first_timestamp, &first_state_changes_again)
+            .unwrap();
+        let first_recomputed = state_store
+            .calculate_state_root_with_overrides(1, first_timestamp, &first_state_changes)
+            .unwrap();
+        assert_eq!(
+            first_recomputed.root_hash,
+            first_recomputed_again.root_hash,
+            "equivalent first-block projections should yield the same canonical root"
+        );
+        assert_eq!(
+            first_recomputed.root_hash,
+            first_projected.root_hash,
+            "direct override root should match projected root before first commit"
+        );
+        let first_reward_token_ids =
+            crate::storage::block_store::reward_outcome(miner, 1, &first_hash)
+                .into_iter()
+                .map(|token| token.token_id)
+                .collect::<Vec<_>>();
+        let first_block = Block {
+            height: 1,
+            hash: first_hash,
+            prev_hash: genesis_block.hash,
+            timestamp: first_timestamp,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: state_store
+                .calculate_projected_state_root(1, first_timestamp, &[], &miner, &[])
+                .unwrap()
+                .root_hash,
+            reward_token_ids: first_reward_token_ids.clone(),
+            result_commitment: crate::storage::block_store::result_commitment(
+                &first_hash,
+                &first_projected.root_hash,
+                &first_reward_token_ids,
+                &[],
+            ),
+            state_root: first_projected.root_hash,
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 1,
+            poh_seq: 1,
+            poh_hash: [0; 32],
+            difficulty: 100,
+            total_difficulty: 200,
+        };
+        batch_manager
+            .commit_block(&first_block, &[], &first_state_changes)
+            .unwrap();
+        assert_eq!(
+            state_store
+                .get_state_root_at_height(first_block.height)
+                .unwrap()
+                .unwrap()
+                .root_hash,
+            first_block.state_root
+        );
+
+        let second_projected = state_store
+            .calculate_projected_state_root_with_block_reward(
+                2,
+                second_timestamp,
+                &[],
+                &miner,
+                &[],
+                &second_hash,
+            )
+            .unwrap();
+        let second_state_changes = state_store
+            .project_state_changes(2, &[], &miner, &[], Some(&second_hash))
+            .unwrap();
+        let second_reward_token_ids =
+            crate::storage::block_store::reward_outcome(miner, 2, &second_hash)
+                .into_iter()
+                .map(|token| token.token_id)
+                .collect::<Vec<_>>();
+        let second_block = Block {
+            height: 2,
+            hash: second_hash,
+            prev_hash: first_block.hash,
+            timestamp: second_timestamp,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner,
+            pre_reward_state_root: state_store
+                .calculate_projected_state_root(2, second_timestamp, &[], &miner, &[])
+                .unwrap()
+                .root_hash,
+            reward_token_ids: second_reward_token_ids.clone(),
+            result_commitment: crate::storage::block_store::result_commitment(
+                &second_hash,
+                &second_projected.root_hash,
+                &second_reward_token_ids,
+                &[],
+            ),
+            state_root: second_projected.root_hash,
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 2,
+            poh_seq: 2,
+            poh_hash: [0; 32],
+            difficulty: 100,
+            total_difficulty: 300,
+        };
+        batch_manager
+            .commit_block(&second_block, &[], &second_state_changes)
+            .unwrap();
+
+        let second_persisted_root = state_store
+            .get_state_root_at_height(second_block.height)
+            .unwrap()
+            .unwrap();
+        let second_recalculated_root = state_store
+            .calculate_state_root(second_block.height, second_timestamp)
+            .unwrap();
+
+        assert_eq!(
+            second_persisted_root.root_hash,
+            second_block.state_root,
+            "persisted root should match second block root"
+        );
+        assert_eq!(
+            second_recalculated_root.root_hash,
+            second_block.state_root,
+            "recalculated root should match second block root"
+        );
+    }
 }
 
 /// Batch operations manager for atomic updates

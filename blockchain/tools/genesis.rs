@@ -233,8 +233,11 @@ impl GenesisConfig {
         sorted_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
 
         for (address, state) in sorted_accounts {
-            let state_bytes = bincode::serialize(&state)
-                .map_err(|e| format!("Failed to serialize genesis account state: {}", e))?;
+            let normalized =
+                crate::storage::state_store::StateStore::normalize_account_state(state, Some(address));
+            let state_bytes =
+                crate::storage::state_store::StateStore::canonical_account_state_bytes(&normalized)
+                    .map_err(|e| format!("Failed to serialize genesis account state: {}", e))?;
             trie.insert(&address, state_bytes);
         }
 
