@@ -17,14 +17,17 @@
 
     {% if explorer_error %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Transaction</p>
         <h1 class="section-title">Transaction</h1>
         <p class="explorer-error">{{ explorer_error }}</p>
       </section>
     {% elif transaction_detail %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Transaction</p>
         <p class="section-eyebrow">Transaction</p>
         <h1 class="section-title">{{ transaction_detail.transaction.hash|slice:":18" }}...</h1>
         <p class="body-copy">Block <a href="/explorer/blocks/{{ transaction_detail.transaction.block_height }}">{{ transaction_detail.transaction.block_height }}</a></p>
+        <code class="explorer-code-block">{{ transaction_detail.transaction.hash }}</code>
       </section>
 
       <section class="explorer-stat-grid">

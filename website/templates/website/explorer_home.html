@@ -19,31 +19,58 @@
       </a>
     </header>
 
-    <section class="explorer-hero">
-      <p class="section-eyebrow">Public Chain Monitor</p>
-      <h1 class="section-title">Search blocks, transactions, and wallet addresses.</h1>
-      <p class="body-copy">
-        This explorer reads from a dedicated Kumquat node so public traffic stays isolated from mining and operator infrastructure.
-      </p>
-      <form action="/explorer" class="explorer-search-form" method="get" role="search">
-        <label class="search-input-wrap" for="explorer-query">
-          <span class="search-input-label">Search</span>
-          <input
-            id="explorer-query"
-            name="q"
-            placeholder="Block height, tx hash, block hash, or kmq1 address"
-            type="search"
-            value="{{ explorer_query }}"
-          />
-        </label>
-        <button class="button button-primary" type="submit">Open</button>
-      </form>
-      {% if search_error %}
-        <p class="explorer-error">{{ search_error }}</p>
-      {% endif %}
-      {% if explorer_error %}
-        <p class="explorer-error">{{ explorer_error }}</p>
-      {% endif %}
+    <section class="explorer-hero explorer-hero-home">
+      <div class="explorer-hero-grid">
+        <div class="explorer-hero-copy">
+          <p class="section-eyebrow">Public Chain Monitor</p>
+          <h1 class="section-title">Search blocks, transactions, and wallet addresses.</h1>
+          <p class="body-copy">
+            This explorer reads from a dedicated Kumquat node so public traffic stays isolated from mining and operator infrastructure.
+          </p>
+          <form action="/explorer" class="explorer-search-form" method="get" role="search">
+            <label class="search-input-wrap" for="explorer-query">
+              <span class="search-input-label">Search</span>
+              <input
+                id="explorer-query"
+                name="q"
+                placeholder="Block height, tx hash, block hash, or kmq1 address"
+                type="search"
+                value="{{ explorer_query }}"
+              />
+            </label>
+            <button class="button button-primary" type="submit">Open</button>
+          </form>
+          {% if search_error %}
+            <p class="explorer-error">{{ search_error }}</p>
+          {% endif %}
+          {% if explorer_error %}
+            <p class="explorer-error">{{ explorer_error }}</p>
+          {% endif %}
+        </div>
+        {% if summary %}
+          <aside class="explorer-hero-panel">
+            <p class="section-eyebrow">Live Snapshot</p>
+            <div class="explorer-hero-metrics">
+              <div>
+                <span>Height</span>
+                <strong>{{ summary.node.latest_block_height|default:"unknown" }}</strong>
+              </div>
+              <div>
+                <span>Peers</span>
+                <strong>{{ summary.node.peer_count }}</strong>
+              </div>
+              <div>
+                <span>Sync</span>
+                <strong>{{ summary.node.sync.status }}</strong>
+              </div>
+              <div>
+                <span>Mempool</span>
+                <strong>{{ summary.node.mempool_size }}</strong>
+              </div>
+            </div>
+          </aside>
+        {% endif %}
+      </div>
     </section>
 
     {% if summary %}
@@ -93,7 +120,7 @@
         </section>
       {% endif %}
 
-      <section class="explorer-stat-grid">
+      <section class="explorer-stat-grid explorer-stat-grid-compact">
         <article class="explorer-stat-card">
           <span class="section-eyebrow">Height</span>
           <strong>{{ summary.node.latest_block_height|default:"unknown" }}</strong>
@@ -133,11 +160,11 @@
             <tbody>
               {% for block in summary.recent_blocks %}
                 <tr>
-                  <td><a href="/explorer/blocks/{{ block.height }}">{{ block.height }}</a></td>
-                  <td><a href="/explorer/blocks/{{ block.hash }}">{{ block.hash_short }}</a></td>
-                  <td><a href="/explorer/addresses/{{ block.miner_address }}">{{ block.miner_short }}</a></td>
-                  <td>{{ block.transaction_count }}</td>
-                  <td>{{ block.timestamp }}</td>
+                  <td data-label="Height"><a href="/explorer/blocks/{{ block.height }}">{{ block.height }}</a></td>
+                  <td data-label="Hash"><a href="/explorer/blocks/{{ block.hash }}">{{ block.hash_short }}</a></td>
+                  <td data-label="Miner"><a href="/explorer/addresses/{{ block.miner_address }}">{{ block.miner_short }}</a></td>
+                  <td data-label="Txs">{{ block.transaction_count }}</td>
+                  <td data-label="Timestamp">{{ block.timestamp }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -167,12 +194,12 @@
             <tbody>
               {% for tx in summary.recent_transactions %}
                 <tr>
-                  <td><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
-                  <td><a href="/explorer/blocks/{{ tx.block_height }}">{{ tx.block_height }}</a></td>
-                  <td><a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a></td>
-                  <td><a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a></td>
-                  <td>{{ tx.value_label }}</td>
-                  <td>{{ tx.status }}</td>
+                  <td data-label="Hash"><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
+                  <td data-label="Block"><a href="/explorer/blocks/{{ tx.block_height }}">{{ tx.block_height }}</a></td>
+                  <td data-label="From"><a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a></td>
+                  <td data-label="To"><a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a></td>
+                  <td data-label="Value">{{ tx.value_label }}</td>
+                  <td data-label="Status">{{ tx.status }}</td>
                 </tr>
               {% endfor %}
             </tbody>

@@ -17,14 +17,17 @@
 
     {% if explorer_error %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Address</p>
         <h1 class="section-title">Address</h1>
         <p class="explorer-error">{{ explorer_error }}</p>
       </section>
     {% elif address_data %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Address</p>
         <p class="section-eyebrow">Address</p>
         <h1 class="section-title">{{ address_data.address|slice:":18" }}...</h1>
-        <p class="body-copy"><code>{{ address_data.address }}</code></p>
+        <p class="body-copy">Wallet identifier</p>
+        <code class="explorer-code-block">{{ address_data.address }}</code>
       </section>
 
       {% if address_data.account %}
@@ -99,17 +102,17 @@
             <tbody>
               {% for tx in address_data.transactions %}
                 <tr>
-                  <td><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
-                  <td><a href="/explorer/blocks/{{ tx.block_height }}">{{ tx.block_height }}</a></td>
-                  <td>
+                  <td data-label="Hash"><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
+                  <td data-label="Block"><a href="/explorer/blocks/{{ tx.block_height }}">{{ tx.block_height }}</a></td>
+                  <td data-label="Counterparty">
                     {% if tx.sender_address == address_data.address %}
                       <a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a>
                     {% else %}
                       <a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a>
                     {% endif %}
                   </td>
-                  <td>{{ tx.value_label }}</td>
-                  <td>{{ tx.status }}</td>
+                  <td data-label="Value">{{ tx.value_label }}</td>
+                  <td data-label="Status">{{ tx.status }}</td>
                 </tr>
               {% empty %}
                 <tr><td colspan="5">No indexed transactions for this address yet.</td></tr>

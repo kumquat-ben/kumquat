@@ -17,14 +17,17 @@
 
     {% if explorer_error %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Block</p>
         <h1 class="section-title">Block</h1>
         <p class="explorer-error">{{ explorer_error }}</p>
       </section>
     {% elif block_detail %}
       <section class="explorer-hero">
+        <p class="explorer-breadcrumbs"><a href="/explorer">Explorer</a> / Block</p>
         <p class="section-eyebrow">Block</p>
         <h1 class="section-title">Height {{ block_detail.block.height }}</h1>
-        <p class="body-copy">Hash <code>{{ block_detail.block.hash }}</code></p>
+        <p class="body-copy">Canonical hash</p>
+        <code class="explorer-code-block">{{ block_detail.block.hash }}</code>
       </section>
 
       <section class="explorer-stat-grid">
@@ -73,11 +76,11 @@
             <tbody>
               {% for tx in block_detail.transactions %}
                 <tr>
-                  <td><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
-                  <td><a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a></td>
-                  <td><a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a></td>
-                  <td>{{ tx.value_label }}</td>
-                  <td>{{ tx.status }}</td>
+                  <td data-label="Hash"><a href="/explorer/transactions/{{ tx.hash }}">{{ tx.hash|slice:":12" }}...</a></td>
+                  <td data-label="From"><a href="/explorer/addresses/{{ tx.sender_address }}">{{ tx.sender_address|slice:":10" }}...</a></td>
+                  <td data-label="To"><a href="/explorer/addresses/{{ tx.recipient_address }}">{{ tx.recipient_address|slice:":10" }}...</a></td>
+                  <td data-label="Value">{{ tx.value_label }}</td>
+                  <td data-label="Status">{{ tx.status }}</td>
                 </tr>
               {% empty %}
                 <tr><td colspan="5">No transactions recorded in this block.</td></tr>
