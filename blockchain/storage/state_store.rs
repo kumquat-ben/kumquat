@@ -3,8 +3,8 @@ use log::{debug, error, info, warn};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
-use crate::storage::block_store::{Block, Hash};
 use crate::executor::{execute_transaction_batch, ExecutionRejection, ExecutionStatus};
+use crate::storage::block_store::{Block, Hash};
 use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
@@ -85,11 +85,11 @@ pub struct ConversionMarketSnapshot {
 mod regression_tests {
     use super::*;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::TransactionStatus;
     use crate::storage::{
         CoinInventory, ConversionOrderKind, ConversionOrderRequest, ConversionTransaction,
         Denomination,
     };
-    use crate::storage::TransactionStatus;
     use tempfile::tempdir;
 
     fn sample_tx(
@@ -157,7 +157,9 @@ mod regression_tests {
 
         let sender = [7; 32];
         let miner = [8; 32];
-        state_store.create_account(&sender, 100, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 100, AccountType::User)
+            .unwrap();
 
         let mut sender_state = state_store.get_account_state(&sender).unwrap();
         sender_state
@@ -165,7 +167,9 @@ mod regression_tests {
             .add(crate::storage::Denomination::Cents1, 5)
             .unwrap();
         sender_state.sync_balance_from_hybrid();
-        state_store.set_account_state(&sender, &sender_state).unwrap();
+        state_store
+            .set_account_state(&sender, &sender_state)
+            .unwrap();
 
         let mut create_fee = CoinInventory::default();
         create_fee
@@ -209,7 +213,11 @@ mod regression_tests {
         let created_state = state_store.get_account_state(&sender).unwrap();
         let order_id = created_state.conversion_order.as_ref().unwrap().order_id;
         assert_eq!(
-            created_state.conversion_order.as_ref().unwrap().eligible_at_block,
+            created_state
+                .conversion_order
+                .as_ref()
+                .unwrap()
+                .eligible_at_block,
             70
         );
 
@@ -258,7 +266,9 @@ mod regression_tests {
 
         let sender = [17; 32];
         let miner = [18; 32];
-        state_store.create_account(&sender, 100, AccountType::User).unwrap();
+        state_store
+            .create_account(&sender, 100, AccountType::User)
+            .unwrap();
 
         let mut sender_state = state_store.get_account_state(&sender).unwrap();
         sender_state
@@ -276,7 +286,9 @@ mod regression_tests {
             },
             1,
         ));
-        state_store.set_account_state(&sender, &sender_state).unwrap();
+        state_store
+            .set_account_state(&sender, &sender_state)
+            .unwrap();
 
         state_store.sweep_conversion_order_lifecycle(420).unwrap();
 
@@ -328,7 +340,9 @@ mod regression_tests {
         state_store
             .create_account(&requester, 100, AccountType::User)
             .unwrap();
-        state_store.create_account(&miner, 0, AccountType::User).unwrap();
+        state_store
+            .create_account(&miner, 0, AccountType::User)
+            .unwrap();
 
         let mut requester_state = state_store.get_account_state(&requester).unwrap();
         let mut requested_coins = CoinInventory::default();
@@ -394,7 +408,9 @@ mod regression_tests {
         state_store
             .create_account(&requester_two, 200, AccountType::User)
             .unwrap();
-        state_store.create_account(&miner, 0, AccountType::User).unwrap();
+        state_store
+            .create_account(&miner, 0, AccountType::User)
+            .unwrap();
 
         let mut request_one_coins = CoinInventory::default();
         request_one_coins.add(Denomination::Cents50, 2).unwrap();
@@ -454,7 +470,9 @@ mod regression_tests {
         state_store
             .create_account(&requester, 100, AccountType::User)
             .unwrap();
-        state_store.create_account(&miner, 0, AccountType::User).unwrap();
+        state_store
+            .create_account(&miner, 0, AccountType::User)
+            .unwrap();
 
         let mut requested_coins = CoinInventory::default();
         requested_coins.add(Denomination::Cents50, 2).unwrap();
@@ -480,12 +498,7 @@ mod regression_tests {
         state_store.set_account_state(&miner, &miner_state).unwrap();
 
         let err = state_store
-            .validate_conversion_fulfillment_order_ids(
-                70,
-                &[],
-                &miner,
-                &[[41; 32], [41; 32]],
-            )
+            .validate_conversion_fulfillment_order_ids(70, &[], &miner, &[[41; 32], [41; 32]])
             .unwrap_err();
         assert!(err.to_string().contains("duplicated"));
     }
@@ -607,7 +620,10 @@ impl<'a> StateStore<'a> {
         }
     }
 
-    fn normalize_account_state(mut state: AccountState, fallback_owner: Option<Hash>) -> AccountState {
+    fn normalize_account_state(
+        mut state: AccountState,
+        fallback_owner: Option<Hash>,
+    ) -> AccountState {
         if let Some(owner) = fallback_owner {
             state.assign_token_owner(owner);
         }
@@ -625,7 +641,10 @@ impl<'a> StateStore<'a> {
 
         // Check the cache first
         if let Some(cached) = self.account_cache.get(&addr_str) {
-            return Some(Self::normalize_account_state(cached.clone(), Some(*address)));
+            return Some(Self::normalize_account_state(
+                cached.clone(),
+                Some(*address),
+            ));
         }
 
         // If not in cache, get from store
@@ -746,11 +765,14 @@ impl<'a> StateStore<'a> {
 
         match self.store.get(key.as_bytes())? {
             Some(value) => match bincode::deserialize(&value) {
-                Ok(state) => Ok(Some(Self::normalize_account_state(state, Some({
-                    let mut owner = [0u8; 32];
-                    owner.copy_from_slice(address);
-                    owner
-                })))),
+                Ok(state) => Ok(Some(Self::normalize_account_state(
+                    state,
+                    Some({
+                        let mut owner = [0u8; 32];
+                        owner.copy_from_slice(address);
+                        owner
+                    }),
+                ))),
                 Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
             },
             None => Ok(None),
@@ -1113,7 +1135,9 @@ impl<'a> StateStore<'a> {
 
                         // Deserialize account state
                         match bincode::deserialize(value) {
-                            Ok(state) => Some((addr, Self::normalize_account_state(state, Some(addr)))),
+                            Ok(state) => {
+                                Some((addr, Self::normalize_account_state(state, Some(addr))))
+                            }
                             Err(e) => {
                                 error!("Failed to deserialize account state: {}", e);
                                 None
@@ -1518,7 +1542,10 @@ impl<'a> StateStore<'a> {
         block_hash: Option<&Hash>,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
         let accounts = self.get_all_accounts();
-        let original_accounts = accounts.iter().cloned().collect::<HashMap<Hash, AccountState>>();
+        let original_accounts = accounts
+            .iter()
+            .cloned()
+            .collect::<HashMap<Hash, AccountState>>();
         let execution =
             execute_transaction_batch(&accounts, transactions, miner, block_height, block_hash);
         let mut projected_accounts = execution
@@ -1646,7 +1673,8 @@ impl<'a> StateStore<'a> {
         timestamp: u64,
         overrides: &[(Hash, AccountState)],
     ) -> Result<StateRoot, StateStoreError> {
-        let mut accounts: HashMap<Hash, AccountState> = self.get_all_accounts().into_iter().collect();
+        let mut accounts: HashMap<Hash, AccountState> =
+            self.get_all_accounts().into_iter().collect();
         for (address, state) in overrides {
             accounts.insert(*address, state.clone());
         }
@@ -1709,10 +1737,9 @@ impl<'a> StateStore<'a> {
             .get_account_state(&tx.sender)
             .ok_or_else(|| StateStoreError::AccountNotFound(hex::encode(tx.sender)))?;
 
-        let payment_total = tx
-            .transfer_token_ids
-            .iter()
-            .try_fold(0u64, |acc, token_id| -> Result<u64, StateStoreError> {
+        let payment_total = tx.transfer_token_ids.iter().try_fold(
+            0u64,
+            |acc, token_id| -> Result<u64, StateStoreError> {
                 let token = sender
                     .tokens
                     .iter()
@@ -1724,7 +1751,8 @@ impl<'a> StateStore<'a> {
                         ))
                     })?;
                 Ok(acc + token.value_cents())
-            })?;
+            },
+        )?;
         let coin_transfer_total = tx.coin_transfer.total_value_cents();
 
         let fee_value = if let Some(fee_token_id) = tx.fee_token_id {
@@ -1836,7 +1864,10 @@ impl<'a> StateStore<'a> {
         block_height: u64,
         intent: &ConversionTransaction,
     ) -> Result<Vec<(Hash, AccountState)>, StateStoreError> {
-        if !tx.transfer_token_ids.is_empty() || !tx.coin_transfer.is_empty() || tx.fee_token_id.is_some() {
+        if !tx.transfer_token_ids.is_empty()
+            || !tx.coin_transfer.is_empty()
+            || tx.fee_token_id.is_some()
+        {
             return Err(StateStoreError::Other(format!(
                 "conversion transaction {} must not carry normal transfer inputs",
                 hex::encode(tx.tx_id)
@@ -1993,7 +2024,10 @@ impl<'a> StateStore<'a> {
             block.height,
             Some(&block.hash),
         );
-        let original_accounts = accounts.iter().cloned().collect::<HashMap<Hash, AccountState>>();
+        let original_accounts = accounts
+            .iter()
+            .cloned()
+            .collect::<HashMap<Hash, AccountState>>();
         let mut projected_accounts = execution
             .accounts
             .into_iter()
@@ -2012,14 +2046,11 @@ impl<'a> StateStore<'a> {
             &block.conversion_fulfillment_order_ids,
         )?;
 
-        let expected_reward_token_ids = crate::storage::block_store::reward_outcome(
-            block.miner,
-            block.height,
-            &block.hash,
-        )
-        .into_iter()
-        .map(|token| token.token_id)
-        .collect::<Vec<_>>();
+        let expected_reward_token_ids =
+            crate::storage::block_store::reward_outcome(block.miner, block.height, &block.hash)
+                .into_iter()
+                .map(|token| token.token_id)
+                .collect::<Vec<_>>();
         if !block.reward_token_ids.is_empty() && block.reward_token_ids != expected_reward_token_ids
         {
             return Err(StateStoreError::Other(format!(
@@ -2108,7 +2139,9 @@ fn derive_conversion_order_id(tx_id: &Hash, sender: Hash) -> Hash {
     order_id
 }
 
-fn canonical_coin_inventory_for_amount(amount_cents: u64) -> Result<CoinInventory, StateStoreError> {
+fn canonical_coin_inventory_for_amount(
+    amount_cents: u64,
+) -> Result<CoinInventory, StateStoreError> {
     let mut remaining = amount_cents;
     let mut inventory = CoinInventory::default();
 
@@ -2172,7 +2205,9 @@ fn canonical_bill_denominations_for_amount(
     Ok(denominations)
 }
 
-fn conversion_bill_denominations(order: &ConversionOrder) -> Result<Vec<Denomination>, StateStoreError> {
+fn conversion_bill_denominations(
+    order: &ConversionOrder,
+) -> Result<Vec<Denomination>, StateStoreError> {
     if order.requested_bill_denominations.is_empty() {
         canonical_bill_denominations_for_amount(order.requested_value_cents)
     } else {
@@ -2290,7 +2325,10 @@ fn prepared_conversion_accounts(
     prepared
 }
 
-fn find_conversion_requester(accounts: &HashMap<Hash, AccountState>, order_id: &Hash) -> Option<Hash> {
+fn find_conversion_requester(
+    accounts: &HashMap<Hash, AccountState>,
+    order_id: &Hash,
+) -> Option<Hash> {
     accounts.iter().find_map(|(address, account)| {
         account
             .conversion_order
@@ -2320,14 +2358,13 @@ fn apply_single_conversion_order(
 
     match order.kind {
         crate::storage::ConversionOrderKind::BillToCoins => {
-            let requested_bills = conversion_bill_denominations(order)
-                .map_err(|e| e.to_string())?;
-            let requested_coins = conversion_coin_inventory(order)
-                .map_err(|e| e.to_string())?;
+            let requested_bills =
+                conversion_bill_denominations(order).map_err(|e| e.to_string())?;
+            let requested_coins = conversion_coin_inventory(order).map_err(|e| e.to_string())?;
 
-            let requester_account = accounts
-                .get(&requester)
-                .ok_or_else(|| format!("conversion requester {} not found", hex::encode(requester)))?;
+            let requester_account = accounts.get(&requester).ok_or_else(|| {
+                format!("conversion requester {} not found", hex::encode(requester))
+            })?;
             let miner_account = accounts
                 .get(miner)
                 .ok_or_else(|| format!("miner {} not found", hex::encode(miner)))?;
@@ -2361,14 +2398,13 @@ fn apply_single_conversion_order(
             miner_account.sync_balance_from_hybrid();
         }
         crate::storage::ConversionOrderKind::CoinsToBill => {
-            let requested_coins = conversion_coin_inventory(order)
-                .map_err(|e| e.to_string())?;
-            let requested_bills = conversion_bill_denominations(order)
-                .map_err(|e| e.to_string())?;
+            let requested_coins = conversion_coin_inventory(order).map_err(|e| e.to_string())?;
+            let requested_bills =
+                conversion_bill_denominations(order).map_err(|e| e.to_string())?;
 
-            let requester_account = accounts
-                .get(&requester)
-                .ok_or_else(|| format!("conversion requester {} not found", hex::encode(requester)))?;
+            let requester_account = accounts.get(&requester).ok_or_else(|| {
+                format!("conversion requester {} not found", hex::encode(requester))
+            })?;
             let miner_account = accounts
                 .get(miner)
                 .ok_or_else(|| format!("miner {} not found", hex::encode(miner)))?;
@@ -2576,10 +2612,7 @@ mod tests {
 
         // Exact-token transfers fail when the sender lacks a matching token bundle.
         let result = state_store.transfer_balance(&sender, &recipient, 300, 2);
-        assert!(matches!(
-            result,
-            Err(StateStoreError::Other(_))
-        ));
+        assert!(matches!(result, Err(StateStoreError::Other(_))));
     }
 
     #[test]
@@ -2602,7 +2635,12 @@ mod tests {
         assert_eq!(loaded.total_bill_value(), 100);
         assert_eq!(loaded.total_coin_value(), 36);
         assert_eq!(loaded.bills.len(), 1);
-        assert_eq!(loaded.coin_inventory.count(crate::storage::Denomination::Cents25), 1);
+        assert_eq!(
+            loaded
+                .coin_inventory
+                .count(crate::storage::Denomination::Cents25),
+            1
+        );
     }
 
     #[test]

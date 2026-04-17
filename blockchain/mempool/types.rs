@@ -4,7 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::crypto::keys::VibeKeypair;
 use crate::crypto::signer::{sign_message, VibeSignature};
-use crate::storage::state::{CoinInventory, ConversionOrderRequest, ConversionTransaction, Denomination};
+use crate::storage::state::{
+    CoinInventory, ConversionOrderRequest, ConversionTransaction, Denomination,
+};
 
 /// Type alias for address (public key hash)
 pub type Address = [u8; 32];

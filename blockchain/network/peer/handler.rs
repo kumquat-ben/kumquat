@@ -348,7 +348,10 @@ impl PeerHandler {
 
         let writer_task = tokio::spawn(async move {
             while let Some(message) = outgoing_rx.recv().await {
-                debug!("Sending message to peer {}: {:?}", writer_peer_addr, message);
+                debug!(
+                    "Sending message to peer {}: {:?}",
+                    writer_peer_addr, message
+                );
                 if let Err(err) = writer.write_message(&message).await {
                     error!(
                         "Failed to send message to peer {}: {:?}",
@@ -385,7 +388,10 @@ impl PeerHandler {
                 }
                 Ok(Some(message)) => {
                     if let Err(e) = self.incoming_tx.send((self.peer_id.clone(), message)).await {
-                        error!("Failed to route message from peer {}: {:?}", self.peer_addr, e);
+                        error!(
+                            "Failed to route message from peer {}: {:?}",
+                            self.peer_addr, e
+                        );
                         break;
                     }
                 }
@@ -404,7 +410,10 @@ impl PeerHandler {
                     );
                 }
                 Err(e) => {
-                    error!("Error receiving message from peer {}: {:?}", self.peer_addr, e);
+                    error!(
+                        "Error receiving message from peer {}: {:?}",
+                        self.peer_addr, e
+                    );
                     break;
                 }
             }

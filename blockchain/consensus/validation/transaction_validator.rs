@@ -225,9 +225,7 @@ impl<'a> TransactionValidator<'a> {
                         crate::storage::ConversionOrderStatus::Expired
                             | crate::storage::ConversionOrderStatus::Failed
                     ) || tx.block_height >= existing.cycle_end_block;
-                    if existing.order_id != *order_id
-                        || !clearable
-                    {
+                    if existing.order_id != *order_id || !clearable {
                         return false;
                     }
                 }
@@ -295,7 +293,12 @@ fn serialize_conversion_request(data: &mut Vec<u8>, request: &ConversionOrderReq
     });
     data.extend_from_slice(&request.requested_value_cents.to_be_bytes());
     for denomination in Denomination::all_descending() {
-        data.extend_from_slice(&request.requested_coin_inventory.count(*denomination).to_be_bytes());
+        data.extend_from_slice(
+            &request
+                .requested_coin_inventory
+                .count(*denomination)
+                .to_be_bytes(),
+        );
     }
     data.extend_from_slice(&(request.requested_bill_denominations.len() as u64).to_be_bytes());
     for denomination in &request.requested_bill_denominations {

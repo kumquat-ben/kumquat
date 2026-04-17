@@ -102,14 +102,12 @@ fn collect_conversion_flow_stats(
             if let Some((kind, value)) = order_requests.get(order_id) {
                 match kind {
                     ConversionOrderKind::BillToCoins => {
-                        stats.bill_to_coins_fulfilled_cents = stats
-                            .bill_to_coins_fulfilled_cents
-                            .saturating_add(*value);
+                        stats.bill_to_coins_fulfilled_cents =
+                            stats.bill_to_coins_fulfilled_cents.saturating_add(*value);
                     }
                     ConversionOrderKind::CoinsToBill => {
-                        stats.coins_to_bill_fulfilled_cents = stats
-                            .coins_to_bill_fulfilled_cents
-                            .saturating_add(*value);
+                        stats.coins_to_bill_fulfilled_cents =
+                            stats.coins_to_bill_fulfilled_cents.saturating_add(*value);
                     }
                 }
             }
@@ -147,8 +145,8 @@ fn conversion_market_signal(
             / dominant_demand.max(dominant_inventory).max(1) as f64)
             .clamp(-1.0, 1.0)
     };
-    let backlog_ratio = (snapshot.open_order_count as f64 / CONVERSION_ORDER_CYCLE_BLOCKS as f64)
-        .clamp(0.0, 1.0);
+    let backlog_ratio =
+        (snapshot.open_order_count as f64 / CONVERSION_ORDER_CYCLE_BLOCKS as f64).clamp(0.0, 1.0);
     let cycle_signal = normalized_delta(
         cycle_flow.bill_to_coins_requested_cents,
         cycle_flow.coins_to_bill_requested_cents,
@@ -186,7 +184,7 @@ fn conversion_market_signal(
         + 0.15 * (backlog_ratio * demand_signal.abs())
         + 0.05 * smoothed_flow_signal.abs()
         + 0.05 * fulfillment_signal.abs())
-        .clamp(-1.0, 1.0)
+    .clamp(-1.0, 1.0)
 }
 
 /// Calculate the next target difficulty
@@ -284,16 +282,29 @@ pub fn calculate_next_target(
         CONVERSION_ORDER_ELIGIBILITY_BLOCKS,
     );
     let snapshot = state_store.conversion_market_snapshot(current_height, &tracked_miners);
-    let cycle_start = current_height.saturating_sub(CONVERSION_ORDER_CYCLE_BLOCKS.saturating_sub(1));
+    let cycle_start =
+        current_height.saturating_sub(CONVERSION_ORDER_CYCLE_BLOCKS.saturating_sub(1));
     let rolling_start =
         current_height.saturating_sub(CONVERSION_ORDER_ELIGIBILITY_BLOCKS.saturating_sub(1));
-    let cycle_flow =
-        collect_conversion_flow_stats(block_store, tx_store, cycle_start, cycle_start, current_height);
-    let rolling_flow =
-        collect_conversion_flow_stats(block_store, tx_store, cycle_start, rolling_start, current_height);
+    let cycle_flow = collect_conversion_flow_stats(
+        block_store,
+        tx_store,
+        cycle_start,
+        cycle_start,
+        current_height,
+    );
+    let rolling_flow = collect_conversion_flow_stats(
+        block_store,
+        tx_store,
+        cycle_start,
+        rolling_start,
+        current_height,
+    );
     let market_signal = conversion_market_signal(&snapshot, cycle_flow, rolling_flow);
-    let bounded_factor = (1.0 - (market_signal * CONVERSION_DIFFICULTY_CLAMP))
-        .clamp(1.0 - CONVERSION_DIFFICULTY_CLAMP, 1.0 + CONVERSION_DIFFICULTY_CLAMP);
+    let bounded_factor = (1.0 - (market_signal * CONVERSION_DIFFICULTY_CLAMP)).clamp(
+        1.0 - CONVERSION_DIFFICULTY_CLAMP,
+        1.0 + CONVERSION_DIFFICULTY_CLAMP,
+    );
     let new_difficulty = (time_adjusted_difficulty as f64 * bounded_factor).round() as u64;
 
     // Ensure the difficulty doesn't go below the initial difficulty
@@ -608,7 +619,9 @@ mod tests {
 
         let mut requester_state = state_store.get_account_state(&requester).unwrap();
         let mut requested_coins = CoinInventory::default();
-        requested_coins.add(crate::storage::Denomination::Cents50, 2).unwrap();
+        requested_coins
+            .add(crate::storage::Denomination::Cents50, 2)
+            .unwrap();
         requester_state.conversion_order = Some(ConversionOrder::new(
             [19u8; 32],
             requester,
@@ -683,7 +696,9 @@ mod tests {
                 requested_value_cents: 100,
                 requested_coin_inventory: {
                     let mut inventory = CoinInventory::default();
-                    inventory.add(crate::storage::Denomination::Cents50, 2).unwrap();
+                    inventory
+                        .add(crate::storage::Denomination::Cents50, 2)
+                        .unwrap();
                     inventory
                 },
                 requested_bill_denominations: vec![crate::storage::Denomination::Dollars1],

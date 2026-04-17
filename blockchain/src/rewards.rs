@@ -190,7 +190,10 @@ mod tests {
         let block_hash = [11u8; 32];
         let minted = reward_tokens_for_block([9u8; 32], 42, &block_hash);
         for token in minted {
-            assert_eq!(token.token_id, assignment_index_to_token_id(token.assignment_index));
+            assert_eq!(
+                token.token_id,
+                assignment_index_to_token_id(token.assignment_index)
+            );
             assert!(Denomination::from_assignment_index(token.assignment_index).is_some());
         }
     }

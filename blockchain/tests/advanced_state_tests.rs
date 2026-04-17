@@ -98,6 +98,7 @@ fn test_state_pruning() {
             prev_hash: if i == 0 { [0; 32] } else { [i - 1; 32] },
             timestamp: 12345 + (i as u64) * 10,
             transactions: vec![[i + 100; 32]],
+            conversion_fulfillment_order_ids: vec![],
             miner: [0u8; 32],
             pre_reward_state_root: [0; 32],
             reward_token_ids: vec![],

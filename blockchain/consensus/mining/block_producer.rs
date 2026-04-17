@@ -44,9 +44,7 @@ pub struct BlockProducer<'a> {
 }
 
 fn transaction_uses_hybrid_features(tx: &crate::storage::TransactionRecord) -> bool {
-    !tx.coin_transfer.is_empty()
-        || !tx.coin_fee.is_empty()
-        || tx.conversion_intent.is_some()
+    !tx.coin_transfer.is_empty() || !tx.coin_fee.is_empty() || tx.conversion_intent.is_some()
 }
 
 impl<'a> BlockProducer<'a> {
@@ -93,11 +91,20 @@ impl<'a> BlockProducer<'a> {
                 && next_height == self.config.hybrid_activation_height
             {
                 if let Err(err) = self.state_store.migrate_legacy_state_to_hybrid(next_height) {
-                    error!("Failed to migrate legacy state at activation height: {}", err);
+                    error!(
+                        "Failed to migrate legacy state at activation height: {}",
+                        err
+                    );
                 }
             }
-            if let Err(err) = self.state_store.sweep_conversion_order_lifecycle(next_height) {
-                error!("Failed to sweep conversion lifecycle before block assembly: {}", err);
+            if let Err(err) = self
+                .state_store
+                .sweep_conversion_order_lifecycle(next_height)
+            {
+                error!(
+                    "Failed to sweep conversion lifecycle before block assembly: {}",
+                    err
+                );
             }
         }
 
@@ -183,7 +190,7 @@ impl<'a> BlockProducer<'a> {
             poh_seq,      // Use the current PoH sequence
             prev_poh_seq, // Use the previous block's PoH sequence
             prev_poh_hash,
-            poh_hash,     // Use the current PoH hash
+            poh_hash, // Use the current PoH hash
             target: self.chain_state.current_target,
             total_difficulty: self.chain_state.total_difficulty as u128,
             miner: self.config.miner_address,
@@ -496,7 +503,9 @@ mod tests {
             .set_account_state(&[55u8; 32], &requester_state)
             .unwrap();
 
-        let mut miner_state = state_store.get_account_state(&config.miner_address).unwrap();
+        let mut miner_state = state_store
+            .get_account_state(&config.miner_address)
+            .unwrap();
         miner_state.coin_inventory = requested_coins;
         miner_state.sync_balance_from_hybrid();
         state_store

@@ -51,7 +51,11 @@ pub fn result_commitment(
     conversion_fulfillment_order_ids: &[Hash],
 ) -> Hash {
     let mut preimage = Vec::with_capacity(
-        32 + 32 + 8 + (reward_token_ids.len() * 32) + 8 + (conversion_fulfillment_order_ids.len() * 32),
+        32 + 32
+            + 8
+            + (reward_token_ids.len() * 32)
+            + 8
+            + (conversion_fulfillment_order_ids.len() * 32),
     );
     preimage.extend_from_slice(block_hash);
     preimage.extend_from_slice(state_root);

@@ -2,9 +2,9 @@ use std::sync::Arc;
 use tempfile::tempdir;
 
 use kumquat::storage::{
-    AccountState, AccountType, BatchOperationManager, Block, BlockStore, DatabaseStats,
-    RocksDBManager, RocksDBStore, Schema, StateManager, StateStore, TransactionRecord,
-    TransactionError, TransactionStatus, TxStore, KVStore,
+    AccountState, AccountType, BatchOperationManager, Block, BlockStore, DatabaseStats, KVStore,
+    RocksDBManager, RocksDBStore, Schema, StateManager, StateStore, TransactionError,
+    TransactionRecord, TransactionStatus, TxStore,
 };
 
 #[test]
@@ -59,6 +59,7 @@ fn test_block_store() {
         prev_hash: [0; 32],
         timestamp: 12345,
         transactions: vec![[2; 32], [3; 32]],
+        conversion_fulfillment_order_ids: vec![],
         miner: [0u8; 32],
         pre_reward_state_root: [0; 32],
         reward_token_ids: vec![],
@@ -102,6 +103,8 @@ fn test_transaction_store() {
         recipient: [3; 32],
         transfer_token_ids: vec![],
         fee_token_id: None,
+        coin_transfer: Default::default(),
+        coin_fee: Default::default(),
         value: 100,
         gas_price: 1,
         gas_limit: 21000,
@@ -110,6 +113,7 @@ fn test_transaction_store() {
         timestamp: 12345,
         block_height: 1,
         data: None,
+        conversion_intent: None,
         status: TransactionStatus::Confirmed,
     };
 
@@ -186,7 +190,9 @@ fn test_state_store() {
     // Update the account nonce
     let mut updated_account = state_store.get_account_state(&address).unwrap();
     updated_account.nonce = 1;
-    state_store.set_account_state(&address, &updated_account).unwrap();
+    state_store
+        .set_account_state(&address, &updated_account)
+        .unwrap();
     let updated_account = state_store.get_account_state(&address).unwrap();
     assert_eq!(updated_account.nonce, 1);
 
@@ -239,6 +245,8 @@ fn test_state_manager() {
         recipient: addr2,
         transfer_token_ids: vec![],
         fee_token_id: None,
+        coin_transfer: Default::default(),
+        coin_fee: Default::default(),
         value: 500,
         gas_price: 1,
         gas_limit: 21000,
@@ -247,6 +255,7 @@ fn test_state_manager() {
         timestamp: 12345,
         block_height: 1,
         data: None,
+        conversion_intent: None,
         status: TransactionStatus::Confirmed,
     };
 
@@ -266,6 +275,7 @@ fn test_state_manager() {
         prev_hash: [0; 32],
         timestamp: 12345,
         transactions: vec![tx.tx_id],
+        conversion_fulfillment_order_ids: vec![],
         miner: [0u8; 32],
         pre_reward_state_root: [0; 32],
         reward_token_ids: vec![],
@@ -322,6 +332,7 @@ fn test_batch_operations() {
         prev_hash: [0; 32],
         timestamp: 12345,
         transactions: vec![[2; 32], [3; 32]],
+        conversion_fulfillment_order_ids: vec![],
         miner: [0u8; 32],
         pre_reward_state_root: [0; 32],
         reward_token_ids: vec![],
@@ -342,6 +353,8 @@ fn test_batch_operations() {
         recipient: [11; 32],
         transfer_token_ids: vec![],
         fee_token_id: None,
+        coin_transfer: Default::default(),
+        coin_fee: Default::default(),
         value: 100,
         gas_price: 1,
         gas_limit: 21000,
@@ -350,6 +363,7 @@ fn test_batch_operations() {
         timestamp: 12345,
         block_height: 1,
         data: None,
+        conversion_intent: None,
         status: TransactionStatus::Confirmed,
     };
 
@@ -359,6 +373,8 @@ fn test_batch_operations() {
         recipient: [13; 32],
         transfer_token_ids: vec![],
         fee_token_id: None,
+        coin_transfer: Default::default(),
+        coin_fee: Default::default(),
         value: 200,
         gas_price: 1,
         gas_limit: 21000,
@@ -367,6 +383,7 @@ fn test_batch_operations() {
         timestamp: 12345,
         block_height: 1,
         data: None,
+        conversion_intent: None,
         status: TransactionStatus::Confirmed,
     };
 

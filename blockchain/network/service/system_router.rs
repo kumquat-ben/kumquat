@@ -229,7 +229,8 @@ impl SystemRouter {
                         tokio::task::spawn(async move {
                             // Get the block from the store
                             let block_result = if height == u64::MAX {
-                                let latest_height = block_store_clone.get_latest_height().unwrap_or(0);
+                                let latest_height =
+                                    block_store_clone.get_latest_height().unwrap_or(0);
                                 block_store_clone.get_block_by_height(latest_height)
                             } else {
                                 block_store_clone.get_block_by_height(height)

@@ -1,8 +1,6 @@
 use kumquat::crypto::encode_address;
 use kumquat::init_logger;
-use kumquat::tools::genesis::{
-    build_genesis_ceremony_record, generate_genesis, GenesisConfig,
-};
+use kumquat::tools::genesis::{build_genesis_ceremony_record, generate_genesis, GenesisConfig};
 use log::{error, info, warn};
 use std::fs;
 use std::path::PathBuf;
@@ -221,10 +219,7 @@ fn write_ceremony_record(input: &PathBuf, ceremony_output: &PathBuf) {
                     );
                     std::process::exit(1);
                 }
-                info!(
-                    "Genesis ceremony record written to {:?}",
-                    ceremony_output
-                );
+                info!("Genesis ceremony record written to {:?}", ceremony_output);
             }
             Err(err) => {
                 error!("Failed to serialize genesis ceremony record: {}", err);

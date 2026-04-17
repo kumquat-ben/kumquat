@@ -8,8 +8,8 @@ use crate::crypto::hash::sha256;
 use crate::crypto::{decode_address, encode_address};
 use crate::storage::block_store::{result_commitment, Block, Hash};
 use crate::storage::state::{
-    assignment_index_for_denomination, AccountState, AccountType, Denomination,
-    DenominationToken, TokenMintSource,
+    assignment_index_for_denomination, AccountState, AccountType, Denomination, DenominationToken,
+    TokenMintSource,
 };
 use crate::storage::MerklePatriciaTrie;
 
@@ -213,13 +213,12 @@ impl GenesisConfig {
         );
 
         block.hash = sha256(block_data.as_bytes());
-        block.result_commitment =
-            result_commitment(
-                &block.hash,
-                &block.state_root,
-                &block.reward_token_ids,
-                &block.conversion_fulfillment_order_ids,
-            );
+        block.result_commitment = result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+            &block.conversion_fulfillment_order_ids,
+        );
 
         block
     }
@@ -253,13 +252,12 @@ impl GenesisConfig {
             block.nonce
         );
         block.hash = sha256(block_data.as_bytes());
-        block.result_commitment =
-            result_commitment(
-                &block.hash,
-                &block.state_root,
-                &block.reward_token_ids,
-                &block.conversion_fulfillment_order_ids,
-            );
+        block.result_commitment = result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+            &block.conversion_fulfillment_order_ids,
+        );
 
         Ok(block)
     }
@@ -289,8 +287,7 @@ impl GenesisConfig {
                 }
             };
 
-            let tokens =
-                self.generate_account_tokens(address, account, &mut denomination_ordinals);
+            let tokens = self.generate_account_tokens(address, account, &mut denomination_ordinals);
 
             // Create the account state
             let state = if !tokens.is_empty() {
@@ -445,7 +442,10 @@ mod tests {
         assert!(!account_states.is_empty());
         for (_, state) in account_states {
             assert_eq!(state.total_account_value(), state.balance);
-            assert_eq!(state.total_account_value(), state.total_bill_value() + state.total_coin_value());
+            assert_eq!(
+                state.total_account_value(),
+                state.total_bill_value() + state.total_coin_value()
+            );
             assert!(!state.bills.is_empty());
             assert!(state.coin_inventory.count(Denomination::Cents25) > 0);
         }

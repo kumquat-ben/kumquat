@@ -4,9 +4,9 @@
 //! including account states, global state, and state transitions. It provides a clear
 //! abstraction layer for representing and manipulating blockchain state.
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use once_cell::sync::Lazy;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use thiserror::Error;
@@ -381,13 +381,8 @@ impl BillToken {
             )));
         }
 
-        let assignment_index = deterministic_assignment_index(
-            owner,
-            denomination,
-            minted_at_block,
-            mint_source,
-            0,
-        )?;
+        let assignment_index =
+            deterministic_assignment_index(owner, denomination, minted_at_block, mint_source, 0)?;
 
         Ok(Self {
             bill_id: assignment_index_to_token_id(assignment_index),
@@ -616,7 +611,12 @@ pub struct ConversionOrder {
 }
 
 impl ConversionOrder {
-    pub fn new(order_id: [u8; 32], requester: [u8; 32], request: ConversionOrderRequest, created_at_block: u64) -> Self {
+    pub fn new(
+        order_id: [u8; 32],
+        requester: [u8; 32],
+        request: ConversionOrderRequest,
+        created_at_block: u64,
+    ) -> Self {
         let cycle_start = created_at_block - (created_at_block % CONVERSION_ORDER_CYCLE_BLOCKS);
         let cycle_end_block = cycle_start + CONVERSION_ORDER_CYCLE_BLOCKS;
 
@@ -1190,7 +1190,10 @@ pub fn assignment_index_for_denomination(
     ordinal_in_denomination: u64,
 ) -> StateResult<u64> {
     let (start_index, count) = denomination.assignment_range().ok_or_else(|| {
-        StateError::Other(format!("missing assignment range for denomination {}", denomination))
+        StateError::Other(format!(
+            "missing assignment range for denomination {}",
+            denomination
+        ))
     })?;
 
     if ordinal_in_denomination >= count {
@@ -1211,7 +1214,10 @@ fn deterministic_assignment_index(
     sequence: u64,
 ) -> StateResult<u64> {
     let (start_index, count) = denomination.assignment_range().ok_or_else(|| {
-        StateError::Other(format!("missing assignment range for denomination {}", denomination))
+        StateError::Other(format!(
+            "missing assignment range for denomination {}",
+            denomination
+        ))
     })?;
 
     let mut hasher = Sha256::new();

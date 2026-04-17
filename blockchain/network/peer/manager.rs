@@ -196,7 +196,9 @@ impl PeerManager {
 
             if let Some(existing) = peers.get(&addr) {
                 match existing.state {
-                    ConnectionState::Connecting | ConnectionState::Connected | ConnectionState::Ready => {
+                    ConnectionState::Connecting
+                    | ConnectionState::Connected
+                    | ConnectionState::Ready => {
                         debug!(
                             "Skipping outbound connect to peer {} because state is {:?}",
                             addr, existing.state
@@ -467,7 +469,12 @@ mod tests {
             let peers = peer_manager.peers.read().await;
             let state = peers.get(&addr).unwrap().state;
             assert!(
-                matches!(state, ConnectionState::Connecting | ConnectionState::Connected | ConnectionState::Ready),
+                matches!(
+                    state,
+                    ConnectionState::Connecting
+                        | ConnectionState::Connected
+                        | ConnectionState::Ready
+                ),
                 "expected reconnect attempt to advance peer state, got {:?}",
                 state
             );

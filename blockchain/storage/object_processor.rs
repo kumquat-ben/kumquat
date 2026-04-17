@@ -296,7 +296,10 @@ impl<'a> ObjectProcessor<'a> {
         };
 
         // Update the balance
-        match self.state_store.update_balance_compat(&tx.sender, new_balance) {
+        match self
+            .state_store
+            .update_balance_compat(&tx.sender, new_balance)
+        {
             Ok(_) => {}
             Err(e) => return Err(ObjectProcessorError::StateStoreError(e)),
         };

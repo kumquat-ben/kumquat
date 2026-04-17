@@ -71,9 +71,7 @@ impl<'a> BlockValidator<'a> {
     }
 
     fn transaction_uses_hybrid_features(tx: &TransactionRecord) -> bool {
-        !tx.coin_transfer.is_empty()
-            || !tx.coin_fee.is_empty()
-            || tx.conversion_intent.is_some()
+        !tx.coin_transfer.is_empty() || !tx.coin_fee.is_empty() || tx.conversion_intent.is_some()
     }
 
     /// Validate a block
@@ -248,13 +246,12 @@ impl<'a> BlockValidator<'a> {
     }
 
     fn validate_result_commitment(&self, block: &Block) -> bool {
-        let expected_commitment =
-            result_commitment(
-                &block.hash,
-                &block.state_root,
-                &block.reward_token_ids,
-                &block.conversion_fulfillment_order_ids,
-            );
+        let expected_commitment = result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+            &block.conversion_fulfillment_order_ids,
+        );
 
         if block.result_commitment != expected_commitment {
             error!(
@@ -433,7 +430,10 @@ impl<'a> BlockValidator<'a> {
         let transactions = match self.load_block_transactions(block) {
             Ok(transactions) => transactions,
             Err(err) => {
-                error!("Failed to load block transactions for state root validation: {}", err);
+                error!(
+                    "Failed to load block transactions for state root validation: {}",
+                    err
+                );
                 return false;
             }
         };
@@ -558,8 +558,8 @@ mod tests {
     use crate::storage::block_store::{
         pow_hash, result_commitment, reward_outcome, CanonicalBlockHeader,
     };
-    use crate::storage::Denomination;
     use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::Denomination;
     use tempfile::tempdir;
 
     fn setup_validator() -> (
@@ -573,14 +573,13 @@ mod tests {
         let block_store = Arc::new(BlockStore::new(kv_store));
         let tx_store = Arc::new(TxStore::new(kv_store));
         let state_store = Arc::new(StateStore::new(kv_store));
-        let validator =
-            BlockValidator::new(
-                block_store.clone(),
-                tx_store.clone(),
-                state_store.clone(),
-                100,
-                0,
-            );
+        let validator = BlockValidator::new(
+            block_store.clone(),
+            tx_store.clone(),
+            state_store.clone(),
+            100,
+            0,
+        );
         std::mem::forget(temp_dir);
         (block_store, tx_store, state_store, validator)
     }
@@ -724,13 +723,12 @@ mod tests {
 
         let mut block = build_block(&state_store, vec![], &[], genesis.hash, 1, 10, [9u8; 32]);
         block.reward_token_ids.push([77u8; 32]);
-        block.result_commitment =
-            result_commitment(
-                &block.hash,
-                &block.state_root,
-                &block.reward_token_ids,
-                &block.conversion_fulfillment_order_ids,
-            );
+        block.result_commitment = result_commitment(
+            &block.hash,
+            &block.state_root,
+            &block.reward_token_ids,
+            &block.conversion_fulfillment_order_ids,
+        );
 
         let target = Target::from_difficulty(1);
         assert!(matches!(
