@@ -741,6 +741,32 @@ async fn main() {
     )
     .await;
 
+    if config.consensus.enable_mining && !initial_mining_eligible {
+        if let Some(sync_service) = network.sync_service.clone() {
+            let consensus = consensus.clone();
+            tokio::spawn(async move {
+                let mut unlock_check = tokio::time::interval(Duration::from_secs(1));
+
+                loop {
+                    unlock_check.tick().await;
+
+                    let sync_state = sync_service.get_sync_state().await;
+                    if !sync_state.in_progress
+                        && sync_state.target_height > 0
+                        && sync_state.current_height >= sync_state.target_height
+                    {
+                        consensus.set_mining_eligible(true);
+                        info!(
+                            "Sync caught up to height {}; enabling mining for this node.",
+                            sync_state.current_height
+                        );
+                        break;
+                    }
+                }
+            });
+        }
+    }
+
     if config.node.enable_api {
         let api_bind_addr = format!("{}:{}", config.node.api_host, config.node.api_port)
             .parse()

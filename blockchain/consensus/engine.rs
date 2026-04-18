@@ -232,11 +232,22 @@ impl ConsensusEngine {
         }
 
         let tip_height = self.block_store.get_latest_height().unwrap_or(0);
-        self.apply_mining_eligibility(tip_height > 0);
+        if tip_height == 0 && !self.is_mining_eligible() {
+            self.apply_mining_eligibility(false);
+        }
     }
 
     pub fn is_mining_eligible(&self) -> bool {
         self.mining_eligible.load(Ordering::SeqCst)
+    }
+
+    pub fn set_mining_eligible(&self, eligible: bool) {
+        if !self.config.enable_mining {
+            self.apply_mining_eligibility(false);
+            return;
+        }
+
+        self.apply_mining_eligibility(eligible);
     }
 
     /// Create a new consensus engine
@@ -424,10 +435,9 @@ impl ConsensusEngine {
             return;
         }
 
-        let tip_height = self.block_store.get_latest_height().unwrap_or(0);
-        self.apply_mining_eligibility(
-            tip_height > 0 || self.mining_eligible.load(Ordering::SeqCst),
-        );
+        if self.block_store.get_latest_height().unwrap_or(0) == 0 && !self.is_mining_eligible() {
+            self.apply_mining_eligibility(false);
+        }
     }
 
     pub fn telemetry(&self) -> ConsensusTelemetry {
@@ -878,7 +888,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn synced_block_unlocks_shared_mining_gate_after_advancing_past_genesis() {
+    async fn synced_block_does_not_unlock_shared_mining_gate_without_external_signal() {
         let temp_dir = tempdir().unwrap();
         let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
         let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
@@ -928,6 +938,10 @@ mod tests {
             sync_engine.process_network_block(block).await,
             BlockProcessingResult::Success
         );
+        assert!(!producer_engine.is_mining_eligible());
+        assert!(!sync_engine.is_mining_eligible());
+
+        sync_engine.set_mining_eligible(true);
         assert!(producer_engine.is_mining_eligible());
         assert!(sync_engine.is_mining_eligible());
         assert_eq!(block_store.get_latest_height(), Some(1));
