@@ -4,9 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::crypto::hash::sha256;
 use crate::crypto::{decode_address, encode_address};
-use crate::storage::block_store::{result_commitment, Block, Hash};
+use crate::storage::block_store::{pow_hash, result_commitment, Block, Hash};
 use crate::storage::state::{
     assignment_index_for_denomination, AccountState, AccountType, Denomination, DenominationToken,
     TokenMintSource,
@@ -202,17 +201,7 @@ impl GenesisConfig {
         };
 
         // Calculate the block hash
-        let block_data = format!(
-            "{}:{}:{}:{}:{}:{}",
-            block.height,
-            hex::encode(&block.prev_hash),
-            block.timestamp,
-            hex::encode(&block.state_root),
-            hex::encode(&block.tx_root),
-            block.nonce
-        );
-
-        block.hash = sha256(block_data.as_bytes());
+        block.hash = pow_hash(&block.canonical_header());
         block.result_commitment = result_commitment(
             &block.hash,
             &block.state_root,
@@ -233,8 +222,14 @@ impl GenesisConfig {
         sorted_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
 
         for (address, state) in sorted_accounts {
-            let normalized =
-                crate::storage::state_store::StateStore::normalize_account_state(state, Some(address));
+            let mut state = state;
+            state.assign_token_owner(address);
+            state.sync_balance_from_tokens();
+
+            let normalized = crate::storage::state_store::StateStore::normalize_account_state(
+                state,
+                Some(address),
+            );
             let state_bytes =
                 crate::storage::state_store::StateStore::canonical_account_state_bytes(&normalized)
                     .map_err(|e| format!("Failed to serialize genesis account state: {}", e))?;
@@ -245,16 +240,7 @@ impl GenesisConfig {
         block.pre_reward_state_root = genesis_root;
         block.state_root = genesis_root;
 
-        let block_data = format!(
-            "{}:{}:{}:{}:{}:{}",
-            block.height,
-            hex::encode(&block.prev_hash),
-            block.timestamp,
-            hex::encode(&block.state_root),
-            hex::encode(&block.tx_root),
-            block.nonce
-        );
-        block.hash = sha256(block_data.as_bytes());
+        block.hash = pow_hash(&block.canonical_header());
         block.result_commitment = result_commitment(
             &block.hash,
             &block.state_root,
@@ -420,6 +406,9 @@ pub fn build_genesis_ceremony_record<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::block_store::pow_hash;
+    use crate::storage::kv_store::RocksDBStore;
+    use crate::storage::state_store::StateStore;
     use crate::storage::Denomination;
     use tempfile::tempdir;
 
@@ -452,5 +441,44 @@ mod tests {
             assert!(!state.bills.is_empty());
             assert!(state.coin_inventory.count(Denomination::Cents25) > 0);
         }
+    }
+
+    #[test]
+    fn generated_genesis_hash_matches_runtime_initialized_hash() {
+        let dir = tempdir().unwrap();
+        let genesis_path = dir.path().join("genesis.toml");
+        GenesisConfig::default().save(&genesis_path).unwrap();
+
+        let (generated_block, generated_accounts) = generate_genesis(&genesis_path).unwrap();
+
+        let state_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(state_dir.path()).unwrap();
+        let state_store = StateStore::new(&kv_store);
+
+        for (address, state) in generated_accounts {
+            let mut state = state;
+            state.assign_token_owner(address);
+            state.sync_balance_from_tokens();
+            state_store.set_account_state(&address, &state).unwrap();
+        }
+
+        let runtime_root = state_store
+            .calculate_state_root(0, generated_block.timestamp)
+            .unwrap();
+
+        let mut runtime_block = generated_block.clone();
+        runtime_block.pre_reward_state_root = runtime_root.root_hash;
+        runtime_block.state_root = runtime_root.root_hash;
+        runtime_block.hash = pow_hash(&runtime_block.canonical_header());
+        runtime_block.result_commitment = result_commitment(
+            &runtime_block.hash,
+            &runtime_block.state_root,
+            &runtime_block.reward_token_ids,
+            &runtime_block.conversion_fulfillment_order_ids,
+        );
+
+        assert_eq!(generated_block.state_root, runtime_block.state_root);
+        assert_eq!(generated_block.hash, runtime_block.hash);
+        assert_eq!(generated_block.result_commitment, runtime_block.result_commitment);
     }
 }
