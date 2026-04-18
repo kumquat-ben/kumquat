@@ -15,6 +15,7 @@ pub mod types;
 pub mod validation;
 
 use log::info;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -36,11 +37,13 @@ pub async fn start_consensus<S: KVStore + 'static>(
     tx_store: Arc<TxStore<'static>>,
     state_store: Arc<StateStore<'static>>,
     network_tx: mpsc::Sender<NetMessage>,
+    initial_mining_eligible: bool,
 ) -> Arc<ConsensusEngine> {
     let telemetry: ConsensusTelemetry = new_consensus_telemetry(config.enable_mining);
+    let mining_gate = Arc::new(AtomicBool::new(initial_mining_eligible));
 
     // Create the consensus engine
-    let engine = ConsensusEngine::new(
+    let engine = ConsensusEngine::new_with_shared_mining_gate(
         config.clone(),
         kv_store.clone(),
         block_store.clone(),
@@ -48,13 +51,14 @@ pub async fn start_consensus<S: KVStore + 'static>(
         state_store.clone(),
         network_tx.clone(),
         telemetry.clone(),
+        mining_gate.clone(),
     );
 
     // Create a reference to the engine for returning
     let engine_arc = Arc::new(engine);
 
     // Create a clone of the engine for the runner
-    let engine_for_runner = ConsensusEngine::new(
+    let engine_for_runner = ConsensusEngine::new_with_shared_mining_gate(
         config,
         kv_store,
         block_store,
@@ -62,6 +66,7 @@ pub async fn start_consensus<S: KVStore + 'static>(
         state_store,
         network_tx,
         telemetry,
+        mining_gate,
     );
 
     // Create the engine runner

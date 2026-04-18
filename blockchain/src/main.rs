@@ -15,8 +15,8 @@ use kumquat::mempool::Mempool;
 use kumquat::network::start_enhanced_network;
 use kumquat::network::NetworkConfig;
 use kumquat::node_runtime::NodeRuntime;
-use kumquat::storage::state::AccountState;
 use kumquat::storage::block_store::pow_hash;
+use kumquat::storage::state::AccountState;
 use kumquat::storage::Block;
 use kumquat::storage::{
     BatchOperationManager, BlockStore, RocksDBStore, StateRoot, StateStore, TxStore,
@@ -676,6 +676,18 @@ async fn main() {
         hybrid_activation_height: config.consensus.hybrid_activation_height,
     };
 
+    let local_tip_height = block_store.get_latest_height().unwrap_or(0);
+    let has_bootstrap_peers = !config.network.bootstrap_nodes.is_empty();
+    let initial_mining_eligible =
+        config.consensus.enable_mining && (!has_bootstrap_peers || local_tip_height > 0);
+
+    if config.consensus.enable_mining && !initial_mining_eligible {
+        info!(
+            "Starting in sync-only mode because the node has bootstrap peers configured and is still at genesis (height {}). Mining will stay disabled until the local chain advances beyond genesis.",
+            local_tip_height
+        );
+    }
+
     let consensus = start_consensus(
         consensus_config,
         static_kv_store,
@@ -683,6 +695,7 @@ async fn main() {
         tx_store.clone(),
         state_store.clone(),
         network_tx.clone(),
+        initial_mining_eligible,
     )
     .await;
 

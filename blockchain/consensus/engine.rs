@@ -1,4 +1,5 @@
 use log::{debug, error, info, warn};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -92,6 +93,9 @@ pub struct ConsensusEngine {
 
     /// Runtime telemetry for consensus and mining.
     telemetry: ConsensusTelemetry,
+
+    /// Shared runtime gate for whether mining is currently allowed.
+    mining_eligible: Arc<AtomicBool>,
 }
 
 impl ConsensusEngine {
@@ -104,6 +108,7 @@ impl ConsensusEngine {
 
         if result == BlockProcessingResult::Success {
             self.update_chain_state(&block).await;
+            self.refresh_mining_eligibility_from_chain_tip().await;
         }
 
         result
@@ -119,7 +124,9 @@ impl ConsensusEngine {
             self.block_processor.rollback_block(rollback_height).await?;
         }
 
-        self.sync_chain_state_with_committed_tip().await
+        self.sync_chain_state_with_committed_tip().await?;
+        self.refresh_mining_eligibility_from_chain_tip().await;
+        Ok(())
     }
 
     fn committed_chain_state(&self) -> Result<ChainState, String> {
@@ -214,6 +221,24 @@ impl ConsensusEngine {
         Ok(())
     }
 
+    fn apply_mining_eligibility(&self, eligible: bool) {
+        self.mining_eligible.store(eligible, Ordering::SeqCst);
+    }
+
+    async fn refresh_mining_eligibility_from_chain_tip(&self) {
+        if !self.config.enable_mining {
+            self.apply_mining_eligibility(false);
+            return;
+        }
+
+        let tip_height = self.block_store.get_latest_height().unwrap_or(0);
+        self.apply_mining_eligibility(tip_height > 0);
+    }
+
+    pub fn is_mining_eligible(&self) -> bool {
+        self.mining_eligible.load(Ordering::SeqCst)
+    }
+
     /// Create a new consensus engine
     pub fn new(
         config: ConsensusConfig,
@@ -223,6 +248,28 @@ impl ConsensusEngine {
         state_store: Arc<StateStore<'static>>,
         network_tx: mpsc::Sender<NetMessage>,
         telemetry: ConsensusTelemetry,
+    ) -> Self {
+        Self::new_with_shared_mining_gate(
+            config,
+            kv_store,
+            block_store,
+            tx_store,
+            state_store,
+            network_tx,
+            telemetry,
+            Arc::new(AtomicBool::new(false)),
+        )
+    }
+
+    pub fn new_with_shared_mining_gate(
+        config: ConsensusConfig,
+        kv_store: Arc<dyn KVStore + 'static>,
+        block_store: Arc<BlockStore<'static>>,
+        tx_store: Arc<TxStore<'static>>,
+        state_store: Arc<StateStore<'static>>,
+        network_tx: mpsc::Sender<NetMessage>,
+        telemetry: ConsensusTelemetry,
+        mining_eligible: Arc<AtomicBool>,
     ) -> Self {
         // Create channels
         let (_block_tx, block_rx) = mpsc::channel(100);
@@ -347,7 +394,7 @@ impl ConsensusEngine {
             config.clone(),
         )));
 
-        Self {
+        let engine = Self {
             config,
             block_store,
             tx_store,
@@ -364,7 +411,23 @@ impl ConsensusEngine {
             block_rx,
             tx_rx,
             telemetry,
+            mining_eligible,
+        };
+
+        engine.refresh_mining_gate_from_local_tip();
+        engine
+    }
+
+    fn refresh_mining_gate_from_local_tip(&self) {
+        if !self.config.enable_mining {
+            self.apply_mining_eligibility(false);
+            return;
         }
+
+        let tip_height = self.block_store.get_latest_height().unwrap_or(0);
+        self.apply_mining_eligibility(
+            tip_height > 0 || self.mining_eligible.load(Ordering::SeqCst),
+        );
     }
 
     pub fn telemetry(&self) -> ConsensusTelemetry {
@@ -466,8 +529,13 @@ impl ConsensusEngine {
 
                 // Mining timer
                 _ = mining_timer.tick() => {
-                    info!("Mining timer fired. Enable mining: {}", self.config.enable_mining);
-                    if self.config.enable_mining {
+                    let mining_enabled = self.config.enable_mining && self.is_mining_eligible();
+                    info!(
+                        "Mining timer fired. Config enabled: {}, runtime eligible: {}",
+                        self.config.enable_mining,
+                        self.is_mining_eligible()
+                    );
+                    if mining_enabled {
                         self.mine_block().await;
                     }
                 }
@@ -651,6 +719,8 @@ mod tests {
     use crate::consensus::validation::BlockValidationResult;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
     use tempfile::tempdir;
     use tokio::time::{sleep, Duration};
 
@@ -773,6 +843,94 @@ mod tests {
         engine.mine_block().await;
         sleep(Duration::from_millis(50)).await;
         assert_eq!(block_store.get_latest_height(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn bootstrap_node_starts_with_mining_ineligible_at_genesis() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        let telemetry = new_consensus_telemetry(false);
+
+        let engine = ConsensusEngine::new_with_shared_mining_gate(
+            config,
+            manager_store,
+            block_store,
+            tx_store,
+            state_store,
+            network_tx,
+            telemetry,
+            Arc::new(AtomicBool::new(false)),
+        );
+
+        assert!(
+            !engine.is_mining_eligible(),
+            "fresh bootstrapping node should not mine before syncing beyond genesis",
+        );
+    }
+
+    #[tokio::test]
+    async fn synced_block_unlocks_shared_mining_gate_after_advancing_past_genesis() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        config.initial_difficulty = 1;
+        config.target_block_time = 1;
+        config.mining_threads = 1;
+        let shared_gate = Arc::new(AtomicBool::new(false));
+
+        let producer_engine = ConsensusEngine::new_with_shared_mining_gate(
+            config.clone(),
+            manager_store.clone(),
+            block_store.clone(),
+            tx_store.clone(),
+            state_store.clone(),
+            network_tx.clone(),
+            new_consensus_telemetry(false),
+            shared_gate.clone(),
+        );
+        let sync_engine = ConsensusEngine::new_with_shared_mining_gate(
+            config,
+            manager_store,
+            block_store.clone(),
+            tx_store,
+            state_store,
+            network_tx,
+            new_consensus_telemetry(false),
+            shared_gate,
+        );
+
+        assert!(!producer_engine.is_mining_eligible());
+        assert!(!sync_engine.is_mining_eligible());
+
+        let block = {
+            let producer = producer_engine.block_producer.lock().await;
+            producer.mine_block().await.expect("expected mined block")
+        };
+
+        assert_eq!(
+            sync_engine.process_network_block(block).await,
+            BlockProcessingResult::Success
+        );
+        assert!(producer_engine.is_mining_eligible());
+        assert!(sync_engine.is_mining_eligible());
+        assert_eq!(block_store.get_latest_height(), Some(1));
     }
 
     #[tokio::test]
@@ -913,7 +1071,8 @@ mod tests {
         state_store.put_state_root(&genesis_root).unwrap().unwrap();
         genesis_block.pre_reward_state_root = genesis_root.root_hash;
         genesis_block.state_root = genesis_root.root_hash;
-        genesis_block.hash = crate::storage::block_store::pow_hash(&genesis_block.canonical_header());
+        genesis_block.hash =
+            crate::storage::block_store::pow_hash(&genesis_block.canonical_header());
         genesis_block.result_commitment = result_commitment(
             &genesis_block.hash,
             &genesis_block.state_root,
@@ -941,7 +1100,10 @@ mod tests {
 
         let first_block = {
             let producer = engine.block_producer.lock().await;
-            producer.mine_block().await.expect("expected first mined block")
+            producer
+                .mine_block()
+                .await
+                .expect("expected first mined block")
         };
         let first_state = engine.chain_state.lock().await.clone();
         assert_eq!(
