@@ -2,9 +2,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::storage::block_store::Hash;
-use crate::storage::state::{
-    Denomination, DenominationToken, TokenMintSource,
-};
+use crate::storage::state::{Denomination, DenominationToken, TokenMintSource};
 
 const MAX_MULTI_UNIT_REWARD: u32 = 8;
 

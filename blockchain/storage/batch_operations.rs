@@ -224,7 +224,9 @@ mod regression_tests {
             .get_state_root_at_height(block.height)
             .unwrap()
             .unwrap();
-        let recalculated_root = state_store.calculate_state_root(block.height, timestamp).unwrap();
+        let recalculated_root = state_store
+            .calculate_state_root(block.height, timestamp)
+            .unwrap();
 
         assert_eq!(persisted_root.root_hash, block.state_root);
         assert_eq!(recalculated_root.root_hash, block.state_root);
@@ -297,13 +299,11 @@ mod regression_tests {
             .calculate_state_root_with_overrides(1, first_timestamp, &first_state_changes)
             .unwrap();
         assert_eq!(
-            first_recomputed.root_hash,
-            first_recomputed_again.root_hash,
+            first_recomputed.root_hash, first_recomputed_again.root_hash,
             "equivalent first-block projections should yield the same canonical root"
         );
         assert_eq!(
-            first_recomputed.root_hash,
-            first_projected.root_hash,
+            first_recomputed.root_hash, first_projected.root_hash,
             "direct override root should match projected root before first commit"
         );
         let first_reward_token_ids =
@@ -408,13 +408,11 @@ mod regression_tests {
             .unwrap();
 
         assert_eq!(
-            second_persisted_root.root_hash,
-            second_block.state_root,
+            second_persisted_root.root_hash, second_block.state_root,
             "persisted root should match second block root"
         );
         assert_eq!(
-            second_recalculated_root.root_hash,
-            second_block.state_root,
+            second_recalculated_root.root_hash, second_block.state_root,
             "recalculated root should match second block root"
         );
     }

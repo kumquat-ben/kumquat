@@ -9,9 +9,9 @@ use crate::storage::kv_store::{
     KVStore, KVStoreError, WriteBatchOperation, WriteBatchOperationExt,
 };
 use crate::storage::state::{
-    AccountState, AccountType, CoinInventory, ComputeUseMode, ConversionOrder,
-    ConversionOrderKind, ConversionOrderStatus, ConversionTransaction, Denomination,
-    StateResult, StateRoot, TokenMintSource,
+    AccountState, AccountType, CoinInventory, ComputeUseMode, ConversionOrder, ConversionOrderKind,
+    ConversionOrderStatus, ConversionTransaction, Denomination, StateResult, StateRoot,
+    TokenMintSource,
 };
 use crate::storage::trie::mpt::MerklePatriciaTrie;
 use crate::storage::tx_store::TransactionRecord;

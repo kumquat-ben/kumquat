@@ -479,6 +479,9 @@ mod tests {
 
         assert_eq!(generated_block.state_root, runtime_block.state_root);
         assert_eq!(generated_block.hash, runtime_block.hash);
-        assert_eq!(generated_block.result_commitment, runtime_block.result_commitment);
+        assert_eq!(
+            generated_block.result_commitment,
+            runtime_block.result_commitment
+        );
     }
 }
