@@ -285,9 +285,29 @@ impl<'a> BlockProducer<'a> {
         // Create a network message
         let message = NetMessage::NewBlock(block.clone());
 
-        // Send the message
-        if let Err(e) = self.network_tx.send(message).await {
-            error!("Failed to broadcast block: {}", e);
+        // Broadcasting should not be able to stall block production if the local
+        // network queue is closed or backpressured.
+        if let Err(e) = self.network_tx.try_send(message) {
+            match e {
+                mpsc::error::TrySendError::Full(NetMessage::NewBlock(queued_block)) => {
+                    warn!(
+                        "Skipping block broadcast at height {} because the network queue is full",
+                        queued_block.height
+                    );
+                }
+                mpsc::error::TrySendError::Closed(NetMessage::NewBlock(queued_block)) => {
+                    warn!(
+                        "Skipping block broadcast at height {} because the network queue is closed",
+                        queued_block.height
+                    );
+                }
+                mpsc::error::TrySendError::Full(_) => {
+                    warn!("Skipping block broadcast because the network queue is full");
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    warn!("Skipping block broadcast because the network queue is closed");
+                }
+            }
         }
     }
 
@@ -329,6 +349,7 @@ mod tests {
         StateRoot, TransactionRecord, TransactionStatus,
     };
     use tempfile::tempdir;
+    use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_block_template_creation() {
@@ -505,5 +526,85 @@ mod tests {
 
         let template = producer.create_block_template().await;
         assert_eq!(template.conversion_fulfillment_order_ids, vec![[66u8; 32]]);
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_block_does_not_block_on_full_network_queue() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path()).unwrap();
+
+        let block_store = Arc::new(BlockStore::new(&kv_store));
+        let tx_store = Arc::new(TxStore::new(&kv_store));
+        let state_store = Arc::new(StateStore::new(&kv_store));
+        let mempool = Arc::new(Mempool::new(100));
+        let config = ConsensusConfig::default();
+        let poh_generator = Arc::new(Mutex::new(PoHGenerator::new(&config)));
+        let (network_tx, _network_rx) = mpsc::channel(100);
+
+        for height in 0..100 {
+            network_tx
+                .try_send(NetMessage::NewBlock(Block {
+                    height,
+                    hash: [height as u8; 32],
+                    prev_hash: [0u8; 32],
+                    timestamp: height,
+                    transactions: vec![],
+                    conversion_fulfillment_order_ids: vec![],
+                    miner: [0u8; 32],
+                    pre_reward_state_root: [0u8; 32],
+                    reward_token_ids: vec![],
+                    result_commitment: [0u8; 32],
+                    state_root: [0u8; 32],
+                    tx_root: [0u8; 32],
+                    nonce: 0,
+                    poh_seq: 0,
+                    poh_hash: [0u8; 32],
+                    difficulty: config.initial_difficulty,
+                    total_difficulty: config.initial_difficulty as u128,
+                }))
+                .unwrap();
+        }
+
+        let producer = BlockProducer::new(
+            ChainState::new(
+                10,
+                [10u8; 32],
+                StateRoot::new([0u8; 32], 10, 100),
+                100,
+                10,
+                [10u8; 32],
+            ),
+            block_store,
+            tx_store,
+            state_store,
+            mempool,
+            poh_generator,
+            network_tx,
+            config,
+        );
+
+        let block = Block {
+            height: 101,
+            hash: [101u8; 32],
+            prev_hash: [100u8; 32],
+            timestamp: 101,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner: [0u8; 32],
+            pre_reward_state_root: [0u8; 32],
+            reward_token_ids: vec![],
+            result_commitment: [0u8; 32],
+            state_root: [0u8; 32],
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 100,
+        };
+
+        timeout(Duration::from_millis(100), producer.broadcast_block(&block))
+            .await
+            .expect("broadcast should not block when the network queue is full");
     }
 }
