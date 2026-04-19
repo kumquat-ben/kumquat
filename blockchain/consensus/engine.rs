@@ -96,10 +96,15 @@ pub struct ConsensusEngine {
 
     /// Shared runtime gate for whether mining is currently allowed.
     mining_eligible: Arc<AtomicBool>,
+
+    /// Serializes inbound network block processing so sync and gossip cannot
+    /// commit against the same state snapshot concurrently.
+    network_processing_lock: Arc<Mutex<()>>,
 }
 
 impl ConsensusEngine {
     pub async fn process_network_block(&self, block: Block) -> BlockProcessingResult {
+        let _network_processing_guard = self.network_processing_lock.lock().await;
         let chain_state = self.chain_state.lock().await.clone();
         let result = self
             .block_processor
@@ -115,6 +120,7 @@ impl ConsensusEngine {
     }
 
     pub async fn rollback_to_height(&self, height: u64) -> Result<(), String> {
+        let _network_processing_guard = self.network_processing_lock.lock().await;
         let latest_height = self.block_store.get_latest_height().unwrap_or(0);
         if latest_height <= height {
             return Ok(());
@@ -423,6 +429,7 @@ impl ConsensusEngine {
             tx_rx,
             telemetry,
             mining_eligible,
+            network_processing_lock: Arc::new(Mutex::new(())),
         };
 
         engine.refresh_mining_gate_from_local_tip();
@@ -945,6 +952,128 @@ mod tests {
         assert!(producer_engine.is_mining_eligible());
         assert!(sync_engine.is_mining_eligible());
         assert_eq!(block_store.get_latest_height(), Some(1));
+    }
+
+    #[tokio::test]
+    async fn synced_reward_only_blocks_remain_state_root_consistent_across_many_heights() {
+        let producer_dir = tempdir().unwrap();
+        let producer_store =
+            Box::leak(Box::new(RocksDBStore::new(producer_dir.path()).unwrap()));
+        let producer_manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(producer_store));
+        let producer_block_store = Arc::new(BlockStore::new(producer_store));
+        let producer_tx_store = Arc::new(TxStore::new(producer_store));
+        let producer_state_store = Arc::new(StateStore::new(producer_store));
+        let (producer_network_tx, _producer_network_rx) = mpsc::channel(100);
+
+        let follower_dir = tempdir().unwrap();
+        let follower_store =
+            Box::leak(Box::new(RocksDBStore::new(follower_dir.path()).unwrap()));
+        let follower_manager_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(follower_store));
+        let follower_block_store = Arc::new(BlockStore::new(follower_store));
+        let follower_tx_store = Arc::new(TxStore::new(follower_store));
+        let follower_state_store = Arc::new(StateStore::new(follower_store));
+        let (follower_network_tx, _follower_network_rx) = mpsc::channel(100);
+
+        let genesis_path = producer_dir.path().join("genesis.toml");
+        let mut genesis_config = crate::tools::genesis::GenesisConfig::default();
+        genesis_config.chain_id = 1337;
+        genesis_config.timestamp = 1_744_067_299;
+        genesis_config.initial_difficulty = 100;
+        genesis_config.save(&genesis_path).unwrap();
+
+        let (mut genesis_block, genesis_accounts) =
+            crate::tools::genesis::generate_genesis(&genesis_path).unwrap();
+
+        for state_store in [&producer_state_store, &follower_state_store] {
+            for (address, state) in genesis_accounts.iter().cloned() {
+                let mut state = state;
+                state.assign_token_owner(address);
+                state.sync_balance_from_tokens();
+                state_store.set_account_state(&address, &state).unwrap();
+            }
+
+            let genesis_root = state_store
+                .calculate_state_root(0, genesis_block.timestamp)
+                .unwrap();
+            state_store.put_state_root(&genesis_root).unwrap().unwrap();
+        }
+
+        let producer_genesis_root = producer_state_store
+            .calculate_state_root(0, genesis_block.timestamp)
+            .unwrap();
+        genesis_block.pre_reward_state_root = producer_genesis_root.root_hash;
+        genesis_block.state_root = producer_genesis_root.root_hash;
+        genesis_block.hash = crate::storage::block_store::pow_hash(&genesis_block.canonical_header());
+        genesis_block.result_commitment = result_commitment(
+            &genesis_block.hash,
+            &genesis_block.state_root,
+            &genesis_block.reward_token_ids,
+            &genesis_block.conversion_fulfillment_order_ids,
+        );
+        producer_block_store.put_block(&genesis_block).unwrap();
+        follower_block_store.put_block(&genesis_block).unwrap();
+
+        let mut config = ConsensusConfig::default();
+        config.enable_mining = true;
+        config.initial_difficulty = 100;
+        config.target_block_time = 1;
+        config.mining_threads = 1;
+
+        let producer_engine = ConsensusEngine::new(
+            config.clone(),
+            producer_manager_store,
+            producer_block_store.clone(),
+            producer_tx_store,
+            producer_state_store.clone(),
+            producer_network_tx,
+            new_consensus_telemetry(false),
+        );
+        let follower_engine = ConsensusEngine::new_with_shared_mining_gate(
+            config,
+            follower_manager_store,
+            follower_block_store.clone(),
+            follower_tx_store,
+            follower_state_store.clone(),
+            follower_network_tx,
+            new_consensus_telemetry(false),
+            Arc::new(AtomicBool::new(false)),
+        );
+
+        for expected_height in 1..=40 {
+            let block = {
+                let producer = producer_engine.block_producer.lock().await;
+                producer.mine_block().await.expect("expected mined block")
+            };
+            let producer_state = producer_engine.chain_state.lock().await.clone();
+            assert_eq!(
+                producer_engine
+                    .block_processor
+                    .process_block(&block, &producer_state.current_target, &producer_state)
+                    .await,
+                BlockProcessingResult::Success,
+            );
+            producer_engine.update_chain_state(&block).await;
+
+            assert_eq!(
+                follower_engine.process_network_block(block.clone()).await,
+                BlockProcessingResult::Success,
+                "expected follower to accept synced block at height {}",
+                expected_height
+            );
+
+            let persisted_root = follower_state_store
+                .get_state_root_at_height(expected_height)
+                .unwrap()
+                .expect("expected persisted follower root");
+            let recalculated_root = follower_state_store
+                .calculate_state_root(expected_height, block.timestamp)
+                .unwrap();
+            assert_eq!(
+                persisted_root.root_hash, recalculated_root.root_hash,
+                "expected follower persisted root to match recalculated root at height {}",
+                expected_height
+            );
+        }
     }
 
     #[tokio::test]
