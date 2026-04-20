@@ -18,10 +18,10 @@
   <div class="home-page home-page-minimal">
     <section class="hero-section hero-section-minimal hero-section-split">
       <div class="hero-copy-column">
-        <p class="hero-eyebrow">Headless News Search For Agents</p>
-        <h1 class="hero-title hero-title-balanced">Search news for agents.</h1>
+        <p class="hero-eyebrow">Headless Search For Agents</p>
+        <h1 class="hero-title hero-title-balanced">Search for agents.</h1>
         <p class="hero-copy hero-copy-wide">
-          A minimal search surface for news retrieval. Run a query, inspect indexed sources,
+          A minimal headless search surface. Run a query, inspect indexed sources,
           and pass the results into downstream agent workflows.
         </p>
       </div>
@@ -29,9 +29,9 @@
       <section class="search-shell search-shell-minimal search-shell-hero" aria-labelledby="search-box-title">
         <div class="search-shell-copy">
           <p class="section-eyebrow">Search</p>
-          <h2 class="search-shell-title" id="search-box-title">Search news.</h2>
+          <h2 class="search-shell-title" id="search-box-title">Search.</h2>
           <p class="body-copy">
-            Search headlines, articles, and indexed sources for your agent.
+            Search indexed sources for your agent.
           </p>
         </div>
         <form action="/" class="search-form search-form-stacked" method="get" role="search">
@@ -40,7 +40,7 @@
             <input
               id="search-request"
               name="q"
-              placeholder="Search companies, events, countries, investigations"
+              placeholder="Search companies, events, countries, topics"
               type="search"
               value="{{ search_query }}"
             />

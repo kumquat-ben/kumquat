@@ -18,10 +18,10 @@ class HomePageViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Agents")
-        self.assertContains(response, "Headless News Search For Agents")
+        self.assertContains(response, "Headless Search For Agents")
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
-        self.assertContains(response, "Search news.")
+        self.assertContains(response, "Search.")
         self.assertContains(response, "Sign in")
         self.assertNotContains(response, "Explorer")
         self.assertContains(response, ">Search<", html=False)
