@@ -1504,7 +1504,9 @@ impl<'a> StateStore<'a> {
         {
             let state_root = self.state_root.read().unwrap();
             if let Some(root) = &*state_root {
-                return Ok(root.clone());
+                if root.block_height == block_height && root.timestamp == timestamp {
+                    return Ok(root.clone());
+                }
             }
         }
 
@@ -1647,6 +1649,8 @@ impl<'a> StateStore<'a> {
     /// Clear the account cache
     pub fn clear_cache(&self) {
         self.account_cache.clear();
+        let mut state_root = self.state_root.write().unwrap();
+        *state_root = None;
     }
 
     /// Clone the state store for validation purposes
@@ -2991,6 +2995,54 @@ mod tests {
 
         // Cache should be empty now
         assert_eq!(state_store.account_cache.len(), 0);
+    }
+
+    #[test]
+    fn state_root_cache_is_scoped_to_height_and_timestamp() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path());
+        let state_store = StateStore::new(&kv_store);
+
+        let addr1 = [1; 32];
+        let addr2 = [2; 32];
+
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        let root_at_13 = state_store.calculate_state_root(13, 13_000).unwrap();
+
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        let root_at_80 = state_store.calculate_state_root(80, 80_000).unwrap();
+
+        assert_ne!(root_at_13.root_hash, root_at_80.root_hash);
+
+        let recalculated_root_at_13 = state_store.calculate_state_root(13, 13_000).unwrap();
+        assert_eq!(recalculated_root_at_13, root_at_13);
+    }
+
+    #[test]
+    fn clear_cache_invalidates_cached_state_root() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = RocksDBStore::new(temp_dir.path());
+        let state_store = StateStore::new(&kv_store);
+
+        let addr1 = [1; 32];
+        let addr2 = [2; 32];
+
+        state_store
+            .create_account(&addr1, 1000, AccountType::User)
+            .unwrap();
+        let first_root = state_store.calculate_state_root(1, 1_000).unwrap();
+
+        state_store
+            .create_account(&addr2, 2000, AccountType::User)
+            .unwrap();
+        state_store.clear_cache();
+
+        let second_root = state_store.calculate_state_root(2, 2_000).unwrap();
+        assert_ne!(first_root.root_hash, second_root.root_hash);
     }
 
     #[test]
