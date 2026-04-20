@@ -9,54 +9,33 @@
       </a>
       <span class="site-state-pill">Agents</span>
     </div>
-    <nav class="nav-links" aria-label="Primary">
+    <nav class="nav-links nav-links-home" aria-label="Primary">
       <a href="https://github.com/kumquat-ben/kumquat" rel="noreferrer" target="_blank">GitHub</a>
       <a class="button button-nav button-nav-home" href="/auth/sign-in">Sign in</a>
     </nav>
   </header>
 
-  <div class="home-page home-page-minimal">
-    <section class="hero-section hero-section-minimal hero-section-split">
-      <div class="hero-copy-column">
-        <p class="hero-eyebrow">Headless Search For Agents</p>
-        <h1 class="hero-title hero-title-balanced">Search for agents.</h1>
-        <p class="hero-copy hero-copy-wide">
-          A minimal headless search surface. Run a query, inspect indexed sources,
-          and pass the results into downstream agent workflows.
-        </p>
-      </div>
+  <div class="home-page home-page-chat">
+    <section class="chat-shell" aria-labelledby="search-box-title">
+      <div class="chat-thread">
+        <article class="chat-message chat-message-system">
+          <span class="chat-message-label">System</span>
+          <p>Headless search for agents.</p>
+        </article>
 
-      <section class="search-shell search-shell-minimal search-shell-hero" aria-labelledby="search-box-title">
-        <div class="search-shell-copy">
-          <p class="section-eyebrow">Search</p>
-          <h2 class="search-shell-title" id="search-box-title">Search.</h2>
-          <p class="body-copy">
-            Search indexed sources for your agent.
-          </p>
-        </div>
-        <form action="/" class="search-form search-form-stacked" method="get" role="search">
-          <label class="search-input-wrap" for="search-request">
-            <span class="search-input-label">Search query</span>
-            <input
-              id="search-request"
-              name="q"
-              placeholder="Search companies, events, countries, topics"
-              type="search"
-              value="{{ search_query }}"
-            />
-          </label>
-          <button class="button button-primary search-submit" type="submit">Search</button>
-        </form>
-        <div class="search-response-card" aria-live="polite" role="status">
-          <div class="search-response-head">
-            <p class="section-eyebrow">Results</p>
-            <span class="search-status-pill {{ search_status_class }}">
-              {{ search_status_label }}
-            </span>
-          </div>
-          {% if search_submitted %}
-            <p class="search-response-query">“{{ search_query }}”</p>
-            <p class="body-copy">{{ search_reply }}</p>
+        {% if search_submitted %}
+          <article class="chat-message chat-message-user">
+            <span class="chat-message-label">Query</span>
+            <p>{{ search_query }}</p>
+          </article>
+          <article class="chat-message chat-message-assistant" aria-live="polite" role="status">
+            <div class="chat-message-head">
+              <span class="chat-message-label">Search</span>
+              <span class="search-status-pill {{ search_status_class }}">
+                {{ search_status_label }}
+              </span>
+            </div>
+            <p>{{ search_reply }}</p>
             {% if search_results %}
               <div class="search-results-list">
                 {% for result in search_results %}
@@ -68,11 +47,32 @@
                 {% endfor %}
               </div>
             {% endif %}
-          {% else %}
-            <p class="body-copy">{{ search_reply }}</p>
-          {% endif %}
-        </div>
-      </section>
+          </article>
+        {% else %}
+          <article class="chat-message chat-message-assistant chat-message-empty" aria-live="polite" role="status">
+            <span class="chat-message-label">Search</span>
+            <h1 id="search-box-title">What do you want to search?</h1>
+            <p>{{ search_reply }}</p>
+          </article>
+        {% endif %}
+      </div>
+
+      <div class="chat-composer-wrap">
+        <form action="/" class="chat-composer" method="get" role="search">
+          <label class="chat-composer-field" for="search-request">
+            <span class="search-input-label">Search query</span>
+            <input
+              id="search-request"
+              name="q"
+              placeholder="Search topics, companies, events, sources"
+              type="search"
+              value="{{ search_query }}"
+            />
+          </label>
+          <button class="button button-primary search-submit" type="submit">Search</button>
+        </form>
+        <p class="chat-composer-note">Indexed retrieval for agent workflows.</p>
+      </div>
     </section>
   </div>
 {% endblock %}
