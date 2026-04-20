@@ -17,13 +17,11 @@ class HomePageViewTests(TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Agents")
-        self.assertContains(response, "Headless search for agents.")
+        self.assertContains(response, "Beta")
+        self.assertContains(response, "currently in beta")
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
-        self.assertContains(response, "What do you want to search?")
-        self.assertContains(response, "Sign in")
-        self.assertNotContains(response, "Explorer")
+        self.assertContains(response, "Search Kumquat.")
         self.assertContains(response, ">Search<", html=False)
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):

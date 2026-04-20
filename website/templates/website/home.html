@@ -1,41 +1,80 @@
 {% extends "website/base.html" %}
 
 {% block content %}
-  <header class="site-nav site-nav-home" id="top">
+  <header class="site-nav" id="top">
     <div class="site-mark-wrap">
-      <a class="site-mark" href="/">
+      <a class="site-mark" href="#top">
         <span class="site-mark-dot"></span>
         Kumquat
       </a>
-      <span class="site-state-pill">Agents</span>
+      <span class="site-state-pill">Beta</span>
     </div>
-    <nav class="nav-links nav-links-home" aria-label="Primary">
-      <a href="https://github.com/kumquat-ben/kumquat" rel="noreferrer" target="_blank">GitHub</a>
-      <a class="button button-nav button-nav-home" href="/auth/sign-in">Sign in</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#story">Story</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#wallet">Wallet</a>
+      <a href="#denominations">Denominations</a>
+      <a href="/explorer">Explorer</a>
     </nav>
+    <a
+      class="button button-nav button-nav-pulse"
+      href="https://github.com/kumquat-ben/kumquat"
+      rel="noreferrer"
+      target="_blank"
+    >
+      View on GitHub
+    </a>
   </header>
 
-  <div class="home-page home-page-chat">
-    <section class="chat-shell" aria-labelledby="search-box-title">
-      <div class="chat-thread">
-        <article class="chat-message chat-message-system">
-          <span class="chat-message-label">System</span>
-          <p>Headless search for agents.</p>
-        </article>
-
-        {% if search_submitted %}
-          <article class="chat-message chat-message-user">
-            <span class="chat-message-label">Query</span>
-            <p>{{ search_query }}</p>
-          </article>
-          <article class="chat-message chat-message-assistant" aria-live="polite" role="status">
-            <div class="chat-message-head">
-              <span class="chat-message-label">Search</span>
-              <span class="search-status-pill {{ search_status_class }}">
-                {{ search_status_label }}
-              </span>
-            </div>
-            <p>{{ search_reply }}</p>
+  <div class="home-page">
+    <section class="hero-section">
+      <div class="hero-decor">
+        <div class="coin-outline coin-large"></div>
+        <div class="coin-outline coin-medium"></div>
+        <div class="coin-outline coin-small"></div>
+      </div>
+      <p class="hero-eyebrow">Headless Software, No Browser Required</p>
+      <h1 class="hero-title">It's Not an Apple. It's Not Bitcoin. <em>It's Better.</em></h1>
+      <p class="hero-copy">
+        Kumquat Chain is object-based digital cash software with a blockchain wallet,
+        visible denominations, and transfer flows that behave more like physical money
+        than an abstract account balance.
+      </p>
+      <p class="hero-beta-note">
+        Kumquat is currently in beta. Search and wallet flows are still being actively
+        built and refined.
+      </p>
+      <section class="search-shell" aria-labelledby="search-box-title">
+        <div class="search-shell-copy">
+          <p class="section-eyebrow">Search</p>
+          <h2 class="search-shell-title" id="search-box-title">Search Kumquat.</h2>
+          <p class="body-copy">
+            Search for wallets, transactions, denominations, and answers in one simple box.
+          </p>
+        </div>
+        <form action="/" class="search-form" method="get" role="search">
+          <label class="search-input-wrap" for="search-request">
+            <span class="search-input-label">Search</span>
+            <input
+              id="search-request"
+              name="q"
+              placeholder="Search wallets, transactions, denominations, and answers"
+              type="search"
+              value="{{ search_query }}"
+            />
+          </label>
+          <button class="button button-primary search-submit" type="submit">Search</button>
+        </form>
+        <div class="search-response-card" aria-live="polite" role="status">
+          <div class="search-response-head">
+            <p class="section-eyebrow">Results</p>
+            <span class="search-status-pill {{ search_status_class }}">
+              {{ search_status_label }}
+            </span>
+          </div>
+          {% if search_submitted %}
+            <p class="search-response-query">“{{ search_query }}”</p>
+            <p class="body-copy">{{ search_reply }}</p>
             {% if search_results %}
               <div class="search-results-list">
                 {% for result in search_results %}
@@ -47,32 +86,377 @@
                 {% endfor %}
               </div>
             {% endif %}
+          {% else %}
+            <p class="body-copy">{{ search_reply }}</p>
+          {% endif %}
+        </div>
+      </section>
+      <div class="hero-actions">
+        <a class="button button-primary" href="{% if auth_user %}#wallet{% else %}/auth/sign-in{% endif %}">
+          {% if auth_user %}Generate your wallet{% else %}Sign in with Google{% endif %}
+        </a>
+        <a class="button button-secondary" href="#story">Read the story</a>
+      </div>
+    </section>
+
+    <section class="bills-strip" aria-label="Denomination strip">
+      <div class="bills-viewport">
+        <div class="bills-track">
+          {% for _ in "12" %}
+            <div class="bills-loop">
+              {% for bill in bill_items %}
+                <article class="bill-card" data-bill-id="{{ bill.id }}">
+                  <span class="bill-value">{{ bill.label }}</span>
+                  <span class="bill-kind">{{ bill.kind }}</span>
+                </article>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="story-section" id="story">
+      <div class="story-copy-panel">
+        <p class="section-eyebrow">Why Kumquat</p>
+        <h2 class="section-title">Software that keeps the <em>logic of objects.</em></h2>
+        <p class="body-copy">
+          Kumquat is building software for object-based digital units. Bills, coins,
+          and wallet rows are interface primitives that help people inspect what is
+          in a wallet and what moves in a transfer.
+        </p>
+        <p class="body-copy body-copy-strong">
+          The goal is a digital cash interface where a blockchain wallet can show bills,
+          coins, and denomination mix directly, so users can inspect value composition
+          instead of reverse-engineering it from transaction history.
+        </p>
+        <div class="story-links" aria-label="Project links">
+          <a class="story-link" href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">
+            Track the project
+          </a>
+          <a class="story-link" href="https://x.com/kumquatben" rel="noreferrer" target="_blank">
+            Founder: Benjamin Levin
+          </a>
+        </div>
+        <div class="story-principles">
+          <article>
+            <p class="principle-index">01</p>
+            <h3>Clear denomination hierarchy</h3>
+            <p class="body-copy">
+              Larger units lead, smaller units follow, and the wallet view keeps the
+              composition readable from totals down to the smallest remainder.
+            </p>
           </article>
+          <article>
+            <p class="principle-index">02</p>
+            <h3>Transfers you can follow</h3>
+            <p class="body-copy">
+              The interface is built so incoming units, denomination mix, and wallet
+              totals can be understood at a glance instead of decoded after the fact.
+            </p>
+          </article>
+        </div>
+        <p class="legal-note">
+          Kumquat is software under development. This site describes interface and
+          protocol concepts only and is not an offer to sell or distribute money,
+          commodities, securities, or financial products.
+        </p>
+      </div>
+
+      <div class="story-side-panel">
+        <section class="identity-card">
+          {% if auth_user %}
+            <p class="section-eyebrow">Signed In</p>
+            <h3>{{ auth_user.full_name }}</h3>
+            <p class="body-copy">{{ auth_user.email }}</p>
+            <div class="pill-row">
+              <span class="meta-pill">Google verified</span>
+              {% if auth_user.is_superuser %}
+                <span class="meta-pill">Superuser</span>
+              {% endif %}
+            </div>
+            {% if wallet %}
+              <div class="identity-wallet-copy">
+                <span class="identity-wallet-label">Wallet address</span>
+                <div class="identity-wallet-actions">
+                  <code
+                    class="identity-wallet-pill"
+                    title="{{ wallet.address }}"
+                  >{{ wallet.address|slice:":4" }}...{{ wallet.address|slice:"-4:" }}</code>
+                  <button
+                    class="identity-wallet-copy-button"
+                    data-copy-text="{{ wallet.address }}"
+                    type="button"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <a class="button button-secondary button-block" href="#wallet">Open wallet</a>
+            {% else %}
+              <a class="button button-secondary button-block" href="#wallet">Create wallet</a>
+            {% endif %}
+            {% if auth_user.is_superuser %}
+              <a class="button button-secondary button-block" href="/dashboard">Admin dashboard</a>
+              <a class="button button-secondary button-block" href="/sms">SMS inbox</a>
+            {% endif %}
+            <form action="/auth/logout" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-secondary button-block" type="submit">Sign out</button>
+            </form>
+          {% else %}
+            <p class="section-eyebrow">Founding Member</p>
+            <h3>Join before launch</h3>
+            <p class="body-copy">
+              Sign in to start earning kumquats in early access and secure your place
+              before the chain goes live.
+            </p>
+            <a class="button button-secondary" href="/auth/sign-in">Sign in</a>
+          {% endif %}
+        </section>
+
+        <section class="signup-card {% if signup_success %}signup-card-success{% endif %}">
+          <form action="/early-access" class="signup-form" method="post">
+            {% csrf_token %}
+            <div class="signup-head">
+              <p class="section-eyebrow">Early Access</p>
+              <p class="body-copy">
+                Join the list and keep the product rollout grounded in real users.
+              </p>
+            </div>
+
+            <label class="field">
+              <span>Name</span>
+              <input
+                autocomplete="name"
+                name="name"
+                placeholder="Kumquat user"
+                type="text"
+                value="{{ signup_data.name }}"
+              />
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input
+                autocomplete="email"
+                name="email"
+                placeholder="you@example.com"
+                required
+                type="email"
+                value="{{ signup_data.email }}"
+              />
+            </label>
+
+            <div class="signup-actions">
+              <button class="button button-primary button-block" type="submit">Join early access</button>
+              {% if signup_error %}
+                <p class="signup-message signup-message-error">{{ signup_error }}</p>
+              {% endif %}
+            </div>
+          </form>
+
+          <div aria-live="polite" class="signup-success" role="status">
+            <div class="signup-success-icon">OK</div>
+            <p class="section-eyebrow">Saved</p>
+            <h3>You’re on the list.</h3>
+            <p class="body-copy">
+              We stored your early-access signup and will reach out when the next
+              release is ready.
+            </p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="how-section" id="how-it-works">
+      <div class="how-copy">
+        <p class="section-eyebrow">How It Works</p>
+        <h2 class="section-title">Show the transfer model <em>one beat at a time.</em></h2>
+        <ol class="steps-list">
+          {% for step in how_it_works_steps %}
+            <li class="step-item">
+              <span class="step-number">{{ step.number }}</span>
+              <span class="step-line"></span>
+              <div class="step-content">
+                <h3>{{ step.title }}</h3>
+                <p class="body-copy">{{ step.body }}</p>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="wallet-card">
+        <div class="wallet-card-head">
+          <p class="section-eyebrow">Wallet Preview</p>
+          <p class="wallet-total">¤{{ wallet_total|floatformat:2 }}</p>
+        </div>
+        <div class="wallet-rows">
+          {% for row in wallet_rows %}
+            <div class="wallet-row">
+              <div>
+                <p class="wallet-row-value">{{ row.label }}</p>
+                <p class="wallet-row-detail">{{ row.detail }}</p>
+              </div>
+              <span class="wallet-badge wallet-badge-{{ row.kind }}">{{ row.kind }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="wallet-section" id="wallet">
+      <div class="wallet-section-copy">
+        <p class="section-eyebrow">Wallet</p>
+        <h2 class="section-title">Generate a chain-compatible wallet <em>from the website.</em></h2>
+        <p class="body-copy">
+          The website generates an Ed25519 keypair and derives the wallet address by
+          hashing the public key with SHA-256, matching the blockchain implementation.
+        </p>
+        {% if auth_user %}
+          <p class="body-copy">
+            Use this address anywhere the blockchain expects a Kumquat wallet address,
+            including node reward configuration.
+          </p>
         {% else %}
-          <article class="chat-message chat-message-assistant chat-message-empty" aria-live="polite" role="status">
-            <span class="chat-message-label">Search</span>
-            <h1 id="search-box-title">What do you want to search?</h1>
-            <p>{{ search_reply }}</p>
-          </article>
+          <p class="body-copy">
+            Sign in first to create and store a wallet for your account.
+          </p>
         {% endif %}
       </div>
 
-      <div class="chat-composer-wrap">
-        <form action="/" class="chat-composer" method="get" role="search">
-          <label class="chat-composer-field" for="search-request">
-            <span class="search-input-label">Search query</span>
-            <input
-              id="search-request"
-              name="q"
-              placeholder="Search topics, companies, events, sources"
-              type="search"
-              value="{{ search_query }}"
-            />
-          </label>
-          <button class="button button-primary search-submit" type="submit">Search</button>
-        </form>
-        <p class="chat-composer-note">Indexed retrieval for agent workflows.</p>
+      <div class="wallet-generator-card">
+        {% if auth_user %}
+          {% if wallet %}
+            <div class="wallet-generator-head">
+              <p class="section-eyebrow">Your Wallet</p>
+              {% if wallet_generation_success %}
+                <span class="wallet-status wallet-status-success">
+                  {% if wallet_generation_status == "regenerated" %}Wallet regenerated{% else %}Wallet created{% endif %}
+                </span>
+              {% endif %}
+            </div>
+
+            {% if wallet_private_key %}
+              <div class="wallet-alert wallet-alert-warning">
+                <p class="wallet-alert-title">Private key</p>
+                <p class="body-copy">
+                  This is the only time the website will show your private key in plaintext.
+                </p>
+                <code class="wallet-secret">{{ wallet_private_key }}</code>
+              </div>
+            {% endif %}
+
+            {% if wallet_generation_error %}
+              <div class="wallet-alert wallet-alert-error">
+                <p class="wallet-alert-title">{{ wallet_generation_error }}</p>
+              </div>
+            {% endif %}
+
+            <div class="wallet-details">
+              <div class="wallet-detail-row">
+                <span class="wallet-detail-label">Address</span>
+                <code class="wallet-detail-value">{{ wallet.address }}</code>
+              </div>
+              <div class="wallet-detail-row">
+                <span class="wallet-detail-label">Public key</span>
+                <code class="wallet-detail-value">{{ wallet.public_key }}</code>
+              </div>
+            </div>
+            <form action="/wallets/regenerate" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-secondary button-block" type="submit">Regenerate wallet</button>
+            </form>
+          {% else %}
+            <div class="wallet-generator-head">
+              <p class="section-eyebrow">Create Wallet</p>
+            </div>
+
+            {% if wallet_generation_error %}
+              <div class="wallet-alert wallet-alert-error">
+                <p class="wallet-alert-title">{{ wallet_generation_error }}</p>
+              </div>
+            {% endif %}
+
+            <p class="body-copy">
+              Generate one wallet for this account. The private key is encrypted at rest
+              after creation.
+            </p>
+            <form action="/wallets/generate" class="stack-form" method="post">
+              {% csrf_token %}
+              <button class="button button-primary button-block" type="submit">Generate wallet</button>
+            </form>
+          {% endif %}
+        {% else %}
+          <p class="body-copy">
+            Wallet generation is available to signed-in users only.
+          </p>
+          <a class="button button-primary" href="/auth/sign-in">Sign in to create a wallet</a>
+        {% endif %}
       </div>
     </section>
+
+    <section class="denomination-section" id="denominations">
+      <p class="section-eyebrow">Denominations</p>
+      <h2 class="section-title">Bills and coins should feel like a <em>tray of units.</em></h2>
+      <div class="denomination-grid">
+        {% for item in denomination_grid %}
+          <article class="denomination-card denomination-card-{{ item.type }}">
+            <p class="denomination-kind">{{ item.type }}</p>
+            <p class="denomination-value">{{ item.label }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="seo-section" aria-labelledby="seo-faq-title">
+      <div class="seo-section-copy">
+        <p class="section-eyebrow">Search Overview</p>
+        <h2 class="section-title" id="seo-faq-title">What Kumquat means in <em>plain language.</em></h2>
+        <p class="body-copy">
+          Kumquat is a blockchain and wallet software project focused on denomination-first
+          digital cash. The product combines visible units, wallet generation, and
+          transfer interfaces that make balances easier to read at a glance.
+        </p>
+      </div>
+      <div class="faq-grid">
+        {% for item in seo_faq_items %}
+          <article class="faq-card">
+            <h3>{{ item.question }}</h3>
+            <p class="body-copy">{{ item.answer }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="footer-links" aria-label="Footer links">
+        <a href="https://github.com/users/kumquat-ben/projects/1" rel="noreferrer" target="_blank">GitHub project</a>
+        <a href="https://x.com/kumquatben" rel="noreferrer" target="_blank">Benjamin Levin on X</a>
+      </div>
+      <p>Copyright © Benjamin Levin. All rights reserved.</p>
+    </footer>
   </div>
+
+  <script>
+    (() => {
+      const copyButtons = document.querySelectorAll("[data-copy-text]");
+      copyButtons.forEach((button) => {
+        const originalLabel = button.textContent;
+        button.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(button.dataset.copyText || "");
+            button.textContent = "Copied";
+            window.setTimeout(() => {
+              button.textContent = originalLabel;
+            }, 1200);
+          } catch (_error) {
+            button.textContent = "Unavailable";
+            window.setTimeout(() => {
+              button.textContent = originalLabel;
+            }, 1200);
+          }
+        });
+      });
+    })();
+  </script>
 {% endblock %}
