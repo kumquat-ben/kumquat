@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
-  tag: blockchain-20260420-031021-syncfix2
+  tag: blockchain-20260418-000841-sync-gate-fix-amd64
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -44,6 +44,7 @@ config:
   enableNatPmp: false
   enableDht: true
   chainId: 1337
+  genesisHash: 4d2b2a6b8e2b9a805d23d4e862c40dcadafb25dcb84790cf10f3fca2425fe06c
   enableMining: true
   miningThreads: 1
   hybridActivationHeight: 0
@@ -79,15 +80,39 @@ genesis:
   initialDifficulty: 100
   initialAccounts:
     - address: "0000000000000000000000000000000000000000000000000000000000000001"
-      balance: 1000000000
+      denominations:
+        - "100"
+        - "50"
+        - "20"
+        - "10"
+        - "5"
+        - "2"
+        - "1"
+        - "0.5"
+        - "0.25"
+        - "0.1"
+        - "0.05"
+        - "0.01"
       accountType: User
     - address: "0000000000000000000000000000000000000000000000000000000000000002"
-      balance: 1000000000
+      denominations:
+        - "100"
+        - "50"
+        - "20"
+        - "10"
+        - "5"
+        - "2"
+        - "1"
+        - "0.5"
+        - "0.25"
+        - "0.1"
+        - "0.05"
+        - "0.01"
       accountType: User
 
 persistence:
   existingClaim: ""
-  storageClassName: kumquat-blockchain-gp3
+  storageClassName: kumquat-mysql-gp3
   accessModes:
     - ReadWriteOnce
   size: 200Gi

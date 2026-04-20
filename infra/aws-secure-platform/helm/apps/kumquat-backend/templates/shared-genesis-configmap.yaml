@@ -1,0 +1,13 @@
+# Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
+# Unauthorized use or distribution is strictly prohibited.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kumquat-backend.fullname" . }}-shared-genesis
+  labels:
+    {{- include "kumquat-backend.labels" . | nindent 4 }}
+data:
+  genesis.toml: |
+{{ .Files.Get "files/genesis.toml" | indent 4 }}
+  genesis.ceremony.json: |
+{{ .Files.Get "files/genesis.ceremony.json" | indent 4 }}

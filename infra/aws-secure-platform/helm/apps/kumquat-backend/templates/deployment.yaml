@@ -63,3 +63,16 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: shared-genesis
+              mountPath: /app/blockchain/genesis.toml
+              subPath: genesis.toml
+              readOnly: true
+            - name: shared-genesis
+              mountPath: /app/blockchain/genesis.ceremony.json
+              subPath: genesis.ceremony.json
+              readOnly: true
+      volumes:
+        - name: shared-genesis
+          configMap:
+            name: {{ include "kumquat-backend.fullname" . }}-shared-genesis

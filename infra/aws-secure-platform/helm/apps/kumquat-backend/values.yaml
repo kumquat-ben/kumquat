@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260417-130522-062cf52-amd64
+  tag: backend-20260419-234026-genesis-ceremony
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -38,8 +38,8 @@ env:
     NODE_LAUNCHER_NETWORK: "dev"
     # Managed nodes must stay on the same chain identity as the shared seed node.
     NODE_LAUNCHER_CHAIN_ID: "1337"
-    NODE_LAUNCHER_GENESIS_FILE: "/app/genesis.toml"
-    NODE_LAUNCHER_GENESIS_HASH: "401bb67bf4fca89ffc5b492833ede77e8f3bcb2a61ef54cf522cc90beb0170c4"
+    NODE_LAUNCHER_GENESIS_CEREMONY_FILE: "/app/blockchain/genesis.ceremony.json"
+    NODE_LAUNCHER_GENESIS_FILE: "/app/blockchain/genesis.toml"
     NODE_LAUNCHER_BASE_API_PORT: "18545"
     NODE_LAUNCHER_BASE_P2P_PORT: "30380"
     NODE_LAUNCHER_BASE_METRICS_PORT: "19100"

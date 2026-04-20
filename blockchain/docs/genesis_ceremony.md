@@ -47,11 +47,14 @@ cargo run --bin kumquat-genesis -- \
    - `chain_identity` matches
    - account count and balances match expectations
 4. Record the agreed `genesis_hash` in node configuration as `consensus.genesis_hash`.
-5. Store the following artifacts in version control or an operator archive:
+5. Point deployment tooling at the ceremony artifact first, not an ad hoc hash string.
+   For the website launcher this means setting `NODE_LAUNCHER_GENESIS_CEREMONY_FILE`
+   to the canonical `genesis.ceremony.json`.
+6. Store the following artifacts in version control or an operator archive:
    - `genesis.toml`
    - `genesis.ceremony.json`
    - the list of operators who verified the result
-6. Only then allow nodes to initialize block `0`.
+7. Only then allow nodes to initialize block `0`.
 
 ## What Nodes Must Pin
 
@@ -64,6 +67,8 @@ genesis_hash = "<agreed 64-char hex hash>"
 ```
 
 If a node’s local genesis hash or computed root differs from the pinned value, startup must fail.
+That same pinned hash must be propagated into deployment templates so ConfigMaps and stateful nodes
+cannot silently drift away from the ceremony record.
 
 ## Ceremony Record
 

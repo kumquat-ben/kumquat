@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -8,6 +9,29 @@ from api.node_launcher import NodeLauncherError, render_config, render_genesis
 
 
 class NodeLauncherGenesisTests(SimpleTestCase):
+    @staticmethod
+    def _write_ceremony(tmpdir: str, *, chain_id: int = 1337, genesis_hash: str = "49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f"):
+        genesis_path = Path(tmpdir) / "genesis.toml"
+        ceremony_path = Path(tmpdir) / "genesis.ceremony.json"
+        genesis_text = "chain_id = 1337\ntimestamp = 1744067299\ninitial_difficulty = 100\n"
+        genesis_path.write_text(genesis_text, encoding="utf-8")
+        ceremony_path.write_text(
+            json.dumps(
+                {
+                    "chain_id": chain_id,
+                    "genesis_config_path": "genesis.toml",
+                    "genesis_hash": genesis_hash,
+                    "chain_identity": f"chain-{chain_id}:{genesis_hash}",
+                    "state_root": "f" * 64,
+                    "timestamp": 1744067299,
+                    "initial_difficulty": 100,
+                    "accounts": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return genesis_path, ceremony_path, genesis_text
+
     def _node(self, **overrides):
         values = {
             "name": "node-1",
@@ -27,44 +51,60 @@ class NodeLauncherGenesisTests(SimpleTestCase):
 
     def test_render_genesis_uses_shared_genesis_file_contents(self):
         with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_text = "chain_id = 1337\ntimestamp = 1744067299\ninitial_difficulty = 100\n"
-            genesis_path.write_text(genesis_text, encoding="utf-8")
+            _, ceremony_path, genesis_text = self._write_ceremony(tmpdir)
 
             with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 self.assertEqual(render_genesis(self._node()), genesis_text)
 
-    def test_render_config_pins_shared_genesis_hash(self):
+    def test_render_config_pins_shared_genesis_hash_from_ceremony(self):
+        with TemporaryDirectory() as tmpdir:
+            _, ceremony_path, _ = self._write_ceremony(tmpdir)
+
+            with override_settings(
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
+                NODE_LAUNCHER_CHAIN_ID=1337,
+            ):
+                config_text = render_config(self._node())
+
+            self.assertIn(
+                'genesis_hash = "49be8808fea37733de5e619af4fa5745141c8edd63dc8ddf37deebf907d7c22f"',
+                config_text,
+            )
+            self.assertIn("chain_id = 1337", config_text)
+
+    def test_render_config_rejects_chain_id_mismatch_against_ceremony(self):
+        with TemporaryDirectory() as tmpdir:
+            _, ceremony_path, _ = self._write_ceremony(tmpdir, chain_id=1337)
+
+            with override_settings(
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
+                NODE_LAUNCHER_CHAIN_ID=2,
+            ):
+                with self.assertRaisesMessage(
+                    NodeLauncherError, "does not match ceremony chain_id=1337"
+                ):
+                    render_config(self._node())
+
+    def test_render_config_supports_legacy_file_and_hash_fallback(self):
         with TemporaryDirectory() as tmpdir:
             genesis_path = Path(tmpdir) / "genesis.toml"
             genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
 
             with override_settings(
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE="",
                 NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
                 NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(self._node())
 
-            self.assertIn('genesis_hash = "1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95"', config_text)
-            self.assertIn("chain_id = 1337", config_text)
-
-    def test_render_config_rejects_chain_id_mismatch(self):
-        with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
-
-            with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
-                NODE_LAUNCHER_CHAIN_ID=1337,
-            ):
-                with self.assertRaisesMessage(NodeLauncherError, "launcher is pinned to shared chain_id=1337"):
-                    render_config(self._node(chain_id=2))
+            self.assertIn(
+                'genesis_hash = "1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95"',
+                config_text,
+            )
 
 
 class NodeLauncherBootstrapTests(TestCase):
@@ -100,12 +140,10 @@ class NodeLauncherBootstrapTests(TestCase):
         )
 
         with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
+            _, ceremony_path, _ = NodeLauncherGenesisTests._write_ceremony(tmpdir)
 
             with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(follower)
@@ -130,12 +168,10 @@ class NodeLauncherBootstrapTests(TestCase):
         )
 
         with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
+            _, ceremony_path, _ = NodeLauncherGenesisTests._write_ceremony(tmpdir)
 
             with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
                 NODE_LAUNCHER_CHAIN_ID=1337,
                 NODE_LAUNCHER_GENESIS_SEED_HOST="genesis.node.kumquat.info",
                 NODE_LAUNCHER_GENESIS_SEED_PORT=30333,
@@ -151,12 +187,10 @@ class NodeLauncherBootstrapTests(TestCase):
         follower = self._make_node(name="node-2", display_name="Node 2")
 
         with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
+            _, ceremony_path, _ = NodeLauncherGenesisTests._write_ceremony(tmpdir)
 
             with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
                 NODE_LAUNCHER_CHAIN_ID=1337,
                 NODE_LAUNCHER_GENESIS_SEED_SERVICE_NAME="kumquat-blockchain-headless",
                 NODE_LAUNCHER_GENESIS_SEED_PORT=30333,
@@ -176,12 +210,10 @@ class NodeLauncherBootstrapTests(TestCase):
         )
 
         with TemporaryDirectory() as tmpdir:
-            genesis_path = Path(tmpdir) / "genesis.toml"
-            genesis_path.write_text("chain_id = 1337\n", encoding="utf-8")
+            _, ceremony_path, _ = NodeLauncherGenesisTests._write_ceremony(tmpdir)
 
             with override_settings(
-                NODE_LAUNCHER_GENESIS_FILE=str(genesis_path),
-                NODE_LAUNCHER_GENESIS_HASH="1b10e3582554ec4b197368743568f977db91110fd642c7f5c59ed17f83c9ca95",
+                NODE_LAUNCHER_GENESIS_CEREMONY_FILE=str(ceremony_path),
                 NODE_LAUNCHER_CHAIN_ID=1337,
             ):
                 config_text = render_config(genesis)

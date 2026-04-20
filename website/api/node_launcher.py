@@ -2,7 +2,6 @@
 # Unauthorized use or distribution is strictly prohibited.
 import base64
 import hashlib
-from pathlib import Path
 from tempfile import gettempdir
 import time
 from typing import Optional
@@ -14,6 +13,7 @@ from kubernetes import config as k8s_config
 from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
 
+from .genesis import GenesisCeremonyError, load_shared_genesis_material
 from .models import ManagedNode
 
 
@@ -201,30 +201,11 @@ def _rust_log() -> str:
     return (getattr(settings, "NODE_LAUNCHER_RUST_LOG", "") or "info").strip()
 
 
-def _shared_genesis_file() -> Path:
-    genesis_path = (getattr(settings, "NODE_LAUNCHER_GENESIS_FILE", "") or "").strip()
-    if not genesis_path:
-        raise NodeLauncherError("NODE_LAUNCHER_GENESIS_FILE is not configured.")
-    genesis_file = Path(genesis_path)
-    if not genesis_file.exists():
-        raise NodeLauncherError(f"Shared genesis file does not exist: {genesis_file}")
-    if not genesis_file.is_file():
-        raise NodeLauncherError(f"Shared genesis path is not a file: {genesis_file}")
-    return genesis_file
-
-
-def _shared_genesis_hash() -> str:
-    genesis_hash = (getattr(settings, "NODE_LAUNCHER_GENESIS_HASH", "") or "").strip().lower()
-    if not genesis_hash:
-        raise NodeLauncherError("NODE_LAUNCHER_GENESIS_HASH is not configured.")
-    return genesis_hash
-
-
-def _shared_genesis_contents() -> str:
+def _shared_genesis_material():
     try:
-        return _shared_genesis_file().read_text(encoding="utf-8")
-    except OSError as exc:
-        raise NodeLauncherError(f"Failed to read shared genesis file: {exc}") from exc
+        return load_shared_genesis_material()
+    except GenesisCeremonyError as exc:
+        raise NodeLauncherError(str(exc)) from exc
 
 
 def _bootstrap_nodes(node: ManagedNode, auth_context=None) -> list[str]:
@@ -256,13 +237,14 @@ def _bootstrap_nodes(node: ManagedNode, auth_context=None) -> list[str]:
 def render_config(node: ManagedNode, auth_context=None) -> str:
     data_dir = "/data/kumquat/data"
     node_id_line = f'node_id = "{node.reward_address}"\n' if node.reward_address else ""
-    shared_chain_id = int(getattr(settings, "NODE_LAUNCHER_CHAIN_ID", 1337))
+    shared_genesis = _shared_genesis_material()
+    shared_chain_id = shared_genesis.chain_id
     if node.chain_id != shared_chain_id:
         raise NodeLauncherError(
             f"Managed node {node.name} requested chain_id={node.chain_id}, "
             f"but the launcher is pinned to shared chain_id={shared_chain_id}."
         )
-    genesis_hash = _shared_genesis_hash()
+    genesis_hash = shared_genesis.genesis_hash
     bootstrap_nodes = _bootstrap_nodes(node, auth_context)
     bootstrap_nodes_block = ",\n".join(f'  "{entry}"' for entry in bootstrap_nodes)
     return f"""[node]
@@ -329,7 +311,7 @@ pruning_interval = 100
 
 
 def render_genesis(node: ManagedNode) -> str:
-    return _shared_genesis_contents()
+    return _shared_genesis_material().genesis_contents
 
 
 def _managed_labels(node: ManagedNode):

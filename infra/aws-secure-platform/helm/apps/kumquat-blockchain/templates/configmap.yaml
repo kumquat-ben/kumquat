@@ -47,6 +47,7 @@ data:
 
     [consensus]
     chain_id = {{ int .Values.config.chainId }}
+    genesis_hash = {{ .Values.config.genesisHash | quote }}
     enable_mining = {{ .Values.config.enableMining }}
     mining_threads = {{ int .Values.config.miningThreads }}
     hybrid_activation_height = {{ int .Values.config.hybridActivationHeight }}
@@ -85,6 +86,15 @@ data:
     {{- range .Values.genesis.initialAccounts }}
 
     [initial_accounts.{{ .address }}]
+    {{- if .denominations }}
+    denominations = [
+    {{- range $index, $denomination := .denominations }}
+      {{- if $index }},{{ end }}
+      {{ $denomination | quote }}
+    {{- end }}
+    ]
+    {{- else }}
     balance = {{ int .balance }}
+    {{- end }}
     account_type = {{ .accountType | quote }}
     {{- end }}

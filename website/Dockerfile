@@ -7,10 +7,12 @@ WORKDIR /app
 
 RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY requirements.txt ./
+COPY website/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . ./
+COPY website/ ./
+COPY blockchain/genesis.toml ./blockchain/genesis.toml
+COPY blockchain/genesis.ceremony.json ./blockchain/genesis.ceremony.json
 
 RUN python manage.py collectstatic --noinput
 
