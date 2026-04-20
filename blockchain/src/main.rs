@@ -742,6 +742,8 @@ async fn main() {
         max_outbound: config.network.max_peers / 2,
         max_inbound: config.network.max_peers,
         node_id: config.node.node_name.clone(),
+        chain_id: config.consensus.chain_id,
+        genesis_hash: expected_genesis_hash,
         connection_timeout: Duration::from_secs(config.network.connection_timeout),
         bootstrap_retry_interval: Duration::from_secs(config.network.discovery_interval.max(1)),
     };
@@ -772,13 +774,12 @@ async fn main() {
                     let sync_state = sync_service.get_sync_state().await;
                     if !sync_state.in_progress
                         && sync_state.probe_completed
-                        && sync_state.current_height >= sync_state.target_height
+                        && sync_service.ready_for_mining().await
                     {
                         consensus.set_mining_eligible(true);
                         info!(
-                            "Sync probe completed at height {} with target {}; enabling mining for this node.",
-                            sync_state.current_height,
-                            sync_state.target_height
+                            "Sync probe completed at height {} with target {} and no better same-chain peer known; enabling mining for this node.",
+                            sync_state.current_height, sync_state.target_height
                         );
                         break;
                     }

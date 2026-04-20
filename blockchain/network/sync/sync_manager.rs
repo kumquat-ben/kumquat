@@ -217,7 +217,7 @@ impl SyncManager {
         // Find the best peer to sync from
         let sync_peer = if let Some(registry) = &self.advanced_registry {
             // Use the advanced registry to find the best sync peer
-            let best_peers = registry.get_best_sync_peers(1);
+            let best_peers = registry.get_best_sync_peers(0, [0u8; 32], 1);
             best_peers.first().cloned()
         } else {
             // Use the basic registry to find an active peer

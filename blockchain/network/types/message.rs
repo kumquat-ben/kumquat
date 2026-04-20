@@ -51,6 +51,9 @@ pub enum DisconnectReason {
     /// Incompatible version
     IncompatibleVersion,
 
+    /// Peer is serving a different chain identity.
+    ChainMismatch,
+
     /// Too many connections
     TooManyConnections,
 
@@ -100,6 +103,11 @@ mod tests {
             version: "0.1.0".to_string(),
             node_id: "test-node".to_string(),
             listen_addr: "127.0.0.1:8765".parse().unwrap(),
+            chain_id: 1337,
+            genesis_hash: [1; 32],
+            tip_height: 10,
+            tip_hash: [2; 32],
+            total_difficulty: 100,
         };
 
         // Create a handshake message
@@ -117,6 +125,8 @@ mod tests {
                 assert_eq!(info.version, "0.1.0");
                 assert_eq!(info.node_id, "test-node");
                 assert_eq!(info.listen_addr.to_string(), "127.0.0.1:8765");
+                assert_eq!(info.chain_id, 1337);
+                assert_eq!(info.tip_height, 10);
             }
             _ => panic!("Expected Handshake message"),
         }

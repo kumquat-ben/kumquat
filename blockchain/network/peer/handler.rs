@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use crate::network::codec::frame::{FramedReader, FramedWriter};
+use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
 use crate::network::peer::broadcaster::PeerBroadcaster;
 use crate::network::peer::registry::PeerRegistry;
 use crate::network::peer::state::ConnectionState;
@@ -76,6 +77,9 @@ pub struct PeerHandler {
     /// Peer broadcaster
     broadcaster: Arc<PeerBroadcaster>,
 
+    /// Advanced registry with richer peer metadata.
+    advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
+
     /// Channel for outgoing messages
     outgoing_tx: mpsc::Sender<NetMessage>,
 
@@ -108,6 +112,7 @@ impl PeerHandler {
         router: Arc<MessageRouter>,
         peer_registry: Arc<PeerRegistry>,
         broadcaster: Arc<PeerBroadcaster>,
+        advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
         incoming_tx: mpsc::Sender<(String, NetMessage)>,
         is_outbound: bool,
     ) -> Self {
@@ -121,6 +126,7 @@ impl PeerHandler {
             router,
             peer_registry,
             broadcaster,
+            advanced_registry,
             outgoing_tx,
             outgoing_rx: Some(outgoing_rx),
             incoming_tx,
@@ -169,6 +175,9 @@ impl PeerHandler {
         // Update last activity
         self.last_activity = Instant::now();
         self.peer_registry.update_peer_last_seen(&self.peer_id);
+        if let Some(registry) = &self.advanced_registry {
+            registry.update_peer_last_seen(&self.peer_id);
+        }
 
         Ok(())
     }
@@ -208,6 +217,9 @@ impl PeerHandler {
                     // Update last activity
                     self.last_activity = Instant::now();
                     self.peer_registry.update_peer_last_seen(&self.peer_id);
+                    if let Some(registry) = &self.advanced_registry {
+                        registry.update_peer_last_seen(&self.peer_id);
+                    }
 
                     // Handle special messages
                     match &message {
@@ -299,8 +311,14 @@ impl PeerHandler {
         // Register with the peer registry
         self.peer_registry
             .register_peer(&self.peer_id, self.peer_addr, self.is_outbound);
+        if let Some(registry) = &self.advanced_registry {
+            registry.register_peer(&self.peer_id, self.peer_addr, self.is_outbound);
+        }
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Connected);
+        if let Some(registry) = &self.advanced_registry {
+            registry.update_peer_state(&self.peer_id, ConnectionState::Connected);
+        }
 
         // Register with the broadcaster
         self.broadcaster
@@ -312,6 +330,9 @@ impl PeerHandler {
             // Clean up on handshake failure
             self.peer_registry
                 .update_peer_state(&self.peer_id, ConnectionState::Failed);
+            if let Some(registry) = &self.advanced_registry {
+                registry.update_peer_state(&self.peer_id, ConnectionState::Failed);
+            }
             self.broadcaster.unregister_peer(&self.peer_id).await;
             return;
         }
@@ -319,6 +340,9 @@ impl PeerHandler {
         // Update peer state to ready
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Ready);
+        if let Some(registry) = &self.advanced_registry {
+            registry.update_peer_state(&self.peer_id, ConnectionState::Ready);
+        }
 
         let mut outgoing_rx = match self.outgoing_rx.take() {
             Some(rx) => rx,
@@ -326,6 +350,9 @@ impl PeerHandler {
                 error!("Outgoing channel missing for peer {}", self.peer_addr);
                 self.peer_registry
                     .update_peer_state(&self.peer_id, ConnectionState::Failed);
+                if let Some(registry) = &self.advanced_registry {
+                    registry.update_peer_state(&self.peer_id, ConnectionState::Failed);
+                }
                 self.broadcaster.unregister_peer(&self.peer_id).await;
                 return;
             }
@@ -337,6 +364,9 @@ impl PeerHandler {
                 error!("Writer missing for peer {}", self.peer_addr);
                 self.peer_registry
                     .update_peer_state(&self.peer_id, ConnectionState::Failed);
+                if let Some(registry) = &self.advanced_registry {
+                    registry.update_peer_state(&self.peer_id, ConnectionState::Failed);
+                }
                 self.broadcaster.unregister_peer(&self.peer_id).await;
                 return;
             }
@@ -423,6 +453,10 @@ impl PeerHandler {
         writer_task.abort();
         self.peer_registry
             .update_peer_state(&self.peer_id, ConnectionState::Disconnected);
+        if let Some(registry) = &self.advanced_registry {
+            registry.update_peer_state(&self.peer_id, ConnectionState::Disconnected);
+            registry.unregister_peer(&self.peer_id);
+        }
         self.broadcaster.unregister_peer(&self.peer_id).await;
         info!("Connection with peer {} closed", self.peer_addr);
     }
@@ -462,7 +496,13 @@ impl PeerHandler {
                         self.peer_addr, node_info
                     );
                     let _ = self
-                        .send_disconnect(DisconnectReason::IncompatibleVersion)
+                        .send_disconnect(if self.local_node_info.version.split('.').next()
+                            != node_info.version.split('.').next()
+                        {
+                            DisconnectReason::IncompatibleVersion
+                        } else {
+                            DisconnectReason::ChainMismatch
+                        })
                         .await;
                     return false;
                 }
@@ -470,6 +510,9 @@ impl PeerHandler {
                 // Update peer info in registry
                 self.peer_registry
                     .update_peer_info(&self.peer_id, node_info.clone());
+                if let Some(registry) = &self.advanced_registry {
+                    registry.update_peer_info(&self.peer_id, node_info.clone());
+                }
 
                 // If this is an inbound connection, send our handshake
                 if !self.is_outbound {
@@ -593,6 +636,7 @@ mod tests {
             router,
             peer_registry,
             broadcaster,
+            None,
             incoming_tx,
             true,
         );
@@ -680,6 +724,7 @@ mod tests {
             router,
             peer_registry,
             broadcaster,
+            None,
             incoming_tx,
             true,
         );

@@ -26,6 +26,7 @@ use crate::network::service::advanced_router::AdvancedMessageRouter;
 use crate::network::service::NetworkService;
 use crate::network::sync::sync_service::SyncService;
 use crate::network::types::message::NetMessage;
+use crate::storage::block_store::Hash;
 
 #[derive(Clone)]
 pub struct EnhancedNetworkHandle {
@@ -54,6 +55,12 @@ pub struct NetworkConfig {
     /// Node ID (derived from public key)
     pub node_id: String,
 
+    /// Chain identifier advertised during handshake.
+    pub chain_id: u64,
+
+    /// Genesis hash advertised during handshake.
+    pub genesis_hash: Hash,
+
     /// Timeout for outbound connection attempts.
     pub connection_timeout: Duration,
 
@@ -70,6 +77,8 @@ impl Default for NetworkConfig {
             max_outbound: 8,
             max_inbound: 32,
             node_id: "unknown".to_string(),
+            chain_id: 0,
+            genesis_hash: [0u8; 32],
             connection_timeout: Duration::from_secs(10),
             bootstrap_retry_interval: Duration::from_secs(30),
         }
@@ -114,6 +123,8 @@ pub async fn start_enhanced_network(
         message_rx,
         peer_registry.clone(),
         broadcaster.clone(),
+        Some(advanced_registry.clone()),
+        block_store.clone(),
     );
     let service_arc = Arc::new(service);
 
@@ -253,6 +264,7 @@ pub async fn start_enhanced_network(
             )
             .with_consensus_opt(consensus.clone())
             .with_advanced_registry(advanced_registry.clone())
+            .with_chain_identity(service_arc.chain_id(), service_arc.genesis_hash())
             .with_event_bus(event_bus.clone())
             .with_reputation(reputation.clone())
             .with_block_channel(block_rx)

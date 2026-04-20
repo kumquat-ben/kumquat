@@ -536,37 +536,61 @@ impl AdvancedPeerRegistry {
     }
 
     /// Get the best peers for syncing
-    pub fn get_best_sync_peers(&self, count: usize) -> Vec<PeerId> {
+    pub fn get_best_sync_peers(
+        &self,
+        local_chain_id: u64,
+        local_genesis_hash: [u8; 32],
+        count: usize,
+    ) -> Vec<PeerId> {
         let mut candidates = Vec::new();
 
         // Get active peers with their performance metrics
         for entry in self.peers.iter() {
             if entry.is_active() {
+                let Some(node_info) = entry.node_info.clone() else {
+                    continue;
+                };
+
+                if local_chain_id != 0
+                    && local_genesis_hash != [0u8; 32]
+                    && node_info.has_chain_identity()
+                    && (node_info.chain_id != local_chain_id
+                        || node_info.genesis_hash != local_genesis_hash)
+                {
+                    continue;
+                }
+
                 if let Some(perf) = self.performance.get(&entry.node_id) {
-                    // Calculate a score based on latency and success rate
+                    // Rank peers by best-known chain first, then transport quality.
                     let latency_score = entry.ping_latency.unwrap_or(1000);
                     let success_rate = perf.success_rate();
-
-                    // Lower is better
-                    let score = if success_rate > 0.0 {
+                    let transport_score = if success_rate > 0.0 {
                         latency_score as f64 / success_rate
                     } else {
                         f64::MAX
                     };
 
-                    candidates.push((entry.node_id.clone(), score));
+                    candidates.push((
+                        entry.node_id.clone(),
+                        node_info.total_difficulty,
+                        node_info.tip_height,
+                        transport_score,
+                    ));
                 }
             }
         }
 
-        // Sort by score (lower is better)
-        candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.1.cmp(&a.1)
+                .then_with(|| b.2.cmp(&a.2))
+                .then_with(|| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
+        });
 
         // Take the requested number of peers
         candidates
             .iter()
             .take(count)
-            .map(|(node_id, _)| node_id.clone())
+            .map(|(node_id, _, _, _)| node_id.clone())
             .collect()
     }
 }
@@ -661,5 +685,49 @@ mod tests {
 
         // Check that the peer is now banned
         assert!(registry.is_peer_banned("peer1"));
+    }
+
+    #[test]
+    fn test_best_sync_peers_prefers_same_chain_with_most_work() {
+        let registry = AdvancedPeerRegistry::new();
+
+        let peer1_addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
+        let peer2_addr: SocketAddr = "127.0.0.1:8001".parse().unwrap();
+        let peer3_addr: SocketAddr = "127.0.0.1:8002".parse().unwrap();
+
+        assert!(registry.register_peer("peer1", peer1_addr, true));
+        assert!(registry.register_peer("peer2", peer2_addr, true));
+        assert!(registry.register_peer("peer3", peer3_addr, true));
+
+        assert!(registry.update_peer_state("peer1", ConnectionState::Ready));
+        assert!(registry.update_peer_state("peer2", ConnectionState::Ready));
+        assert!(registry.update_peer_state("peer3", ConnectionState::Ready));
+
+        assert!(registry.update_peer_info(
+            "peer1",
+            NodeInfo::new("1.0.0".to_string(), "peer1".to_string(), peer1_addr)
+                .with_chain_state(1337, [1; 32], 10, [2; 32], 100),
+        ));
+        assert!(registry.update_peer_info(
+            "peer2",
+            NodeInfo::new("1.0.0".to_string(), "peer2".to_string(), peer2_addr)
+                .with_chain_state(1337, [1; 32], 12, [3; 32], 120),
+        ));
+        assert!(registry.update_peer_info(
+            "peer3",
+            NodeInfo::new("1.0.0".to_string(), "peer3".to_string(), peer3_addr)
+                .with_chain_state(1337, [9; 32], 99, [4; 32], 999),
+        ));
+
+        assert!(registry.update_peer_ping_latency("peer1", 50));
+        assert!(registry.update_peer_ping_latency("peer2", 70));
+        assert!(registry.update_peer_ping_latency("peer3", 1));
+
+        assert!(registry.update_peer_reputation("peer1", ReputationEvent::GoodBlock));
+        assert!(registry.update_peer_reputation("peer2", ReputationEvent::GoodBlock));
+        assert!(registry.update_peer_reputation("peer3", ReputationEvent::GoodBlock));
+
+        let peers = registry.get_best_sync_peers(1337, [1; 32], 2);
+        assert_eq!(peers, vec!["peer2".to_string(), "peer1".to_string()]);
     }
 }

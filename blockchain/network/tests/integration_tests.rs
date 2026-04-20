@@ -18,17 +18,27 @@ async fn test_network_connection() {
     let config1 = NetworkConfig {
         bind_addr: node1_addr,
         seed_peers: vec![node2_addr],
+        seed_peer_specs: vec![node2_addr.to_string()],
         max_outbound: 8,
         max_inbound: 32,
         node_id: "node1".to_string(),
+        chain_id: 1337,
+        genesis_hash: [1; 32],
+        connection_timeout: Duration::from_secs(10),
+        bootstrap_retry_interval: Duration::from_secs(30),
     };
     
     let config2 = NetworkConfig {
         bind_addr: node2_addr,
         seed_peers: vec![node1_addr],
+        seed_peer_specs: vec![node1_addr.to_string()],
         max_outbound: 8,
         max_inbound: 32,
         node_id: "node2".to_string(),
+        chain_id: 1337,
+        genesis_hash: [1; 32],
+        connection_timeout: Duration::from_secs(10),
+        bootstrap_retry_interval: Duration::from_secs(30),
     };
     
     // Create message channels
@@ -58,17 +68,27 @@ async fn test_message_broadcast() {
     let config1 = NetworkConfig {
         bind_addr: node1_addr,
         seed_peers: vec![node2_addr],
+        seed_peer_specs: vec![node2_addr.to_string()],
         max_outbound: 8,
         max_inbound: 32,
         node_id: "node1".to_string(),
+        chain_id: 1337,
+        genesis_hash: [1; 32],
+        connection_timeout: Duration::from_secs(10),
+        bootstrap_retry_interval: Duration::from_secs(30),
     };
     
     let config2 = NetworkConfig {
         bind_addr: node2_addr,
         seed_peers: vec![node1_addr],
+        seed_peer_specs: vec![node1_addr.to_string()],
         max_outbound: 8,
         max_inbound: 32,
         node_id: "node2".to_string(),
+        chain_id: 1337,
+        genesis_hash: [1; 32],
+        connection_timeout: Duration::from_secs(10),
+        bootstrap_retry_interval: Duration::from_secs(30),
     };
     
     // Create message channels

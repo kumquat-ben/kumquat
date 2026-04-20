@@ -6,6 +6,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Duration};
 
 use crate::network::peer::broadcaster::PeerBroadcaster;
+use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
 use crate::network::peer::handler::PeerHandler;
 use crate::network::peer::registry::PeerRegistry;
 use crate::network::peer::state::{ConnectionState, PeerInfo};
@@ -13,6 +14,7 @@ use crate::network::service::dialer;
 use crate::network::service::router::MessageRouter;
 use crate::network::types::message::NetMessage;
 use crate::network::types::node_info::NodeInfo;
+use crate::storage::block_store::BlockStore;
 use tokio::net::TcpStream;
 
 /// Manager for peer connections
@@ -49,6 +51,12 @@ pub struct PeerManager {
 
     /// Shared broadcaster for the running network
     broadcaster: Arc<PeerBroadcaster>,
+
+    /// Advanced registry used for chain-aware sync peer selection.
+    advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
+
+    /// Block store used to advertise the latest local tip during handshake.
+    block_store: Option<Arc<BlockStore<'static>>>,
 }
 
 impl Clone for PeerManager {
@@ -65,6 +73,8 @@ impl Clone for PeerManager {
             connection_timeout_secs: self.connection_timeout_secs,
             peer_registry: self.peer_registry.clone(),
             broadcaster: self.broadcaster.clone(),
+            advanced_registry: self.advanced_registry.clone(),
+            block_store: self.block_store.clone(),
         }
     }
 }
@@ -80,6 +90,8 @@ impl PeerManager {
         connection_timeout: Duration,
         peer_registry: Arc<PeerRegistry>,
         broadcaster: Arc<PeerBroadcaster>,
+        advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
+        block_store: Option<Arc<BlockStore<'static>>>,
     ) -> Self {
         Self {
             peers: Arc::new(RwLock::new(HashMap::new())),
@@ -93,7 +105,25 @@ impl PeerManager {
             connection_timeout_secs: connection_timeout.as_secs().max(1),
             peer_registry,
             broadcaster,
+            advanced_registry,
+            block_store,
         }
+    }
+
+    fn current_node_info(&self) -> NodeInfo {
+        let mut node_info = self.local_node_info.clone();
+
+        if let Some(block_store) = &self.block_store {
+            if let Some(height) = block_store.get_latest_height() {
+                if let Ok(Some(block)) = block_store.get_block_by_height(height) {
+                    node_info.tip_height = block.height;
+                    node_info.tip_hash = block.hash;
+                    node_info.total_difficulty = block.total_difficulty;
+                }
+            }
+        }
+
+        node_info
     }
 
     /// Add a peer to the manager
@@ -163,10 +193,11 @@ impl PeerManager {
                 stream,
                 peer_info.id.clone(),
                 addr,
-                self.local_node_info.clone(),
+                self.current_node_info(),
                 self.router.clone(),
                 self.peer_registry.clone(),
                 self.broadcaster.clone(),
+                self.advanced_registry.clone(),
                 self.incoming_tx.clone(),
                 false, // Incoming connection
             );
@@ -244,10 +275,11 @@ impl PeerManager {
                     stream,
                     peer_info.id.clone(),
                     addr,
-                    self.local_node_info.clone(),
+                    self.current_node_info(),
                     self.router.clone(),
                     self.peer_registry.clone(),
                     self.broadcaster.clone(),
+                    self.advanced_registry.clone(),
                     self.incoming_tx.clone(),
                     true, // Outbound connection
                 );
@@ -397,6 +429,8 @@ mod tests {
             Duration::from_secs(10),
             peer_registry,
             broadcaster,
+            None,
+            None,
         );
 
         // Add some peers
@@ -435,6 +469,8 @@ mod tests {
             Duration::from_secs(1),
             peer_registry,
             broadcaster,
+            None,
+            None,
         );
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -502,6 +538,8 @@ mod tests {
             Duration::from_secs(1),
             peer_registry.clone(),
             broadcaster.clone(),
+            None,
+            None,
         );
 
         let addr = "127.0.0.1:8001".parse().unwrap();

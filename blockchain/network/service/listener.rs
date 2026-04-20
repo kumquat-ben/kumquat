@@ -74,6 +74,8 @@ mod tests {
             Duration::from_secs(10),
             peer_registry,
             broadcaster,
+            None,
+            None,
         );
 
         // Start the listener in a separate task

@@ -14,6 +14,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::interval;
 
 use crate::network::peer::broadcaster::PeerBroadcaster;
+use crate::network::peer::advanced_registry::AdvancedPeerRegistry;
 use crate::network::peer::manager::PeerManager;
 use crate::network::peer::registry::PeerRegistry;
 use crate::network::service::listener::start_listener;
@@ -21,6 +22,7 @@ use crate::network::service::router::MessageRouter;
 use crate::network::types::message::NetMessage;
 use crate::network::types::node_info::NodeInfo;
 use crate::network::NetworkConfig;
+use crate::storage::block_store::{BlockStore, Hash};
 
 /// Main network service
 pub struct NetworkService {
@@ -145,7 +147,7 @@ impl NetworkService {
     pub fn new(config: NetworkConfig, message_rx: mpsc::Receiver<NetMessage>) -> Self {
         let peer_registry = Arc::new(PeerRegistry::new());
         let broadcaster = Arc::new(PeerBroadcaster::with_registry(Some(peer_registry.clone())));
-        Self::new_with_components(config, message_rx, peer_registry, broadcaster)
+        Self::new_with_components(config, message_rx, peer_registry, broadcaster, None, None)
     }
 
     /// Create a new network service with shared peer infrastructure
@@ -154,6 +156,8 @@ impl NetworkService {
         message_rx: mpsc::Receiver<NetMessage>,
         peer_registry: Arc<PeerRegistry>,
         broadcaster: Arc<PeerBroadcaster>,
+        advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
+        block_store: Option<Arc<BlockStore<'static>>>,
     ) -> Self {
         // Create channels for incoming messages
         let (incoming_tx, incoming_rx) = mpsc::channel(100);
@@ -166,7 +170,8 @@ impl NetworkService {
             "0.1.0".to_string(), // TODO: Get from config
             config.node_id.clone(),
             config.bind_addr,
-        );
+        )
+        .with_chain_state(config.chain_id, config.genesis_hash, 0, [0u8; 32], 0);
 
         // Create the peer manager
         let peer_manager = PeerManager::new(
@@ -178,6 +183,8 @@ impl NetworkService {
             config.connection_timeout,
             peer_registry,
             broadcaster,
+            advanced_registry,
+            block_store,
         );
 
         Self {
@@ -188,6 +195,14 @@ impl NetworkService {
             incoming_tx,
             incoming_rx: Arc::new(Mutex::new(incoming_rx)),
         }
+    }
+
+    pub fn chain_id(&self) -> u64 {
+        self.config.chain_id
+    }
+
+    pub fn genesis_hash(&self) -> Hash {
+        self.config.genesis_hash
     }
 
     /// Run the network service
@@ -278,6 +293,8 @@ mod tests {
             max_outbound: 8,
             max_inbound: 32,
             node_id: "test-node".to_string(),
+            chain_id: 1337,
+            genesis_hash: [1; 32],
             connection_timeout: Duration::from_secs(10),
             bootstrap_retry_interval: Duration::from_secs(30),
         };

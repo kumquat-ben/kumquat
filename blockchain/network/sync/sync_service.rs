@@ -134,6 +134,12 @@ pub struct SyncService {
     /// Broadcaster for sending messages to peers
     broadcaster: Arc<PeerBroadcaster>,
 
+    /// Local chain identity used to filter peers during sync.
+    local_chain_id: u64,
+
+    /// Local genesis hash used to filter peers during sync.
+    local_genesis_hash: [u8; 32],
+
     /// Event bus for publishing events
     event_bus: Option<Arc<EventBus>>,
 
@@ -220,6 +226,114 @@ impl SyncService {
         }
 
         false
+    }
+
+    fn peer_matches_local_chain(&self, peer_info: &crate::network::types::node_info::NodeInfo) -> bool {
+        if self.local_chain_id == 0 && self.local_genesis_hash == [0u8; 32] {
+            return true;
+        }
+
+        if !peer_info.has_chain_identity() {
+            return true;
+        }
+
+        peer_info.chain_id == self.local_chain_id && peer_info.genesis_hash == self.local_genesis_hash
+    }
+
+    fn select_best_active_peer(&self) -> Option<String> {
+        Self::select_best_active_peer_from_registries(
+            self.local_chain_id,
+            self.local_genesis_hash,
+            &self.peer_registry,
+            self.advanced_registry.as_ref(),
+        )
+    }
+
+    fn select_best_active_peer_from_registries(
+        local_chain_id: u64,
+        local_genesis_hash: [u8; 32],
+        peer_registry: &Arc<PeerRegistry>,
+        advanced_registry: Option<&Arc<AdvancedPeerRegistry>>,
+    ) -> Option<String> {
+        if let Some(registry) = advanced_registry {
+            let best_peers = registry.get_best_sync_peers(local_chain_id, local_genesis_hash, 1);
+            if let Some(peer) = best_peers.first() {
+                return Some(peer.clone());
+            }
+        }
+
+        let mut active_peers = peer_registry.get_active_peers();
+        active_peers.retain(|peer| {
+            peer.node_info
+                .as_ref()
+                .map(|info| {
+                    (local_chain_id == 0 && local_genesis_hash == [0u8; 32])
+                        || !info.has_chain_identity()
+                        || (info.chain_id == local_chain_id
+                            && info.genesis_hash == local_genesis_hash)
+                })
+                .unwrap_or(true)
+        });
+        active_peers.sort_by(|a, b| {
+            let a_td = a
+                .node_info
+                .as_ref()
+                .map(|info| info.total_difficulty)
+                .unwrap_or_default();
+            let b_td = b
+                .node_info
+                .as_ref()
+                .map(|info| info.total_difficulty)
+                .unwrap_or_default();
+            let a_height = a
+                .node_info
+                .as_ref()
+                .map(|info| info.tip_height)
+                .unwrap_or_default();
+            let b_height = b
+                .node_info
+                .as_ref()
+                .map(|info| info.tip_height)
+                .unwrap_or_default();
+            let a_latency = a.ping_latency.unwrap_or(u64::MAX);
+            let b_latency = b.ping_latency.unwrap_or(u64::MAX);
+
+            b_td.cmp(&a_td)
+                .then_with(|| b_height.cmp(&a_height))
+                .then_with(|| a_latency.cmp(&b_latency))
+        });
+
+        active_peers.first().map(|p| p.node_id.clone())
+    }
+
+    pub async fn ready_for_mining(&self) -> bool {
+        let sync_state = self.get_sync_state().await;
+        if sync_state.in_progress || !sync_state.probe_completed {
+            return false;
+        }
+
+        let Some(local_height) = self.block_store.get_latest_height() else {
+            return false;
+        };
+        let Ok(Some(local_tip)) = self.block_store.get_block_by_height(local_height) else {
+            return false;
+        };
+
+        let best_known_same_chain = self
+            .peer_registry
+            .get_active_peers()
+            .into_iter()
+            .filter_map(|peer| peer.node_info)
+            .filter(|info| self.peer_matches_local_chain(info))
+            .map(|info| (info.total_difficulty, info.tip_height))
+            .max();
+
+        match best_known_same_chain {
+            Some((peer_total_difficulty, peer_tip_height)) => {
+                local_tip.total_difficulty >= peer_total_difficulty && local_tip.height >= peer_tip_height
+            }
+            None => local_height > 0,
+        }
     }
 
     async fn retry_stale_sync(
@@ -339,6 +453,8 @@ impl SyncService {
             peer_registry,
             advanced_registry: None,
             broadcaster,
+            local_chain_id: 0,
+            local_genesis_hash: [0u8; 32],
             event_bus: None,
             reputation: None,
             sync_state: Arc::new(RwLock::new(SyncState::default())),
@@ -352,6 +468,12 @@ impl SyncService {
     /// Set the advanced peer registry
     pub fn with_advanced_registry(mut self, registry: Arc<AdvancedPeerRegistry>) -> Self {
         self.advanced_registry = Some(registry);
+        self
+    }
+
+    pub fn with_chain_identity(mut self, chain_id: u64, genesis_hash: [u8; 32]) -> Self {
+        self.local_chain_id = chain_id;
+        self.local_genesis_hash = genesis_hash;
         self
     }
 
@@ -424,6 +546,8 @@ impl SyncService {
         let event_bus = self.event_bus.clone();
         let reputation = self.reputation.clone();
         let advanced_registry = self.advanced_registry.clone();
+        let local_chain_id = self.local_chain_id;
+        let local_genesis_hash = self.local_genesis_hash;
 
         tokio::spawn(async move {
             info!("Starting sync service");
@@ -438,6 +562,8 @@ impl SyncService {
                     event_bus.clone(),
                     reputation.clone(),
                     advanced_registry.clone(),
+                    local_chain_id,
+                    local_genesis_hash,
                     &config,
                 )
                 .await
@@ -486,6 +612,8 @@ impl SyncService {
                         event_bus.clone(),
                         reputation.clone(),
                         advanced_registry.clone(),
+                        local_chain_id,
+                        local_genesis_hash,
                         &config,
                     )
                     .await
@@ -802,25 +930,20 @@ impl SyncService {
         event_bus: Option<Arc<EventBus>>,
         reputation: Option<Arc<ReputationSystem>>,
         advanced_registry: Option<Arc<AdvancedPeerRegistry>>,
+        local_chain_id: u64,
+        local_genesis_hash: [u8; 32],
         _config: &SyncConfig,
     ) -> Result<(), String> {
         // Get our current height
         let current_height = block_store.get_latest_height().unwrap_or(0);
 
         // Find the best peer to sync from
-        let sync_peer = if let Some(registry) = &advanced_registry {
-            // Prefer the advanced registry when it actually knows about peers,
-            // otherwise fall back to the basic shared registry used by the
-            // live peer handlers.
-            let best_peers = registry.get_best_sync_peers(1);
-            best_peers.first().cloned().or_else(|| {
-                let active_peers = peer_registry.get_active_peers();
-                active_peers.first().map(|p| p.node_id.clone())
-            })
-        } else {
-            let active_peers = peer_registry.get_active_peers();
-            active_peers.first().map(|p| p.node_id.clone())
-        };
+        let sync_peer = Self::select_best_active_peer_from_registries(
+            local_chain_id,
+            local_genesis_hash,
+            &peer_registry,
+            advanced_registry.as_ref(),
+        );
 
         let sync_peer = match sync_peer {
             Some(peer) => peer,
@@ -906,16 +1029,7 @@ impl SyncService {
         }
 
         // Find the best peer to sync from
-        let sync_peer = if let Some(registry) = &self.advanced_registry {
-            let best_peers = registry.get_best_sync_peers(1);
-            best_peers.first().cloned().or_else(|| {
-                let active_peers = self.peer_registry.get_active_peers();
-                active_peers.first().map(|p| p.node_id.clone())
-            })
-        } else {
-            let active_peers = self.peer_registry.get_active_peers();
-            active_peers.first().map(|p| p.node_id.clone())
-        };
+        let sync_peer = self.select_best_active_peer();
 
         let sync_peer = match sync_peer {
             Some(peer) => peer,
