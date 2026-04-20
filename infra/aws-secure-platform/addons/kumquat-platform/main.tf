@@ -471,6 +471,7 @@ resource "helm_release" "backend" {
   create_namespace = false
 
   values = [yamlencode({
+    replicaCount = 2
     image = {
       repository = var.backend_image_repository
       tag        = var.backend_image_tag
