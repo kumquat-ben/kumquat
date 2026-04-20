@@ -47,6 +47,9 @@ pub struct SyncState {
     /// The current sync height
     pub current_height: u64,
 
+    /// Whether the sync service is still waiting to learn the remote tip height.
+    pub awaiting_latest_height: bool,
+
     /// The peer we're syncing from
     pub sync_peer: Option<String>,
 
@@ -69,6 +72,7 @@ impl Default for SyncState {
             in_progress: false,
             target_height: 0,
             current_height: 0,
+            awaiting_latest_height: false,
             sync_peer: None,
             start_time: None,
             blocks_synced: 0,
@@ -151,6 +155,7 @@ pub struct SyncService {
 impl SyncService {
     fn complete_sync_state(state: &mut SyncState) {
         state.in_progress = false;
+        state.awaiting_latest_height = false;
         state.sync_peer = None;
         state.start_time = None;
         state.last_progress_at = None;
@@ -189,6 +194,13 @@ impl SyncService {
         let latest_height = block_store.get_latest_height().unwrap_or(0);
         let mut state = sync_state.write().await;
 
+        if state.awaiting_latest_height {
+            if state.current_height != latest_height {
+                state.current_height = latest_height;
+            }
+            return false;
+        }
+
         if state.in_progress && latest_height >= state.target_height {
             state.current_height = latest_height;
             if latest_height > state.target_height {
@@ -213,7 +225,7 @@ impl SyncService {
         config: &SyncConfig,
     ) -> Result<bool, String> {
         let latest_height = block_store.get_latest_height().unwrap_or(0);
-        let (sync_peer, start_height, end_height, failed_requests, stale_for) = {
+        let (sync_peer, start_height, end_height, failed_requests, stale_for, awaiting_latest_height) = {
             let state = sync_state.read().await;
 
             if !state.in_progress {
@@ -242,6 +254,7 @@ impl SyncService {
                 end_height,
                 state.failed_requests,
                 stale_for,
+                state.awaiting_latest_height,
             )
         };
 
@@ -256,7 +269,9 @@ impl SyncService {
             return Ok(false);
         }
 
-        let message = if start_height <= end_height {
+        let message = if awaiting_latest_height {
+            NetMessage::RequestBlock(u64::MAX)
+        } else if start_height <= end_height {
             NetMessage::RequestBlockRange {
                 start_height,
                 end_height,
@@ -279,7 +294,7 @@ impl SyncService {
                 state.failed_requests += 1;
                 state.current_height = latest_height;
                 state.last_progress_at = Some(Instant::now());
-                if start_height <= end_height {
+                if !awaiting_latest_height && start_height <= end_height {
                     state.target_height = end_height;
                 }
                 Ok(true)
@@ -533,9 +548,7 @@ impl SyncService {
                             {
                                 let mut state = sync_state.write().await;
                                 if state.in_progress {
-                                    let awaiting_latest_height = state.target_height
-                                        == state.current_height
-                                        && state.blocks_synced == 0;
+                                    let awaiting_latest_height = state.awaiting_latest_height;
 
                                     if awaiting_latest_height && block.height > state.current_height
                                     {
@@ -556,6 +569,7 @@ impl SyncService {
                                                     "Requested blocks {}..{} from peer {} after latest-height discovery",
                                                     start_height, end_height, peer_id
                                                 );
+                                                state.awaiting_latest_height = false;
                                                 state.target_height = end_height;
                                                 state.sync_peer = Some(peer_id.clone());
                                                 state.last_progress_at = Some(Instant::now());
@@ -576,6 +590,10 @@ impl SyncService {
                                             }
                                         }
                                         continue;
+                                    }
+
+                                    if awaiting_latest_height {
+                                        state.awaiting_latest_height = false;
                                     }
 
                                     if !matches!(
@@ -824,6 +842,7 @@ impl SyncService {
                     state.in_progress = true;
                     state.target_height = current_height;
                     state.current_height = current_height;
+                    state.awaiting_latest_height = true;
                     state.sync_peer = Some(sync_peer.clone());
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
@@ -927,6 +946,7 @@ impl SyncService {
                     state.in_progress = true;
                     state.target_height = target_height;
                     state.current_height = current_height;
+                    state.awaiting_latest_height = false;
                     state.sync_peer = Some(sync_peer.clone());
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
@@ -1050,6 +1070,7 @@ mod tests {
             state.in_progress = true;
             state.target_height = 62;
             state.current_height = 62;
+            state.awaiting_latest_height = false;
             state.sync_peer = Some("peer1".to_string());
             state.start_time = Some(Instant::now() - Duration::from_secs(60));
             state.last_progress_at = state.start_time;
@@ -1060,5 +1081,33 @@ mod tests {
         assert_eq!(state.current_height, 100);
         assert_eq!(state.target_height, 100);
         assert!(state.sync_peer.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_sync_state_does_not_complete_while_waiting_for_remote_tip() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::new());
+        let service = SyncService::new(block_store, peer_registry, broadcaster);
+
+        {
+            let mut state = service.sync_state.write().await;
+            state.in_progress = true;
+            state.target_height = 15;
+            state.current_height = 15;
+            state.awaiting_latest_height = true;
+            state.sync_peer = Some("peer1".to_string());
+            state.start_time = Some(Instant::now() - Duration::from_secs(1));
+            state.last_progress_at = state.start_time;
+        }
+
+        let state = service.get_sync_state().await;
+        assert!(state.in_progress);
+        assert!(state.awaiting_latest_height);
+        assert_eq!(state.current_height, 0);
+        assert_eq!(state.target_height, 15);
+        assert_eq!(state.sync_peer.as_deref(), Some("peer1"));
     }
 }
