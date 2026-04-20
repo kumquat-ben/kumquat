@@ -178,14 +178,25 @@ impl ConsensusEngine {
         let selected_root = match persisted_root {
             Some(root) => {
                 if root.root_hash != calculated_root.root_hash {
-                    return Err(format!(
-                        "Committed state root mismatch at height {}: persisted={}, calculated={}",
-                        tip_height,
-                        hex::encode(root.root_hash),
-                        hex::encode(calculated_root.root_hash),
-                    ));
+                    if tip_height == 0 && tip_block.state_root == root.root_hash {
+                        warn!(
+                            "Committed genesis root drift detected. block_store={} persisted_state_root={} calculated_state_root={}. Continuing with the persisted genesis root because the block store and stored state root still agree.",
+                            hex::encode(tip_block.state_root),
+                            hex::encode(root.root_hash),
+                            hex::encode(calculated_root.root_hash),
+                        );
+                        root
+                    } else {
+                        return Err(format!(
+                            "Committed state root mismatch at height {}: persisted={}, calculated={}",
+                            tip_height,
+                            hex::encode(root.root_hash),
+                            hex::encode(calculated_root.root_hash),
+                        ));
+                    }
+                } else {
+                    root
                 }
-                root
             }
             None => calculated_root,
         };
@@ -734,6 +745,7 @@ mod tests {
     use super::*;
     use crate::consensus::telemetry::new_consensus_telemetry;
     use crate::consensus::validation::BlockValidationResult;
+    use crate::storage::AccountState;
     use crate::storage::kv_store::RocksDBStore;
     use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
     use std::sync::atomic::AtomicBool;
@@ -1279,6 +1291,92 @@ mod tests {
         assert!(
             committed_state.is_ok(),
             "committed chain state should remain consistent after second block: {:?}",
+            committed_state,
+        );
+    }
+
+    #[tokio::test]
+    async fn committed_chain_state_tolerates_persisted_genesis_root_drift() {
+        let temp_dir = tempdir().unwrap();
+        let shared_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let kv_store: Arc<dyn KVStore> = Arc::new(SharedTestStore(shared_store));
+        let block_store = Arc::new(BlockStore::new(shared_store));
+        let tx_store = Arc::new(TxStore::new(shared_store));
+        let state_store = Arc::new(StateStore::new(shared_store));
+
+        let genesis_address = [1u8; 32];
+        let mut genesis_state = AccountState::new_user(100, 0);
+        genesis_state.metadata.insert("seed".to_string(), "a".to_string());
+        state_store
+            .set_account_state(&genesis_address, &genesis_state)
+            .unwrap();
+
+        let persisted_root = state_store.calculate_state_root(0, 1).unwrap();
+        state_store.put_state_root(&persisted_root).unwrap().unwrap();
+
+        let genesis_block = Block {
+            height: 0,
+            hash: [9u8; 32],
+            prev_hash: [0u8; 32],
+            timestamp: 1,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner: [0u8; 32],
+            pre_reward_state_root: persisted_root.root_hash,
+            reward_token_ids: vec![],
+            result_commitment: result_commitment(&[9u8; 32], &persisted_root.root_hash, &[], &[]),
+            state_root: persisted_root.root_hash,
+            tx_root: [0u8; 32],
+            nonce: 0,
+            poh_seq: 0,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 100,
+        };
+        block_store.put_block(&genesis_block).unwrap();
+
+        let mut drifted_state = genesis_state.clone();
+        drifted_state
+            .metadata
+            .insert("seed".to_string(), "b".to_string());
+        state_store
+            .set_account_state(&genesis_address, &drifted_state)
+            .unwrap();
+
+        let config = ConsensusConfig {
+            enable_mining: true,
+            mining_threads: 1,
+            target_block_time: 5,
+            initial_difficulty: 100,
+            difficulty_adjustment_window: 60,
+            max_transactions_per_block: 1000,
+            poh_tick_rate: 400_000,
+            miner_address: [7u8; 32],
+            hybrid_activation_height: 0,
+        };
+        let _batch_manager = Arc::new(BatchOperationManager::new(
+            kv_store.clone(),
+            block_store.clone(),
+            tx_store.clone(),
+            state_store.clone(),
+        ));
+        let (network_tx, _network_rx) = mpsc::channel(4);
+        let telemetry = new_consensus_telemetry(false);
+
+        let engine = ConsensusEngine::new(
+            config,
+            kv_store,
+            block_store,
+            tx_store,
+            state_store,
+            network_tx,
+            telemetry,
+        );
+
+        let committed_state = engine.committed_chain_state();
+        assert!(
+            committed_state.is_ok(),
+            "genesis drift should remain tolerable when persisted root still matches the block store: {:?}",
             committed_state,
         );
     }

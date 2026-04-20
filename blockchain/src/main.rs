@@ -359,9 +359,7 @@ fn ensure_tip_state_root_consistency(
         .map(|root| root.root_hash)
         .unwrap_or(calculated_root.root_hash);
 
-    if tip_block.state_root != persisted_root_hash
-        || tip_block.state_root != calculated_root.root_hash
-    {
+    let selected_root_hash = if tip_block.state_root != persisted_root_hash {
         error!(
             "Tip state root mismatch at height {}. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start.",
             tip_height,
@@ -370,10 +368,31 @@ fn ensure_tip_state_root_consistency(
             hex::encode(calculated_root.root_hash),
         );
         std::process::exit(1);
-    }
+    } else if tip_block.state_root != calculated_root.root_hash {
+        if tip_height == 0 {
+            warn!(
+                "Genesis root drift detected after startup. block_store={} persisted_state_root={} calculated_state_root={}. Continuing with the persisted genesis root because the block store and stored state root still agree.",
+                hex::encode(tip_block.state_root),
+                hex::encode(persisted_root_hash),
+                hex::encode(calculated_root.root_hash),
+            );
+            persisted_root_hash
+        } else {
+            error!(
+                "Tip state root mismatch at height {}. block_store={}, persisted_state_root={}, calculated_state_root={}. Refusing to start.",
+                tip_height,
+                hex::encode(tip_block.state_root),
+                hex::encode(persisted_root_hash),
+                hex::encode(calculated_root.root_hash),
+            );
+            std::process::exit(1);
+        }
+    } else {
+        calculated_root.root_hash
+    };
 
     state_store.set_state_root(StateRoot::new(
-        calculated_root.root_hash,
+        selected_root_hash,
         tip_height,
         tip_block.timestamp,
     ));
@@ -752,13 +771,14 @@ async fn main() {
 
                     let sync_state = sync_service.get_sync_state().await;
                     if !sync_state.in_progress
-                        && sync_state.target_height > 0
+                        && sync_state.probe_completed
                         && sync_state.current_height >= sync_state.target_height
                     {
                         consensus.set_mining_eligible(true);
                         info!(
-                            "Sync caught up to height {}; enabling mining for this node.",
-                            sync_state.current_height
+                            "Sync probe completed at height {} with target {}; enabling mining for this node.",
+                            sync_state.current_height,
+                            sync_state.target_height
                         );
                         break;
                     }

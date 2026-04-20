@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
-  tag: blockchain-20260418-000841-sync-gate-fix-amd64
+  tag: blockchain-20260420-1915-genesis-sync-fix
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret

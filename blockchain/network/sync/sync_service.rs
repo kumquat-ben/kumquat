@@ -50,6 +50,9 @@ pub struct SyncState {
     /// Whether the sync service is still waiting to learn the remote tip height.
     pub awaiting_latest_height: bool,
 
+    /// Whether at least one sync/tip-discovery round has completed.
+    pub probe_completed: bool,
+
     /// The peer we're syncing from
     pub sync_peer: Option<String>,
 
@@ -73,6 +76,7 @@ impl Default for SyncState {
             target_height: 0,
             current_height: 0,
             awaiting_latest_height: false,
+            probe_completed: false,
             sync_peer: None,
             start_time: None,
             blocks_synced: 0,
@@ -156,6 +160,7 @@ impl SyncService {
     fn complete_sync_state(state: &mut SyncState) {
         state.in_progress = false;
         state.awaiting_latest_height = false;
+        state.probe_completed = true;
         state.sync_peer = None;
         state.start_time = None;
         state.last_progress_at = None;
@@ -843,6 +848,7 @@ impl SyncService {
                     state.target_height = current_height;
                     state.current_height = current_height;
                     state.awaiting_latest_height = true;
+                    state.probe_completed = false;
                     state.sync_peer = Some(sync_peer.clone());
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
@@ -947,6 +953,7 @@ impl SyncService {
                     state.target_height = target_height;
                     state.current_height = current_height;
                     state.awaiting_latest_height = false;
+                    state.probe_completed = false;
                     state.sync_peer = Some(sync_peer.clone());
                     state.start_time = Some(Instant::now());
                     state.blocks_synced = 0;
@@ -1071,6 +1078,7 @@ mod tests {
             state.target_height = 62;
             state.current_height = 62;
             state.awaiting_latest_height = false;
+            state.probe_completed = false;
             state.sync_peer = Some("peer1".to_string());
             state.start_time = Some(Instant::now() - Duration::from_secs(60));
             state.last_progress_at = state.start_time;
@@ -1080,6 +1088,7 @@ mod tests {
         assert!(!state.in_progress);
         assert_eq!(state.current_height, 100);
         assert_eq!(state.target_height, 100);
+        assert!(state.probe_completed);
         assert!(state.sync_peer.is_none());
     }
 
@@ -1098,6 +1107,7 @@ mod tests {
             state.target_height = 15;
             state.current_height = 15;
             state.awaiting_latest_height = true;
+            state.probe_completed = false;
             state.sync_peer = Some("peer1".to_string());
             state.start_time = Some(Instant::now() - Duration::from_secs(1));
             state.last_progress_at = state.start_time;
@@ -1106,8 +1116,38 @@ mod tests {
         let state = service.get_sync_state().await;
         assert!(state.in_progress);
         assert!(state.awaiting_latest_height);
+        assert!(!state.probe_completed);
         assert_eq!(state.current_height, 0);
         assert_eq!(state.target_height, 15);
         assert_eq!(state.sync_peer.as_deref(), Some("peer1"));
+    }
+
+    #[tokio::test]
+    async fn complete_sync_state_marks_probe_completed_even_at_genesis() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Box::leak(Box::new(RocksDBStore::new(temp_dir.path()).unwrap()));
+        let block_store = Arc::new(BlockStore::new(kv_store));
+        let peer_registry = Arc::new(PeerRegistry::new());
+        let broadcaster = Arc::new(PeerBroadcaster::new());
+        let service = SyncService::new(block_store, peer_registry, broadcaster);
+
+        {
+            let mut state = service.sync_state.write().await;
+            state.in_progress = true;
+            state.target_height = 0;
+            state.current_height = 0;
+            state.awaiting_latest_height = false;
+            state.probe_completed = false;
+            state.sync_peer = Some("peer1".to_string());
+            state.start_time = Some(Instant::now() - Duration::from_secs(1));
+            state.last_progress_at = state.start_time;
+        }
+
+        let state = service.get_sync_state().await;
+        assert!(!state.in_progress);
+        assert_eq!(state.current_height, 0);
+        assert_eq!(state.target_height, 0);
+        assert!(state.probe_completed);
+        assert!(state.sync_peer.is_none());
     }
 }
