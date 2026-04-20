@@ -31,7 +31,7 @@ env:
     EXPLORER_API_URL: "http://kumquat-blockchain.kumquat.svc.cluster.local:8545"
     NODE_LAUNCHER_ENABLED: "true"
     NODE_LAUNCHER_KUBERNETES_NAMESPACE: "kumquat"
-    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260420-1915-genesis-sync-fix"
+    NODE_LAUNCHER_IMAGE: "351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain:blockchain-20260420-193246-state-root-cache-fix"
     NODE_LAUNCHER_IMAGE_PULL_POLICY: "IfNotPresent"
     NODE_LAUNCHER_IMAGE_PULL_SECRETS: "ecr-pull-secret"
     NODE_LAUNCHER_RUST_LOG: "info,kumquat=debug"
