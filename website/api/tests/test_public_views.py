@@ -22,6 +22,8 @@ class HomePageViewTests(TestCase):
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
         self.assertContains(response, "Search news.")
+        self.assertContains(response, "Sign in")
+        self.assertNotContains(response, "Explorer")
         self.assertContains(response, ">Search<", html=False)
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):

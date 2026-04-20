@@ -11,20 +11,27 @@
     </div>
     <nav class="nav-links" aria-label="Primary">
       <a href="https://github.com/kumquat-ben/kumquat" rel="noreferrer" target="_blank">GitHub</a>
-      <a href="/explorer">Explorer</a>
+      <a class="button button-nav button-nav-home" href="/auth/sign-in">Sign in</a>
     </nav>
   </header>
 
   <div class="home-page home-page-minimal">
-    <section class="hero-section hero-section-minimal">
-      <p class="hero-eyebrow">Headless News Search For Agents</p>
-      <h1 class="hero-title">Search the news without a browser.</h1>
-      <p class="hero-copy hero-copy-wide">
-        Kumquat is becoming an agent-first search surface for news. Enter a query and use the
-        indexed results as a clean starting point for autonomous research workflows.
-      </p>
+    <section class="hero-section hero-section-minimal hero-section-split">
+      <div class="hero-copy-column">
+        <p class="hero-eyebrow">Headless News Search For Agents</p>
+        <h1 class="hero-title hero-title-balanced">News retrieval built for agents, not readers.</h1>
+        <p class="hero-copy hero-copy-wide">
+          Kumquat is becoming an agent-first search surface for news. Run a query, get indexed
+          sources back fast, and hand the results directly into downstream research workflows.
+        </p>
+        <div class="hero-micro-proof" aria-label="Product qualities">
+          <span>Search-first</span>
+          <span>Browser-optional</span>
+          <span>Source-linked</span>
+        </div>
+      </div>
 
-      <section class="search-shell search-shell-minimal" aria-labelledby="search-box-title">
+      <section class="search-shell search-shell-minimal search-shell-hero" aria-labelledby="search-box-title">
         <div class="search-shell-copy">
           <p class="section-eyebrow">Search</p>
           <h2 class="search-shell-title" id="search-box-title">Search news.</h2>
@@ -38,7 +45,7 @@
             <input
               id="search-request"
               name="q"
-              placeholder="Search news topics, companies, events, or people"
+              placeholder="Search companies, events, countries, investigations"
               type="search"
               value="{{ search_query }}"
             />
