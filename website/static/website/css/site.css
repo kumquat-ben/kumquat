@@ -2159,3 +2159,50 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+.site-nav-home {
+  align-items: center;
+}
+
+.home-page-minimal {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 6rem);
+  padding-top: 5rem;
+}
+
+.hero-section-minimal {
+  width: min(100%, 56rem);
+  display: grid;
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.hero-copy-wide {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.search-shell-minimal {
+  margin-top: 1rem;
+}
+
+.search-form-stacked {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .site-nav-home {
+    flex-wrap: wrap;
+  }
+
+  .home-page-minimal {
+    min-height: auto;
+    padding-top: 6rem;
+  }
+
+  .search-form-stacked {
+    grid-template-columns: 1fr;
+  }
+}

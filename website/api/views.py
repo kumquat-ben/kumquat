@@ -271,35 +271,25 @@ def _home_structured_data():
             "@type": "WebSite",
             "name": settings.SITE_NAME,
             "url": homepage_url,
-            "description": "Object-based digital cash software with visible denominations, wallets, and transfers.",
-        },
-        {
-            "@context": "https://schema.org",
-            "@type": "SoftwareApplication",
-            "name": "Kumquat Chain",
-            "applicationCategory": "FinanceApplication",
-            "operatingSystem": "Web",
-            "url": homepage_url,
-            "description": "A blockchain wallet and transfer interface built around visible digital denominations and object-based cash logic.",
-            "creator": {
-                "@type": "Organization",
-                "name": settings.SITE_NAME,
+            "description": "Agent-first news search with indexed sources and headless retrieval.",
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": f"{homepage_url}/?q={{search_term_string}}",
+                "query-input": "required name=search_term_string",
             },
         },
         {
             "@context": "https://schema.org",
-            "@type": "FAQPage",
-            "mainEntity": [
-                {
-                    "@type": "Question",
-                    "name": item["question"],
-                    "acceptedAnswer": {
-                        "@type": "Answer",
-                        "text": item["answer"],
-                    },
-                }
-                for item in SEO_FAQ_ITEMS
-            ],
+            "@type": "SoftwareApplication",
+            "name": "Kumquat Search",
+            "applicationCategory": "NewsApplication",
+            "operatingSystem": "Web",
+            "url": homepage_url,
+            "description": "A headless news search interface designed for agents and automated research systems.",
+            "creator": {
+                "@type": "Organization",
+                "name": settings.SITE_NAME,
+            },
         },
     ]
 
@@ -646,24 +636,15 @@ def home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
     search_context = _home_search_context(search_query)
     context = {
-        "auth_user": _current_user_context(request),
-        "bill_items": BILL_ITEMS,
-        "how_it_works_steps": HOW_IT_WORKS_STEPS,
-        "denomination_grid": DENOMINATION_GRID,
-        "wallet_rows": WALLET_ROWS,
-        "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
-        "seo_faq_items": SEO_FAQ_ITEMS,
         "search_query": search_query,
         "search_submitted": bool(search_query),
         **search_context,
-        **_home_signup_context(request),
-        **_home_wallet_context(request),
         **_seo_context(
             request,
-            title="Kumquat | Object-Based Digital Cash, Wallet, and Denomination Software",
+            title="Kumquat | Headless News Search For Agents",
             description=(
-                "Kumquat is object-based digital cash software with a blockchain wallet, "
-                "visible denominations, and transfer flows designed to feel like physical money."
+                "Kumquat is an agent-first news search homepage with a single search box, "
+                "indexed sources, and headless retrieval for autonomous workflows."
             ),
             path=reverse("home"),
             structured_data=_home_structured_data(),
