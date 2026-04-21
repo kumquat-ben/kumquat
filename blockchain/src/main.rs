@@ -676,7 +676,7 @@ async fn main() {
 
     // Initialize consensus
     info!("Initializing consensus...");
-    let (network_tx, _network_rx) =
+    let (network_tx, network_rx) =
         mpsc::channel::<kumquat::network::types::message::NetMessage>(100);
 
     // Convert config.consensus to ConsensusConfig
@@ -755,6 +755,7 @@ async fn main() {
     // through validation and state application instead of bypassing consensus.
     let network = start_enhanced_network(
         network_config,
+        network_rx,
         Some(block_store.clone()),
         Some(tx_store.clone()),
         Some(mempool.clone()),

@@ -106,6 +106,7 @@ pub async fn start_network(config: NetworkConfig) -> Arc<NetworkService> {
 /// Start the enhanced network service with the given configuration
 pub async fn start_enhanced_network(
     config: NetworkConfig,
+    message_rx: mpsc::Receiver<NetMessage>,
     block_store: Option<Arc<crate::storage::block_store::BlockStore<'static>>>,
     tx_store: Option<Arc<crate::storage::tx_store::TxStore<'static>>>,
     mempool: Option<Arc<crate::mempool::Mempool>>,
@@ -116,8 +117,8 @@ pub async fn start_enhanced_network(
     let advanced_registry = Arc::new(peer::advanced_registry::AdvancedPeerRegistry::new());
     let broadcaster = Arc::new(peer::broadcaster::PeerBroadcaster::new());
 
-    // Create the basic network service with shared peer infrastructure
-    let (_message_tx, message_rx) = mpsc::channel(100);
+    // Reuse the consensus outbound message channel so mined blocks and other
+    // locally generated messages are drained by the live network service.
     let service = NetworkService::new_with_components(
         config,
         message_rx,
