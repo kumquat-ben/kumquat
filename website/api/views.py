@@ -324,19 +324,28 @@ def _serialize_search_crawl_target(target):
     }
 
 
-def _home_search_context(search_query):
+def _home_search_context(search_query, page_number):
     if not search_query:
         return {
             "search_reply": "Search all indexed jobs with Kumquat.",
             "search_results": [],
             "search_status_label": "Ready",
             "search_status_class": "",
+            "search_page": 1,
+            "search_total_pages": 0,
+            "search_has_next": False,
+            "search_has_previous": False,
+            "search_next_page": None,
+            "search_previous_page": None,
         }
 
-    search_payload = search_jobs(search_query, limit=10)
+    search_payload = search_jobs(search_query, page=page_number, page_size=10)
     if search_payload["results"]:
         return {
-            "search_reply": f'Found {search_payload["match_count"]} job results for “{search_query}”.',
+            "search_reply": (
+                f'Showing {search_payload["start_index"]}-{search_payload["end_index"]} '
+                f'of {search_payload["match_count"]} job results for “{search_query}”.'
+            ),
             "search_results": search_payload["results"],
             "search_status_label": (
                 "Live"
@@ -348,6 +357,12 @@ def _home_search_context(search_query):
                 if search_payload["backend"] == "elasticsearch"
                 else "search-status-pill-pending"
             ),
+            "search_page": search_payload["page"],
+            "search_total_pages": search_payload["total_pages"],
+            "search_has_next": search_payload["has_next"],
+            "search_has_previous": search_payload["has_previous"],
+            "search_next_page": search_payload["next_page"],
+            "search_previous_page": search_payload["previous_page"],
         }
 
     return {
@@ -359,6 +374,12 @@ def _home_search_context(search_query):
             else "Fallback"
         ),
         "search_status_class": "search-status-pill-pending",
+        "search_page": search_payload["page"],
+        "search_total_pages": search_payload["total_pages"],
+        "search_has_next": search_payload["has_next"],
+        "search_has_previous": search_payload["has_previous"],
+        "search_next_page": search_payload["next_page"],
+        "search_previous_page": search_payload["previous_page"],
     }
 
 
@@ -716,7 +737,8 @@ def _build_dashboard_context(request=None):
 
 def home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
-    search_context = _home_search_context(search_query)
+    page_number = request.GET.get("page") or 1
+    search_context = _home_search_context(search_query, page_number)
     context = {
         "auth_user": _current_user_context(request),
         "search_query": search_query,

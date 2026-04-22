@@ -81,6 +81,19 @@
             </article>
           {% endfor %}
         </div>
+        {% if search_total_pages > 1 %}
+          <nav class="dashboard-pagination" aria-label="Search result pages">
+            <p class="body-copy">Page {{ search_page }} of {{ search_total_pages }}</p>
+            <div class="dashboard-pagination-actions">
+              {% if search_has_previous %}
+                <a class="button button-secondary" href="/?q={{ search_query|urlencode }}&page={{ search_previous_page }}">Previous</a>
+              {% endif %}
+              {% if search_has_next %}
+                <a class="button button-secondary" href="/?q={{ search_query|urlencode }}&page={{ search_next_page }}">Next</a>
+              {% endif %}
+            </div>
+          </nav>
+        {% endif %}
       {% else %}
         <div class="search-home-empty">
           <p>Try a query to search indexed jobs.</p>

@@ -24,7 +24,23 @@ class HomePageViewTests(TestCase):
         self.assertContains(response, ">Search<", html=False)
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):
-        with patch("api.views.search_jobs", return_value={"results": [], "match_count": 0, "backend": "elasticsearch"}):
+        with patch(
+            "api.views.search_jobs",
+            return_value={
+                "results": [],
+                "match_count": 0,
+                "backend": "elasticsearch",
+                "page": 1,
+                "page_size": 10,
+                "total_pages": 0,
+                "has_next": False,
+                "has_previous": False,
+                "next_page": None,
+                "previous_page": None,
+                "start_index": 0,
+                "end_index": 0,
+            },
+        ):
             response = self.client.get("/", {"q": "python backend"})
 
         self.assertEqual(response.status_code, 200)
@@ -51,16 +67,28 @@ class HomePageViewTests(TestCase):
                         "url": "https://example.com/jobs/python",
                     }
                 ],
-                "match_count": 1,
+                "match_count": 21,
                 "backend": "elasticsearch",
+                "page": 2,
+                "page_size": 10,
+                "total_pages": 3,
+                "has_next": True,
+                "has_previous": True,
+                "next_page": 3,
+                "previous_page": 1,
+                "start_index": 11,
+                "end_index": 20,
             },
         ):
-            response = self.client.get("/", {"q": "python engineer"})
+            response = self.client.get("/", {"q": "python engineer", "page": 2})
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Live")
         self.assertContains(response, "Senior Python Engineer")
         self.assertContains(response, "https://example.com/jobs/python")
+        self.assertContains(response, "Page 2 of 3")
+        self.assertContains(response, "?q=python+engineer&amp;page=1")
+        self.assertContains(response, "?q=python+engineer&amp;page=3")
 
 
 class EarlyAccessSignupViewTests(TestCase):
