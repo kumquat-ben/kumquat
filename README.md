@@ -114,6 +114,52 @@ Production runs on k3s behind `kumquat.info`.
 - [website](website) builds to the `website-backend` ECR repository and is deployed through the Terraform add-on in [infra/aws-secure-platform/addons/kumquat-platform](infra/aws-secure-platform/addons/kumquat-platform).
 - The current production kubeconfig in this workspace is `.local/aws-secure-platform/kubeconfig-production`.
 
+## Search And Crawlers
+
+The website now includes two related search paths:
+
+- a public jobs search experience backed by Elasticsearch with a database fallback
+- a first-party crawler and lightweight document index for crawling and searching site-scoped HTML content
+
+### Jobs Search
+
+- Public search requests flow through [`website/scrapers/search.py`](website/scrapers/search.py).
+- Job search uses `JobPostingDocument` and Elasticsearch when the cluster is available.
+- If Elasticsearch is unavailable or misconfigured, search falls back to direct database queries against `scrapers.JobPosting`.
+- Results are paginated and normalized into a consistent payload with `match_count`, pagination metadata, backend type, and result summaries.
+- The backend deployment includes a post-install/post-upgrade Helm job at [`infra/aws-secure-platform/helm/apps/kumquat-backend/templates/search-index-job.yaml`](infra/aws-secure-platform/helm/apps/kumquat-backend/templates/search-index-job.yaml) that rebuilds the `scrapers.jobposting` search index.
+
+### Search Crawl Index
+
+- The API app now stores crawl targets in `api.SearchCrawlTarget` and indexed pages in `api.SearchDocument`.
+- Crawl targets are queued through `POST /search/crawl`, which is restricted to authenticated superusers.
+- Crawl URLs are normalized to `http`/`https`, scoped to the original host, and bounded by `max_depth` and `max_pages`.
+- The crawler in [`website/api/search.py`](website/api/search.py) fetches HTML, extracts title/text/links, skips off-host pages, records HTTP status, stores a content hash, and updates crawl status timestamps and error state.
+- Crawl execution is dispatched through Celery in [`website/api/tasks.py`](website/api/tasks.py), with inline execution when running eagerly or against an in-memory broker.
+- Indexed document search uses token matching across title, summary, and content and returns ranked snippets from `api.search.search_documents`.
+
+### CLI Search
+
+- The repository now exposes `GET /api/search/cli` for CLI clients.
+- CLI search requires `X-Kumquat-Client: cli` or a `User-Agent` containing `kumquat-cli`.
+- CLI searches reuse the shared jobs search backend and record per-channel usage in `api.SearchCommandAnalytics`.
+
+### Job Crawlers
+
+- The crawler system for jobs lives in the `scrapers` app and persists data in `scrapers.Scraper`, `scrapers.ScraperRun`, and `scrapers.JobPosting`.
+- Job postings now track crawl freshness and duplicate signals with `last_crawled_at`, `last_duplicate_seen_at`, and `duplicate_hit_count`.
+- The `JobPosting` manager increments duplicate counters on repeat discoveries instead of silently ignoring them, which makes recurring crawler collisions visible in the admin surfaces.
+- There are currently 154 manual scripts under [`website/manual_scripts`](website/manual_scripts), covering crawl scripts, submit scripts, and related helpers.
+- Manual scripts are grouped automatically by folder, surfaced in the operations UI, and can be run individually or through a managed queue.
+
+### Manual Script Operations
+
+- Manual crawler runs are tracked through `scrapers.ManualScriptRun` and queue state is tracked through `scrapers.ManualScriptQueue`.
+- The scheduler in [`website/scrapers/tasks.py`](website/scrapers/tasks.py) supports queue dispatch, configurable concurrency, loop mode, worker recovery, and job-application run dispatch.
+- Manual script source URLs are statically extracted from script files into `scrapers.ManualScriptSourceURL`, which gives operations staff a cached inventory of crawl targets.
+- The manual scripts UI exposes crawl/submit breakdowns, recent runs, queue state, URL cache refresh, and crawler health stats.
+- Duplicate cleanup is handled by `deduplicate_job_postings(...)`, with both dry-run and scoped deduplication support.
+
 For blockchain-specific chain/runtime details, use [blockchain/README.md](blockchain/README.md).
 
 For deterministic chain bootstrapping and operator verification, use [blockchain/docs/genesis_ceremony.md](blockchain/docs/genesis_ceremony.md).
@@ -171,6 +217,7 @@ Project management and community work should run as part of the normal delivery 
 ## Changelog
 
 - `2026-04-15`: Updated the repo overview to reflect the hybrid cash protocol direction and linked the new planning documents.
+- `2026-04-21`: Documented the current search stack, crawl index pipeline, CLI search analytics, manual crawler system, and Elasticsearch indexing flow in the repo README.
 
 © 2026 Benjamin Levin. All Rights Reserved.
 Unauthorized use, copying, or distribution is strictly prohibited.
