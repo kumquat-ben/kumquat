@@ -271,16 +271,16 @@ def _home_structured_data():
             "@type": "WebSite",
             "name": settings.SITE_NAME,
             "url": homepage_url,
-            "description": "Object-based digital cash software with visible denominations, wallets, and transfers.",
+            "description": "A search engine homepage and index preview for Kumquat.",
         },
         {
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
-            "name": "Kumquat Chain",
-            "applicationCategory": "FinanceApplication",
+            "name": "Kumquat Search",
+            "applicationCategory": "SearchApplication",
             "operatingSystem": "Web",
             "url": homepage_url,
-            "description": "A blockchain wallet and transfer interface built around visible digital denominations and object-based cash logic.",
+            "description": "A search engine interface focused on fast query entry and readable result previews.",
             "creator": {
                 "@type": "Organization",
                 "name": settings.SITE_NAME,
@@ -324,46 +324,36 @@ def _serialize_search_crawl_target(target):
 def _home_search_context(search_query):
     if not search_query:
         return {
-            "search_reply": "Search results will appear here.",
+            "search_reply": "Search the web with Kumquat.",
             "search_results": [],
-            "search_status_label": "Standby",
+            "search_status_label": "Ready",
             "search_status_class": "",
         }
 
-    search_response = search_documents(search_query)
-    results = search_response["results"]
-    document_count = search_response["document_count"]
-    match_count = search_response["match_count"]
-
-    if not document_count:
-        return {
-            "search_reply": "No search results are available yet.",
-            "search_results": [],
-            "search_status_label": "Index empty",
-            "search_status_class": "search-status-pill-pending",
-        }
-
-    if not results:
-        return {
-            "search_reply": (
-                f"No indexed page matched “{search_query}” yet. The crawler has {document_count} document"
-                f"{'' if document_count == 1 else 's'} available to search."
-            ),
-            "search_results": [],
-            "search_status_label": "No match",
-            "search_status_class": "search-status-pill-pending",
-        }
-
-    top_result = results[0]
-    reply = (
-        f"Found {match_count} matching page{'' if match_count == 1 else 's'}. "
-        f"Top result: {top_result['title']}."
-    )
     return {
-        "search_reply": reply,
-        "search_results": results,
-        "search_status_label": "Live results",
-        "search_status_class": "",
+        "search_reply": (
+            f"Search functionality for “{search_query}” is not live yet. "
+            "This page is currently a placeholder for the upcoming search engine."
+        ),
+        "search_results": [
+            {
+                "title": "Kumquat Search",
+                "snippet": "A clean search homepage is now in place. Result ranking, indexing, and live retrieval will be added next.",
+                "url": "https://kumquat.info/",
+            },
+            {
+                "title": "Search Infrastructure",
+                "snippet": "Query parsing, indexing, crawling, and result scoring are planned but not connected to this screen yet.",
+                "url": "https://kumquat.info/explorer",
+            },
+            {
+                "title": "Product Direction",
+                "snippet": "Kumquat is pivoting toward a search experience with a minimal interface centered on query entry and readable results.",
+                "url": "https://github.com/kumquat-ben/kumquat",
+            },
+        ],
+        "search_status_label": "Preview",
+        "search_status_class": "search-status-pill-pending",
     }
 
 
@@ -647,23 +637,14 @@ def home_page_view(request):
     search_context = _home_search_context(search_query)
     context = {
         "auth_user": _current_user_context(request),
-        "bill_items": BILL_ITEMS,
-        "how_it_works_steps": HOW_IT_WORKS_STEPS,
-        "denomination_grid": DENOMINATION_GRID,
-        "wallet_rows": WALLET_ROWS,
-        "wallet_total": sum(item["amount"] for item in WALLET_ROWS),
-        "seo_faq_items": SEO_FAQ_ITEMS,
         "search_query": search_query,
         "search_submitted": bool(search_query),
         **search_context,
-        **_home_signup_context(request),
-        **_home_wallet_context(request),
         **_seo_context(
             request,
-            title="Kumquat | Object-Based Digital Cash, Wallet, and Denomination Software",
+            title="Kumquat | Search",
             description=(
-                "Kumquat is object-based digital cash software with a blockchain wallet, "
-                "visible denominations, and transfer flows designed to feel like physical money."
+                "Kumquat is building a search engine with a minimal homepage focused on query input and readable results."
             ),
             path=reverse("home"),
             structured_data=_home_structured_data(),
