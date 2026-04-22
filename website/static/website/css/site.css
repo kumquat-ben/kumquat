@@ -180,6 +180,21 @@ input:focus {
   text-align: center;
 }
 
+.search-home-hero-legal {
+  padding-top: 2rem;
+}
+
+.search-home-legal-copy {
+  width: min(100%, 42rem);
+}
+
+.search-home-legal-copy h1,
+.search-home-legal-copy .eyebrow,
+.search-home-legal-copy .body-copy,
+.search-home-legal-copy .legal-note {
+  text-align: center;
+}
+
 .search-home-brand {
   color: #17382b;
   font-family: "DM Serif Display", serif;
