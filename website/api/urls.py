@@ -7,6 +7,9 @@ from django.views.generic import RedirectView
 from .sitemaps import sitemaps
 from .views import (
     admin_containers_page_view,
+    companies_api_view,
+    companies_page_view,
+    company_detail_page_view,
     admin_dashboard_view,
     admin_dashboard_page_view,
     admin_node_delete_container_view,
@@ -32,6 +35,9 @@ from .views import (
     google_oauth_start_view,
     healthz_view,
     home_page_view,
+    jobs_api_view,
+    jobs_page_view,
+    job_detail_page_view,
     messages_view,
     robots_txt_view,
     search_crawl_enqueue_view,
@@ -43,6 +49,12 @@ from .views import (
 
 urlpatterns = [
     path("", home_page_view, name="home"),
+    path("jobs", jobs_page_view, name="jobs"),
+    path("jobs/<slug:slug>", job_detail_page_view, name="job-detail"),
+    path("companies", companies_page_view, name="companies"),
+    path("companies/<slug:slug>", company_detail_page_view, name="company-detail"),
+    path("api/jobs", jobs_api_view, name="jobs-api"),
+    path("api/companies", companies_api_view, name="companies-api"),
     path("explorer", explorer_home_page_view, name="explorer"),
     path("explorer/blocks/<str:identifier>", explorer_block_page_view, name="explorer-block"),
     path("explorer/transactions/<str:tx_hash>", explorer_transaction_page_view, name="explorer-transaction"),

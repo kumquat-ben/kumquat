@@ -3,6 +3,8 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.db.models.functions import Lower
+from django.utils.text import slugify
 
 
 class EarlyAccessSignup(models.Model):
@@ -198,3 +200,96 @@ class SearchDocument(models.Model):
 
     def __str__(self):
         return self.title or self.normalized_url
+
+
+class CompanyProfile(models.Model):
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(max_length=220, unique=True)
+    website = models.URLField(max_length=300, blank=True)
+    info = models.TextField(blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    source_url = models.URLField(max_length=400, blank=True)
+    yc_url = models.URLField(max_length=200, blank=True)
+    batch = models.CharField(max_length=20, blank=True)
+    status = models.CharField(max_length=60, blank=True)
+    employees = models.CharField(max_length=50, blank=True)
+    location = models.CharField(max_length=150, blank=True)
+    tags = models.CharField(max_length=200, blank=True)
+    linkedin_url = models.URLField(max_length=400, blank=True)
+    twitter_url = models.URLField(max_length=400, blank=True)
+    cb_url = models.URLField(max_length=400, blank=True)
+    careers_url = models.URLField(max_length=400, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(Lower("name"), name="unique_company_profile_name_ci"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def build_unique_slug(name):
+        base = slugify(name) or "company"
+        base = base[:200]
+        candidate = base
+        suffix = 1
+
+        while CompanyProfile.objects.filter(slug=candidate).exists():
+            suffix_str = str(suffix)
+            truncated_base = base[: max(1, 200 - len(suffix_str) - 1)]
+            candidate = f"{truncated_base}-{suffix_str}"
+            suffix += 1
+
+        return candidate
+
+
+class JobListing(models.Model):
+    company = models.ForeignKey(
+        CompanyProfile,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="job_listings",
+    )
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=280, unique=True)
+    location = models.CharField(max_length=255, blank=True)
+    normalized_location = models.CharField(max_length=255, blank=True)
+    employment_type = models.CharField(max_length=120, blank=True)
+    salary = models.CharField(max_length=120, blank=True)
+    excerpt = models.TextField(blank=True)
+    description = models.TextField(blank=True)
+    apply_url = models.URLField(max_length=500, blank=True)
+    source = models.CharField(max_length=120, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    view_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-posted_at", "-created_at", "title"]
+
+    def __str__(self):
+        return self.title
+
+    @staticmethod
+    def build_unique_slug(title):
+        base = slugify(title) or "job"
+        base = base[:240]
+        candidate = base
+        suffix = 1
+
+        while JobListing.objects.filter(slug=candidate).exists():
+            suffix_str = str(suffix)
+            truncated_base = base[: max(1, 240 - len(suffix_str) - 1)]
+            candidate = f"{truncated_base}-{suffix_str}"
+            suffix += 1
+
+        return candidate

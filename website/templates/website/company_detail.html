@@ -1,0 +1,59 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="search-home-page">
+    <header class="search-home-topbar">
+      <a class="search-home-link" href="/companies">Companies</a>
+      <a class="search-home-link" href="/jobs">Jobs</a>
+    </header>
+
+    <section class="search-home-results">
+      {% if page_error %}
+        <div class="search-home-empty"><p>{{ page_error }}</p></div>
+      {% else %}
+        <div class="search-home-results-head">
+          <div>
+            <p class="search-home-results-label">Company</p>
+            <p class="search-home-query">{{ company.name }}</p>
+          </div>
+        </div>
+
+        <article class="search-home-result-item search-home-detail-card">
+          {% if company.website %}
+            <p class="search-home-result-url"><a href="{{ company.website }}" rel="noreferrer" target="_blank">{{ company.website }}</a></p>
+          {% endif %}
+          {% if company.info %}
+            <p class="search-home-detail-copy">{{ company.info|linebreaksbr }}</p>
+          {% endif %}
+          <p>
+            {% if company.location %}{{ company.location }}{% endif %}
+            {% if company.location and company.employees %} · {% endif %}
+            {% if company.employees %}{{ company.employees }}{% endif %}
+            {% if company.batch %} · {{ company.batch }}{% endif %}
+          </p>
+          {% if company.tags %}
+            <p>{{ company.tags }}</p>
+          {% endif %}
+        </article>
+
+        <div class="search-home-results-list">
+          {% for job in jobs %}
+            <article class="search-home-result-item">
+              <p class="search-home-result-url">{{ job.location|default:"Job listing" }}</p>
+              <h2><a href="/jobs/{{ job.slug }}">{{ job.title }}</a></h2>
+              {% if job.excerpt %}
+                <p>{{ job.excerpt }}</p>
+              {% elif job.description %}
+                <p>{{ job.description|truncatechars:220 }}</p>
+              {% endif %}
+            </article>
+          {% empty %}
+            <div class="search-home-empty">
+              <p>No active jobs linked to this company yet.</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

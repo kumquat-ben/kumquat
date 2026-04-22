@@ -1,0 +1,45 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="search-home-page">
+    <header class="search-home-topbar">
+      <a class="search-home-link" href="/">Home</a>
+      <a class="search-home-link" href="/jobs">Jobs</a>
+    </header>
+
+    <section class="search-home-results">
+      <div class="search-home-results-head">
+        <div>
+          <p class="search-home-results-label">Companies</p>
+          <p class="search-home-query">Athena-style backend company profiles in Kumquat.</p>
+        </div>
+      </div>
+
+      <form action="/companies" class="search-home-form search-home-form-inline" method="get" role="search">
+        <label class="search-home-input-wrap" for="companies-request">
+          <span class="search-home-input-label">Search companies</span>
+          <input id="companies-request" name="q" placeholder="Search companies by name, location, or tags" type="search" value="{{ company_query }}" />
+        </label>
+      </form>
+
+      <div class="search-home-results-list">
+        {% for company in companies %}
+          <article class="search-home-result-item">
+            <p class="search-home-result-url">{{ company.location|default:"Company profile" }}</p>
+            <h2><a href="/companies/{{ company.slug }}">{{ company.name }}</a></h2>
+            {% if company.info %}
+              <p>{{ company.info|truncatechars:220 }}</p>
+            {% endif %}
+            {% if company.tags %}
+              <p>{{ company.tags }}</p>
+            {% endif %}
+          </article>
+        {% empty %}
+          <div class="search-home-empty">
+            <p>No companies available yet.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

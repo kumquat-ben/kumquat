@@ -1,0 +1,50 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="search-home-page">
+    <header class="search-home-topbar">
+      <a class="search-home-link" href="/">Home</a>
+      <a class="search-home-link" href="/companies">Companies</a>
+    </header>
+
+    <section class="search-home-results">
+      <div class="search-home-results-head">
+        <div>
+          <p class="search-home-results-label">Jobs</p>
+          <p class="search-home-query">Athena-style backend job listings in Kumquat.</p>
+        </div>
+      </div>
+
+      <form action="/jobs" class="search-home-form search-home-form-inline" method="get" role="search">
+        <label class="search-home-input-wrap" for="jobs-request">
+          <span class="search-home-input-label">Search jobs</span>
+          <input id="jobs-request" name="q" placeholder="Search jobs by title, company, or location" type="search" value="{{ job_query }}" />
+        </label>
+      </form>
+
+      <div class="search-home-results-list">
+        {% for job in jobs %}
+          <article class="search-home-result-item">
+            <p class="search-home-result-url">{{ job.company.name|default:"Independent listing" }}</p>
+            <h2><a href="/jobs/{{ job.slug }}">{{ job.title }}</a></h2>
+            <p>
+              {% if job.location %}{{ job.location }}{% endif %}
+              {% if job.location and job.employment_type %} · {% endif %}
+              {% if job.employment_type %}{{ job.employment_type }}{% endif %}
+              {% if job.salary %} · {{ job.salary }}{% endif %}
+            </p>
+            {% if job.excerpt %}
+              <p>{{ job.excerpt }}</p>
+            {% elif job.description %}
+              <p>{{ job.description|truncatechars:220 }}</p>
+            {% endif %}
+          </article>
+        {% empty %}
+          <div class="search-home-empty">
+            <p>No jobs available yet.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

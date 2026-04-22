@@ -188,6 +188,10 @@ input:focus {
   width: min(100%, 38rem);
 }
 
+.search-home-form-inline {
+  margin-top: 1.25rem;
+}
+
 .search-home-input-wrap {
   position: relative;
   display: block;
@@ -319,6 +323,14 @@ input:focus {
   margin: 0;
   color: #4d5156;
   line-height: 1.58;
+}
+
+.search-home-detail-card {
+  margin-top: 1.5rem;
+}
+
+.search-home-detail-copy {
+  white-space: pre-wrap;
 }
 
 .search-home-empty {

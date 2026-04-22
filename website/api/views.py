@@ -31,6 +31,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import EarlyAccessSignup, ManagedNode, SearchCrawlTarget, UserWallet, VonageInboundSms
+from .models import CompanyProfile, JobListing
 from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
     delete_container,
@@ -344,7 +345,7 @@ def _home_search_context(search_query):
             {
                 "title": "Search Infrastructure",
                 "snippet": "Query parsing, indexing, crawling, and result scoring are planned but not connected to this screen yet.",
-                "url": "https://kumquat.info/explorer",
+                "url": "https://kumquat.info/jobs",
             },
             {
                 "title": "Product Direction",
@@ -499,6 +500,53 @@ def _explorer_json_request(path, *, query=None):
         raise RuntimeError("Explorer API returned invalid JSON.") from exc
 
 
+def _company_payload(company):
+    return {
+        "id": company.id,
+        "name": company.name,
+        "slug": company.slug,
+        "website": company.website,
+        "info": company.info,
+        "source": company.source,
+        "source_url": company.source_url,
+        "yc_url": company.yc_url,
+        "batch": company.batch,
+        "status": company.status,
+        "employees": company.employees,
+        "location": company.location,
+        "tags": company.tags,
+        "linkedin_url": company.linkedin_url,
+        "twitter_url": company.twitter_url,
+        "cb_url": company.cb_url,
+        "careers_url": company.careers_url,
+        "collected_at": company.collected_at.isoformat() if company.collected_at else None,
+        "created_at": company.created_at.isoformat() if company.created_at else None,
+        "updated_at": company.updated_at.isoformat() if company.updated_at else None,
+    }
+
+
+def _job_payload(job):
+    return {
+        "id": job.id,
+        "title": job.title,
+        "slug": job.slug,
+        "company": _company_payload(job.company) if job.company else None,
+        "location": job.location,
+        "normalized_location": job.normalized_location,
+        "employment_type": job.employment_type,
+        "salary": job.salary,
+        "excerpt": job.excerpt,
+        "description": job.description,
+        "apply_url": job.apply_url,
+        "source": job.source,
+        "metadata": job.metadata,
+        "posted_at": job.posted_at.isoformat() if job.posted_at else None,
+        "view_count": job.view_count,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+    }
+
+
 def _format_cents(amount_cents):
     dollars = int(amount_cents or 0) / 100
     return f"{CURRENCY_SYMBOL}{dollars:,.2f}"
@@ -651,6 +699,150 @@ def home_page_view(request):
         ),
     }
     return render(request, "website/home.html", context)
+
+
+def jobs_page_view(request):
+    query = (request.GET.get("q") or "").strip()
+    jobs = JobListing.objects.filter(is_active=True).select_related("company")
+    if query:
+        jobs = jobs.filter(
+            Q(title__icontains=query)
+            | Q(location__icontains=query)
+            | Q(description__icontains=query)
+            | Q(company__name__icontains=query)
+        )
+
+    jobs = jobs.order_by("-posted_at", "-created_at")[:50]
+    context = {
+        "jobs": jobs,
+        "job_query": query,
+        **_seo_context(
+            request,
+            title="Jobs | Kumquat",
+            description="Browse Kumquat job listings imported from Athena-style backend features.",
+            path=reverse("jobs"),
+        ),
+    }
+    return render(request, "website/jobs.html", context)
+
+
+def job_detail_page_view(request, slug):
+    job = JobListing.objects.select_related("company").filter(slug=slug, is_active=True).first()
+    if job is None:
+        return render(
+            request,
+            "website/job_detail.html",
+            {
+                "job": None,
+                "page_error": "Job not found.",
+                **_seo_context(
+                    request,
+                    title="Job Not Found | Kumquat",
+                    description="Requested job listing was not found.",
+                    path=reverse("job-detail", args=[slug]),
+                    index=False,
+                ),
+            },
+            status=404,
+        )
+
+    JobListing.objects.filter(pk=job.pk).update(view_count=job.view_count + 1)
+    job.view_count += 1
+    context = {
+        "job": job,
+        **_seo_context(
+            request,
+            title=f"{job.title} | Kumquat Jobs",
+            description=job.excerpt or job.description[:160] or "Job listing",
+            path=reverse("job-detail", args=[slug]),
+        ),
+    }
+    return render(request, "website/job_detail.html", context)
+
+
+def companies_page_view(request):
+    query = (request.GET.get("q") or "").strip()
+    companies = CompanyProfile.objects.all()
+    if query:
+        companies = companies.filter(
+            Q(name__icontains=query)
+            | Q(location__icontains=query)
+            | Q(info__icontains=query)
+            | Q(tags__icontains=query)
+        )
+
+    companies = companies.order_by("name")[:100]
+    context = {
+        "companies": companies,
+        "company_query": query,
+        **_seo_context(
+            request,
+            title="Companies | Kumquat",
+            description="Browse Kumquat company profiles imported from Athena-style backend features.",
+            path=reverse("companies"),
+        ),
+    }
+    return render(request, "website/companies.html", context)
+
+
+def company_detail_page_view(request, slug):
+    company = CompanyProfile.objects.filter(slug=slug).first()
+    if company is None:
+        return render(
+            request,
+            "website/company_detail.html",
+            {
+                "company": None,
+                "page_error": "Company not found.",
+                **_seo_context(
+                    request,
+                    title="Company Not Found | Kumquat",
+                    description="Requested company profile was not found.",
+                    path=reverse("company-detail", args=[slug]),
+                    index=False,
+                ),
+            },
+            status=404,
+        )
+
+    jobs = company.job_listings.filter(is_active=True).order_by("-posted_at", "-created_at")[:25]
+    context = {
+        "company": company,
+        "jobs": jobs,
+        **_seo_context(
+            request,
+            title=f"{company.name} | Kumquat Companies",
+            description=company.info[:160] or f"Company profile for {company.name}.",
+            path=reverse("company-detail", args=[slug]),
+        ),
+    }
+    return render(request, "website/company_detail.html", context)
+
+
+def jobs_api_view(request):
+    query = (request.GET.get("q") or "").strip()
+    jobs = JobListing.objects.filter(is_active=True).select_related("company")
+    if query:
+        jobs = jobs.filter(
+            Q(title__icontains=query)
+            | Q(location__icontains=query)
+            | Q(description__icontains=query)
+            | Q(company__name__icontains=query)
+        )
+    return JsonResponse({"results": [_job_payload(job) for job in jobs[:100]]})
+
+
+def companies_api_view(request):
+    query = (request.GET.get("q") or "").strip()
+    companies = CompanyProfile.objects.all()
+    if query:
+        companies = companies.filter(
+            Q(name__icontains=query)
+            | Q(location__icontains=query)
+            | Q(info__icontains=query)
+            | Q(tags__icontains=query)
+        )
+    return JsonResponse({"results": [_company_payload(company) for company in companies[:100]]})
 
 
 def explorer_home_page_view(request):
