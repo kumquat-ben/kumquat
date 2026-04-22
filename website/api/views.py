@@ -337,9 +337,24 @@ def _home_search_context(search_query, page_number):
             "search_has_previous": False,
             "search_next_page": None,
             "search_previous_page": None,
+            "search_page_numbers": [],
+            "search_show_leading_ellipsis": False,
+            "search_show_trailing_ellipsis": False,
+            "search_first_page": 1,
+            "search_last_page": None,
         }
 
     search_payload = search_jobs(search_query, page=page_number, page_size=10)
+    page_numbers = _page_number_window(
+        search_payload["page"],
+        search_payload["total_pages"],
+    )
+    first_page = 1 if search_payload["total_pages"] else None
+    last_page = search_payload["total_pages"] or None
+    show_leading_ellipsis = bool(page_numbers and page_numbers[0] > 2)
+    show_trailing_ellipsis = bool(
+        page_numbers and page_numbers[-1] < search_payload["total_pages"] - 1
+    )
     if search_payload["results"]:
         return {
             "search_reply": (
@@ -363,6 +378,11 @@ def _home_search_context(search_query, page_number):
             "search_has_previous": search_payload["has_previous"],
             "search_next_page": search_payload["next_page"],
             "search_previous_page": search_payload["previous_page"],
+            "search_page_numbers": page_numbers,
+            "search_show_leading_ellipsis": show_leading_ellipsis,
+            "search_show_trailing_ellipsis": show_trailing_ellipsis,
+            "search_first_page": first_page,
+            "search_last_page": last_page,
         }
 
     return {
@@ -380,6 +400,11 @@ def _home_search_context(search_query, page_number):
         "search_has_previous": search_payload["has_previous"],
         "search_next_page": search_payload["next_page"],
         "search_previous_page": search_payload["previous_page"],
+        "search_page_numbers": page_numbers,
+        "search_show_leading_ellipsis": show_leading_ellipsis,
+        "search_show_trailing_ellipsis": show_trailing_ellipsis,
+        "search_first_page": first_page,
+        "search_last_page": last_page,
     }
 
 
@@ -431,6 +456,15 @@ def _current_user_context(request):
 
 def _pagination_window(page_obj):
     return range(1, page_obj.paginator.num_pages + 1)
+
+
+def _page_number_window(current_page, total_pages, *, radius=2):
+    if total_pages <= 0:
+        return []
+
+    start_page = max(1, current_page - radius)
+    end_page = min(total_pages, current_page + radius)
+    return list(range(start_page, end_page + 1))
 
 
 def _home_signup_context(request):
