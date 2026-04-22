@@ -8,6 +8,7 @@ from .sitemaps import sitemaps
 from .views import (
     admin_containers_page_view,
     companies_api_view,
+    cli_search_view,
     companies_page_view,
     company_detail_page_view,
     companies_admin_page_view,
@@ -62,6 +63,7 @@ urlpatterns = [
     path("companies/<slug:slug>", company_detail_page_view, name="company-detail"),
     path("api/jobs", jobs_api_view, name="jobs-api"),
     path("api/companies", companies_api_view, name="companies-api"),
+    path("api/search/cli", cli_search_view, name="cli-search"),
     path("api/jobs/docs", jobs_api_docs_page_view, name="jobs-api-docs"),
     path("manage/jobs", jobs_admin_page_view, name="manage-jobs"),
     path("manage/companies", companies_admin_page_view, name="manage-companies"),

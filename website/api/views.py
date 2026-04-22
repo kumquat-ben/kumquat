@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.db import IntegrityError, connection
-from django.db.models import Count, Max
+from django.db.models import Count, F, Max
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
@@ -30,7 +30,7 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedire
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup, ManagedNode, SearchCrawlTarget, UserWallet, VonageInboundSms
+from .models import EarlyAccessSignup, ManagedNode, SearchCommandAnalytics, SearchCrawlTarget, UserWallet, VonageInboundSms
 from .models import CompanyProfile, JobListing
 from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
@@ -327,7 +327,7 @@ def _serialize_search_crawl_target(target):
 def _home_search_context(search_query, page_number):
     if not search_query:
         return {
-            "search_reply": "Search all indexed jobs with Kumquat.",
+            "search_reply": "Search the indexed web with Kumquat from the browser or your CLI.",
             "search_results": [],
             "search_status_label": "Ready",
             "search_status_class": "",
@@ -344,7 +344,7 @@ def _home_search_context(search_query, page_number):
         return {
             "search_reply": (
                 f'Showing {search_payload["start_index"]}-{search_payload["end_index"]} '
-                f'of {search_payload["match_count"]} job results for “{search_query}”.'
+                f'of {search_payload["match_count"]} indexed results for “{search_query}”.'
             ),
             "search_results": search_payload["results"],
             "search_status_label": (
@@ -366,7 +366,7 @@ def _home_search_context(search_query, page_number):
         }
 
     return {
-        "search_reply": f"No indexed jobs matched “{search_query}”.",
+        "search_reply": f"No indexed results matched “{search_query}”.",
         "search_results": [],
         "search_status_label": (
             "Live"
@@ -380,6 +380,36 @@ def _home_search_context(search_query, page_number):
         "search_has_previous": search_payload["has_previous"],
         "search_next_page": search_payload["next_page"],
         "search_previous_page": search_payload["previous_page"],
+    }
+
+
+def _record_search_command(channel):
+    analytics, _ = SearchCommandAnalytics.objects.get_or_create(channel=channel)
+    SearchCommandAnalytics.objects.filter(pk=analytics.pk).update(
+        command_count=F("command_count") + 1,
+        last_command_at=datetime.now(timezone.utc),
+    )
+    analytics.refresh_from_db(fields=["channel", "command_count", "last_command_at"])
+    return analytics
+
+
+def _is_cli_search_request(request):
+    client_header = (request.headers.get("X-Kumquat-Client") or "").strip().lower()
+    user_agent = (request.headers.get("User-Agent") or "").strip().lower()
+    return client_header == "cli" or "kumquat-cli" in user_agent
+
+
+def _serialize_cli_search_payload(search_query, search_payload, analytics):
+    return {
+        "query": search_query,
+        "channel": "cli",
+        "command_count": analytics.command_count,
+        "backend": search_payload["backend"],
+        "match_count": search_payload["match_count"],
+        "page": search_payload["page"],
+        "page_size": search_payload["page_size"],
+        "total_pages": search_payload["total_pages"],
+        "results": search_payload["results"],
     }
 
 
@@ -739,22 +769,43 @@ def home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
     page_number = request.GET.get("page") or 1
     search_context = _home_search_context(search_query, page_number)
+    cli_analytics = SearchCommandAnalytics.objects.filter(channel="cli").first()
     context = {
         "auth_user": _current_user_context(request),
         "search_query": search_query,
         "search_submitted": bool(search_query),
+        "cli_command_count": cli_analytics.command_count if cli_analytics else 0,
         **search_context,
         **_seo_context(
             request,
             title="Kumquat | Search",
             description=(
-                "Kumquat is building a search engine with a minimal homepage focused on query input and readable results."
+                "Kumquat is an agent-friendly search engine with a minimal web UI and a CLI-accessible search endpoint."
             ),
             path=reverse("home"),
             structured_data=_home_structured_data(),
         ),
     }
     return render(request, "website/home.html", context)
+
+
+@csrf_exempt
+def cli_search_view(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+    if not _is_cli_search_request(request):
+        return JsonResponse(
+            {
+                "error": "CLI search requires X-Kumquat-Client: cli or a User-Agent containing kumquat-cli.",
+            },
+            status=403,
+        )
+
+    search_query = (request.GET.get("q") or "").strip()
+    page_number = request.GET.get("page") or 1
+    search_payload = search_jobs(search_query, page=page_number, page_size=10)
+    analytics = _record_search_command("cli")
+    return JsonResponse(_serialize_cli_search_payload(search_query, search_payload, analytics))
 
 
 def privacy_policy_page_view(request):

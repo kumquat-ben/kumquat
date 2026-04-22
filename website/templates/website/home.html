@@ -26,14 +26,17 @@
 
     <section class="search-home-hero" aria-labelledby="search-box-title">
       <a class="search-home-brand" href="/">Kumquat</a>
-      <h1 class="search-home-title" id="search-box-title">Search all jobs.</h1>
+      <h1 class="search-home-title" id="search-box-title">Agent-friendly search for the web and the CLI.</h1>
+      <p class="search-home-subtitle">
+        Run searches in the browser, hit the CLI endpoint from your agents, and keep a running count of command activity.
+      </p>
       <form action="/" class="search-home-form" method="get" role="search">
         <label class="search-home-input-wrap" for="search-request">
           <span class="search-home-input-label">Search</span>
           <input
             id="search-request"
             name="q"
-            placeholder="Search jobs by title, company, location, or keywords"
+            placeholder="Search indexed docs, companies, locations, or keywords"
             type="search"
             value="{{ search_query }}"
           />
@@ -43,6 +46,20 @@
           <a class="search-home-button search-home-button-secondary" href="/">Reset</a>
         </div>
       </form>
+      <div class="search-home-feature-grid" aria-label="Search features">
+        <article class="search-home-feature-card">
+          <p class="search-home-feature-kicker">CLI Search</p>
+          <p class="search-home-feature-copy">Call <code>GET /api/search/cli?q=...</code> with <code>X-Kumquat-Client: cli</code>.</p>
+        </article>
+        <article class="search-home-feature-card">
+          <p class="search-home-feature-kicker">Agent Ready</p>
+          <p class="search-home-feature-copy">Returns structured results so tools and agents can consume search output directly.</p>
+        </article>
+        <article class="search-home-feature-card">
+          <p class="search-home-feature-kicker">CLI Analytics</p>
+          <p class="search-home-feature-copy">{{ cli_command_count }} CLI search command{{ cli_command_count|pluralize }} recorded.</p>
+        </article>
+      </div>
       {% if auth_user %}
         <p class="search-home-note">
           Signed in as {{ auth_user.first_name|default:auth_user.full_name }}.
@@ -63,9 +80,9 @@
         <div>
           <p class="search-home-results-label">Results</p>
           {% if search_submitted %}
-            <p class="search-home-query">Showing job search results for “{{ search_query }}”</p>
+            <p class="search-home-query">Showing indexed search results for “{{ search_query }}”</p>
           {% else %}
-            <p class="search-home-query">Indexed job results will appear here.</p>
+            <p class="search-home-query">Indexed search results will appear here.</p>
           {% endif %}
         </div>
         <span class="search-status-pill {{ search_status_class }}">{{ search_status_label }}</span>
@@ -98,7 +115,7 @@
         {% endif %}
       {% else %}
         <div class="search-home-empty">
-          <p>Try a query to search indexed jobs.</p>
+          <p>Try a query to search the indexed web, or call the CLI endpoint from your agent.</p>
         </div>
       {% endif %}
     </section>

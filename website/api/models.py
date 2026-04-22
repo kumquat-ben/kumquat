@@ -202,6 +202,20 @@ class SearchDocument(models.Model):
         return self.title or self.normalized_url
 
 
+class SearchCommandAnalytics(models.Model):
+    channel = models.CharField(max_length=32, unique=True)
+    command_count = models.PositiveBigIntegerField(default=0)
+    last_command_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["channel"]
+
+    def __str__(self):
+        return f"{self.channel}:{self.command_count}"
+
+
 class CompanyProfile(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True)

@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
-from api.models import SearchCrawlTarget, SearchDocument
+from api.models import SearchCommandAnalytics, SearchCrawlTarget, SearchDocument
 from api.search import SearchCrawlerError, crawl_target, normalize_crawl_url
 
 
@@ -102,3 +102,47 @@ class SearchCrawlerTests(TestCase):
     def test_normalize_crawl_url_rejects_unsupported_scheme(self):
         with self.assertRaisesMessage(SearchCrawlerError, "Only http and https URLs can be crawled."):
             normalize_crawl_url("ftp://docs.example.com/file.txt")
+
+
+class CliSearchViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("api.views.search_jobs")
+    def test_cli_search_requires_cli_headers(self, search_mock):
+        response = self.client.get("/api/search/cli", {"q": "agents"})
+
+        self.assertEqual(response.status_code, 403)
+        search_mock.assert_not_called()
+
+    @patch("api.views.search_jobs")
+    def test_cli_search_returns_results_and_tracks_command_count(self, search_mock):
+        search_mock.return_value = {
+            "results": [{"title": "Agent docs", "url": "https://docs.example.com", "summary": "Docs"}],
+            "match_count": 1,
+            "backend": "database",
+            "page": 1,
+            "page_size": 10,
+            "total_pages": 1,
+            "has_next": False,
+            "has_previous": False,
+            "next_page": None,
+            "previous_page": None,
+            "start_index": 1,
+            "end_index": 1,
+        }
+
+        response = self.client.get(
+            "/api/search/cli",
+            {"q": "agents"},
+            HTTP_X_KUMQUAT_CLIENT="cli",
+            HTTP_USER_AGENT="kumquat-cli/0.1",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["channel"], "cli")
+        self.assertEqual(payload["query"], "agents")
+        self.assertEqual(payload["command_count"], 1)
+        self.assertEqual(payload["match_count"], 1)
+        self.assertEqual(SearchCommandAnalytics.objects.get(channel="cli").command_count, 1)
