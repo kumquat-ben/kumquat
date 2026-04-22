@@ -2261,6 +2261,58 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
         `;
       }}
 
+      function renderAdminShortcuts() {{
+        const groups = [
+          {{
+            label: "Scrapers",
+            links: [
+              {{ href: "/api/scrapers/", text: "Scraper dashboard" }},
+              {{ href: "/api/manual-scripts/", text: "Manual scripts" }},
+              {{ href: "/api/manual-scripts/urls/", text: "Manual script URLs" }},
+            ],
+          }},
+          {{
+            label: "Companies and Jobs",
+            links: [
+              {{ href: "/manage/companies", text: "Manage companies" }},
+              {{ href: "/manage/jobs", text: "Manage jobs" }},
+              {{ href: "/companies", text: "Companies" }},
+              {{ href: "/jobs", text: "Jobs" }},
+            ],
+          }},
+          {{
+            label: "APIs and Ops",
+            links: [
+              {{ href: "/api/jobs/docs", text: "Jobs API docs" }},
+              {{ href: "/sms", text: "SMS inbox" }},
+              {{ href: "/containers", text: "Containers" }},
+              {{ href: "/explorer", text: "Explorer" }},
+            ],
+          }},
+        ];
+
+        const sections = groups.map((group) => `
+          <div class="card">
+            <p class="label">${{escapeHtml(group.label)}}</p>
+            <div class="actions">
+              ${{group.links.map((link) => `
+                <a class="button" href="${{escapeHtml(link.href)}}">${{escapeHtml(link.text)}}</a>
+              `).join("")}}
+            </div>
+          </div>
+        `).join("");
+
+        return `
+          <div class="section panel">
+            <p class="label">Admin Links</p>
+            <h2 class="section-heading">Operations shortcuts</h2>
+            <div class="grid">
+              ${{sections}}
+            </div>
+          </div>
+        `;
+      }}
+
       function attachDashboardHandlers() {{
         const launchForm = document.getElementById("managed-node-launch-form");
         const launchStatus = document.getElementById("managed-node-launch-status");
@@ -2429,6 +2481,9 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <div class="card"><p class="label">Managed Nodes</p><p class="value">${{escapeHtml(payload.stats?.managed_nodes ?? 0)}}</p></div>
             <div class="card"><p class="label">Running Nodes</p><p class="value">${{escapeHtml(payload.stats?.running_nodes ?? 0)}}</p></div>
           </div>
+          ${{
+            renderAdminShortcuts()
+          }}
           ${{
             renderJobStats(payload)
           }}
