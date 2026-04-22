@@ -1,3 +1,5 @@
+import re
+
 from django.core.paginator import EmptyPage, Paginator
 from django.db.models import Q
 
@@ -6,6 +8,51 @@ from elasticsearch import ApiError
 
 from .documents import JobPostingDocument
 from .models import JobPosting
+
+
+TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
+
+
+def _tokenize(text):
+    return TOKEN_RE.findall((text or "").lower())
+
+
+def _build_match_snippet(text, query, *, max_length=220):
+    raw_text = (text or "").strip()
+    if not raw_text:
+        return ""
+
+    lowered = raw_text.lower()
+    for token in _tokenize(query):
+        position = lowered.find(token)
+        if position < 0:
+            continue
+        start = max(position - 80, 0)
+        end = min(position + max_length - 40, len(raw_text))
+        snippet = raw_text[start:end].strip()
+        if start > 0:
+            snippet = f"...{snippet}"
+        if end < len(raw_text):
+            snippet = f"{snippet}..."
+        return snippet
+
+    fallback = raw_text[:max_length].strip()
+    if len(raw_text) > max_length:
+        fallback = f"{fallback.rstrip()}..."
+    return fallback
+
+
+def _highlight_snippet(hit, query):
+    meta = getattr(hit, "meta", None)
+    highlight = getattr(meta, "highlight", None)
+    if highlight:
+        for field in ("description", "metadata_text", "location", "company", "title"):
+            fragments = getattr(highlight, field, None)
+            if fragments:
+                return " ... ".join(fragment.strip() for fragment in fragments if fragment.strip())
+
+    description = getattr(hit, "description", "") or ""
+    return _build_match_snippet(description, query)
 
 
 def _build_job_result(job, *, snippet):
@@ -36,7 +83,10 @@ def _database_fallback_search(query, page, page_size):
     )
     paginator = Paginator(jobs, page_size)
     page_obj = paginator.get_page(page)
-    results = [_build_job_result(job, snippet=(job.description or "")[:220].strip()) for job in page_obj.object_list]
+    results = [
+        _build_job_result(job, snippet=_build_match_snippet(job.description, query))
+        for job in page_obj.object_list
+    ]
     return {
         "results": results,
         "match_count": paginator.count,
@@ -89,6 +139,13 @@ def search_jobs(query, *, page=1, page_size=10):
             ],
             type="best_fields",
             fuzziness="AUTO",
+        ).highlight(
+            "description",
+            "metadata_text",
+            fragment_size=180,
+            number_of_fragments=1,
+            pre_tags=["<mark>"],
+            post_tags=["</mark>"],
         )[start : start + page_size]
         response = search.execute()
     except (ElasticsearchConnectionError, ApiError):
@@ -105,9 +162,9 @@ def search_jobs(query, *, page=1, page_size=10):
             summary_parts.append(location)
         if date:
             summary_parts.append(date)
-        description = getattr(hit, "description", "") or ""
-        if description:
-            summary_parts.append(description[:220].strip())
+        snippet = _highlight_snippet(hit, query)
+        if snippet:
+            summary_parts.append(snippet)
         results.append(
             {
                 "title": " | ".join(part for part in [getattr(hit, "title", ""), getattr(hit, "company", "")] if part),

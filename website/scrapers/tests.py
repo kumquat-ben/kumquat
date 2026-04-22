@@ -19,6 +19,7 @@ from .models import (
     Scraper,
 )
 from .submission_runtime import build_applicant_profile, inspect_application_page, plan_field_assignments
+from .search import _build_match_snippet, _database_fallback_search
 from .utils import (
     get_manual_scripts_overview,
     get_submit_script_names,
@@ -192,6 +193,41 @@ class ManualScriptSourceURLTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "/api/manual-scripts/urls.json")
         self.assertContains(response, "Cached Manual Script URLs")
+
+
+class SearchSnippetTests(TestCase):
+    def test_build_match_snippet_centers_on_query_match(self):
+        text = (
+            "Intro text that should be skipped. "
+            "This role builds distributed search ranking systems for job seekers across the platform. "
+            "Trailing text that should not dominate the preview."
+        )
+
+        snippet = _build_match_snippet(text, "ranking systems")
+
+        self.assertIn("ranking systems", snippet.lower())
+        self.assertNotIn("Intro text that should be skipped.", snippet)
+
+    def test_database_fallback_search_uses_match_centered_summary(self):
+        scraper = Scraper.objects.create(company="Example Co", url="https://example.com/jobs", code="[]")
+        JobPosting.objects.create(
+            scraper=scraper,
+            title="Platform Engineer",
+            location="Remote",
+            link="https://example.com/jobs/platform-engineer",
+            description=(
+                "Opening overview. "
+                "You will own observability and search relevance tuning for job discovery across the product. "
+                "Closing details."
+            ),
+        )
+
+        payload = _database_fallback_search("relevance tuning", page=1, page_size=10)
+
+        self.assertEqual(payload["match_count"], 1)
+        summary = payload["results"][0]["summary"]
+        self.assertIn("relevance tuning", summary.lower())
+        self.assertNotIn("Opening overview.", summary)
 
 
 class JobPostingApplyTests(TestCase):
