@@ -298,3 +298,41 @@ class SearchTypeaheadViewTests(TestCase):
             ],
         )
         search_mock.assert_called_once_with("platform", page=1, page_size=5)
+
+
+class AdminDashboardSearchAnalyticsTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(
+            username="admin-dashboard",
+            email="admin-dashboard@example.com",
+            password="password",
+            is_superuser=True,
+            is_staff=True,
+        )
+
+    def test_dashboard_data_includes_total_search_count(self):
+        SearchCommandAnalytics.objects.create(channel="cli", command_count=3)
+        SearchCommandAnalytics.objects.create(channel="web", command_count=7)
+        self.client.force_login(self.user)
+
+        response = self.client.get("/dashboard/data")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["stats"]["searches"], 10)
+        self.assertEqual(
+            payload["search_analytics"],
+            [
+                {
+                    "channel": "cli",
+                    "command_count": 3,
+                    "last_command_at": None,
+                },
+                {
+                    "channel": "web",
+                    "command_count": 7,
+                    "last_command_at": None,
+                },
+            ],
+        )

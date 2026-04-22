@@ -767,12 +767,14 @@ def _build_dashboard_context(request=None):
             "last_command_at",
         )
     )
+    total_search_commands = sum(item["command_count"] for item in search_analytics)
     return {
         "stats": {
             "users": len(users),
             "superusers": sum(1 for user in users if user["is_superuser"]),
             "signups": len(signups),
             "inbound_sms": VonageInboundSms.objects.count(),
+            "searches": total_search_commands,
             "managed_nodes": len(managed_nodes),
             "running_nodes": sum(1 for node in managed_nodes if node["status"] == ManagedNode.STATUS_RUNNING),
             "scraped_jobs_total": scraped_jobs_total,
@@ -2628,6 +2630,32 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
         `;
       }}
 
+      function renderSearchAnalytics(payload) {{
+        const rows = (payload.search_analytics || []).map((item) => `
+          <tr>
+            <td>${{escapeHtml(item.channel || "unknown")}}</td>
+            <td>${{escapeHtml(item.command_count ?? 0)}}</td>
+            <td>${{escapeHtml(formatDate(item.last_command_at))}}</td>
+          </tr>
+        `).join("");
+
+        return `
+          <div class="section panel">
+            <p class="label">Search Analytics</p>
+            <h2 class="section-heading">Search command usage</h2>
+            <div class="grid">
+              <div class="card"><p class="label">Total Searches</p><p class="value">${{escapeHtml(payload.stats?.searches ?? 0)}}</p></div>
+            </div>
+            <div class="section">
+              <table>
+                <thead><tr><th>Channel</th><th>Commands</th><th>Last Command</th></tr></thead>
+                <tbody>${{rows || '<tr><td colspan="3">No search analytics recorded yet.</td></tr>'}}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }}
+
       function attachDashboardHandlers() {{
         const launchForm = document.getElementById("managed-node-launch-form");
         const launchStatus = document.getElementById("managed-node-launch-status");
@@ -2793,11 +2821,15 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <div class="card"><p class="label">Superusers</p><p class="value">${{escapeHtml(payload.stats?.superusers ?? 0)}}</p></div>
             <div class="card"><p class="label">Signups</p><p class="value">${{escapeHtml(payload.stats?.signups ?? 0)}}</p></div>
             <div class="card"><p class="label">Inbound SMS</p><p class="value">${{escapeHtml(payload.stats?.inbound_sms ?? 0)}}</p></div>
+            <div class="card"><p class="label">Searches</p><p class="value">${{escapeHtml(payload.stats?.searches ?? 0)}}</p></div>
             <div class="card"><p class="label">Managed Nodes</p><p class="value">${{escapeHtml(payload.stats?.managed_nodes ?? 0)}}</p></div>
             <div class="card"><p class="label">Running Nodes</p><p class="value">${{escapeHtml(payload.stats?.running_nodes ?? 0)}}</p></div>
           </div>
           ${{
             renderAdminShortcuts()
+          }}
+          ${{
+            renderSearchAnalytics(payload)
           }}
           ${{
             renderJobStats(payload)
