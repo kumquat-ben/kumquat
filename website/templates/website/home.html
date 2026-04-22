@@ -1,4 +1,5 @@
 {% extends "website/base.html" %}
+{% load html_filters %}
 
 {% block content %}
   <div class="search-home-page">
@@ -77,7 +78,7 @@
             <article class="search-home-result-item">
               <a class="search-home-result-url" href="{{ result.url }}" rel="noreferrer" target="_blank">{{ result.url }}</a>
               <h2><a href="{{ result.url }}" rel="noreferrer" target="_blank">{{ result.title }}</a></h2>
-              <p>{{ result.snippet|default:result.summary }}</p>
+              <div class="search-home-detail-copy">{{ result.snippet|default:result.summary|render_basic_html }}</div>
             </article>
           {% endfor %}
         </div>

@@ -1,4 +1,5 @@
 {% extends "website/base.html" %}
+{% load html_filters %}
 
 {% block content %}
   <div class="search-home-page">
@@ -34,9 +35,9 @@
               {% if job.salary %} · {{ job.salary }}{% endif %}
             </p>
             {% if job.excerpt %}
-              <p>{{ job.excerpt }}</p>
+              <div class="search-home-detail-copy">{{ job.excerpt|render_basic_html }}</div>
             {% elif job.description %}
-              <p>{{ job.description|truncatechars:220 }}</p>
+              <div class="search-home-detail-copy">{{ job.description|truncatechars_html:220|render_basic_html }}</div>
             {% endif %}
           </article>
         {% empty %}

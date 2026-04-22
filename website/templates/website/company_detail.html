@@ -1,4 +1,5 @@
 {% extends "website/base.html" %}
+{% load html_filters %}
 
 {% block content %}
   <div class="search-home-page">
@@ -23,7 +24,7 @@
             <p class="search-home-result-url"><a href="{{ company.website }}" rel="noreferrer" target="_blank">{{ company.website }}</a></p>
           {% endif %}
           {% if company.info %}
-            <p class="search-home-detail-copy">{{ company.info|linebreaksbr }}</p>
+            <div class="search-home-detail-copy">{{ company.info|render_basic_html }}</div>
           {% endif %}
           <p>
             {% if company.location %}{{ company.location }}{% endif %}
@@ -42,9 +43,9 @@
               <p class="search-home-result-url">{{ job.location|default:"Job listing" }}</p>
               <h2><a href="/jobs/{{ job.slug }}">{{ job.title }}</a></h2>
               {% if job.excerpt %}
-                <p>{{ job.excerpt }}</p>
+                <div class="search-home-detail-copy">{{ job.excerpt|render_basic_html }}</div>
               {% elif job.description %}
-                <p>{{ job.description|truncatechars:220 }}</p>
+                <div class="search-home-detail-copy">{{ job.description|truncatechars_html:220|render_basic_html }}</div>
               {% endif %}
             </article>
           {% empty %}

@@ -90,6 +90,36 @@ class HomePageViewTests(TestCase):
         self.assertContains(response, "?q=python+engineer&amp;page=1")
         self.assertContains(response, "?q=python+engineer&amp;page=3")
 
+    def test_home_page_renders_basic_html_in_search_result_snippets(self):
+        with patch(
+            "api.views.search_jobs",
+            return_value={
+                "results": [
+                    {
+                        "title": "Senior Python Engineer | Example Co",
+                        "summary": "<p>Build <strong>search</strong> systems.</p><script>alert(1)</script>",
+                        "url": "https://example.com/jobs/python",
+                    }
+                ],
+                "match_count": 1,
+                "backend": "elasticsearch",
+                "page": 1,
+                "page_size": 10,
+                "total_pages": 1,
+                "has_next": False,
+                "has_previous": False,
+                "next_page": None,
+                "previous_page": None,
+                "start_index": 1,
+                "end_index": 1,
+            },
+        ):
+            response = self.client.get("/", {"q": "python engineer"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<strong>search</strong>", html=False)
+        self.assertNotContains(response, "<script>alert(1)</script>", html=False)
+
 
 class EarlyAccessSignupViewTests(TestCase):
     def setUp(self):
