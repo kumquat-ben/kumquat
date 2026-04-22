@@ -1355,10 +1355,14 @@ def website_indexing_admin_page_view(request):
 
     selected_job_id = (request.GET.get("selected_job") or "").strip()
     selected_crawler_id = (request.GET.get("selected_crawler") or "").strip()
-    crawl_jobs = SearchCrawlTarget.objects.select_related("created_by").order_by("-updated_at", "-created_at")[:200]
-    runtime_crawlers = WebsiteCrawlerDefinition.objects.order_by("name", "-updated_at")[:200]
-    selected_job = crawl_jobs.filter(pk=selected_job_id).first() if selected_job_id else None
-    selected_crawler = runtime_crawlers.filter(pk=selected_crawler_id).first() if selected_crawler_id else None
+    crawl_jobs_queryset = SearchCrawlTarget.objects.select_related("created_by").order_by("-updated_at", "-created_at")
+    runtime_crawlers_queryset = WebsiteCrawlerDefinition.objects.order_by("name", "-updated_at")
+    selected_job = crawl_jobs_queryset.filter(pk=selected_job_id).first() if selected_job_id else None
+    selected_crawler = (
+        runtime_crawlers_queryset.filter(pk=selected_crawler_id).first() if selected_crawler_id else None
+    )
+    crawl_jobs = crawl_jobs_queryset[:200]
+    runtime_crawlers = runtime_crawlers_queryset[:200]
     discovered_domains = (
         WebsiteDiscoveredDomain.objects.select_related("crawl_target")
         .filter(crawler_definition=selected_crawler)
