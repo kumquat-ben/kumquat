@@ -6,6 +6,7 @@
     <header class="search-home-topbar">
       {% if auth_user %}
         {% if auth_user.is_superuser %}
+          <a class="search-home-link" href="https://kumquat.info/dashboard" rel="noreferrer" target="_blank">Dashboard</a>
           <a class="search-home-link" href="/manage/jobs">Manage Jobs</a>
           <a class="search-home-link" href="/manage/companies">Manage Companies</a>
           <a class="search-home-link" href="/api/scrapers/">Scrapers</a>
