@@ -19,6 +19,10 @@
     <div class="dashboard-panel">
       <div class="dashboard-toolbar">
         <a class="button button-secondary" href="/">Back home</a>
+        <a class="button button-secondary" href="/manage/jobs">Manage jobs</a>
+        <a class="button button-secondary" href="/manage/companies">Manage companies</a>
+        <a class="button button-secondary" href="/api/scrapers/">Scrapers</a>
+        <a class="button button-secondary" href="/api/manual-scripts/">Manual scripts</a>
         <a class="button button-secondary" href="/sms">Open SMS inbox</a>
       </div>
 
@@ -66,22 +70,6 @@
         {% else %}
           <p class="dashboard-message dashboard-message-error">Enable the node launcher in backend configuration before starting managed nodes.</p>
         {% endif %}
-      </section>
-
-      <section class="dashboard-card">
-        <div class="dashboard-card-header">
-          <div>
-            <p class="section-eyebrow">Admin Links</p>
-            <h3>Operations shortcuts</h3>
-          </div>
-        </div>
-        <div class="managed-node-actions">
-          <a class="button button-secondary" href="/manage/jobs">Manage jobs</a>
-          <a class="button button-secondary" href="/manage/companies">Manage companies</a>
-          <a class="button button-secondary" href="/api/scrapers/">Scrapers</a>
-          <a class="button button-secondary" href="/api/manual-scripts/">Manual scripts</a>
-          <a class="button button-secondary" href="/sms">SMS inbox</a>
-        </div>
       </section>
 
       <section class="dashboard-card">

@@ -5,6 +5,9 @@
   <div class="search-home-page">
     <header class="search-home-topbar">
       {% if auth_user %}
+        {% if auth_user.is_superuser %}
+          <a class="search-home-link" href="/dashboard">Dashboard</a>
+        {% endif %}
         <form action="/auth/logout" class="search-home-inline-form" method="post">
           {% csrf_token %}
           <button class="search-home-link search-home-link-button" type="submit">Sign out</button>
@@ -26,6 +29,18 @@
       <form action="/" class="search-home-form" method="get" role="search">
         <label class="search-home-input-wrap" for="search-request">
           <span class="search-home-input-label">Search</span>
+          <span class="search-home-input-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path
+                d="M15.5 15.5 20 20M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.8"
+              />
+            </svg>
+          </span>
           <input
             id="search-request"
             name="q"
@@ -91,7 +106,7 @@
         </div>
         {% if search_total_pages > 1 %}
           <nav class="dashboard-pagination" aria-label="Search result pages">
-            <p class="body-copy">Page {{ search_page }} of {{ search_total_pages }}</p>
+            <p class="search-home-results-meta">Page {{ search_page }} of {{ search_total_pages }}</p>
             <div class="dashboard-pagination-actions">
               {% if search_has_previous %}
                 <a class="button button-secondary" href="/?q={{ search_query|urlencode }}&page={{ search_previous_page }}">Previous</a>
