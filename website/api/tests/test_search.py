@@ -146,3 +146,61 @@ class CliSearchViewTests(TestCase):
         self.assertEqual(payload["command_count"], 1)
         self.assertEqual(payload["match_count"], 1)
         self.assertEqual(SearchCommandAnalytics.objects.get(channel="cli").command_count, 1)
+
+
+class SearchTypeaheadViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    @patch("api.views.search_jobs")
+    def test_typeahead_ignores_short_queries(self, search_mock):
+        response = self.client.get("/api/search/typeahead", {"q": "a"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"query": "a", "results": [], "backend": None, "match_count": 0},
+        )
+        search_mock.assert_not_called()
+
+    @patch("api.views.search_jobs")
+    def test_typeahead_returns_suggestions_from_search_service(self, search_mock):
+        search_mock.return_value = {
+            "results": [
+                {
+                    "title": "Platform Engineer | Kumquat",
+                    "url": "https://jobs.example.com/platform-engineer",
+                    "summary": "Remote | Build agent-friendly search systems for jobs and documents.",
+                }
+            ],
+            "match_count": 1,
+            "backend": "elasticsearch",
+            "page": 1,
+            "page_size": 5,
+            "total_pages": 1,
+            "has_next": False,
+            "has_previous": False,
+            "next_page": None,
+            "previous_page": None,
+            "start_index": 1,
+            "end_index": 1,
+        }
+
+        response = self.client.get("/api/search/typeahead", {"q": "platform"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["query"], "platform")
+        self.assertEqual(payload["backend"], "elasticsearch")
+        self.assertEqual(payload["match_count"], 1)
+        self.assertEqual(
+            payload["results"],
+            [
+                {
+                    "title": "Platform Engineer | Kumquat",
+                    "url": "https://jobs.example.com/platform-engineer",
+                    "summary": "Remote | Build agent-friendly search systems for jobs and documents.",
+                }
+            ],
+        )
+        search_mock.assert_called_once_with("platform", page=1, page_size=5)

@@ -848,6 +848,38 @@ def cli_search_view(request):
     return JsonResponse(_serialize_cli_search_payload(search_query, search_payload, analytics))
 
 
+def search_typeahead_view(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+
+    search_query = (request.GET.get("q") or "").strip()
+    if len(search_query) < 2:
+        return JsonResponse({"query": search_query, "results": [], "backend": None, "match_count": 0})
+
+    search_payload = search_jobs(search_query, page=1, page_size=5)
+    suggestions = []
+    for result in search_payload["results"]:
+        summary = (result.get("summary") or "").strip()
+        if len(summary) > 140:
+            summary = f"{summary[:137].rstrip()}..."
+        suggestions.append(
+            {
+                "title": result.get("title") or result.get("url") or search_query,
+                "url": result.get("url") or "/",
+                "summary": summary,
+            }
+        )
+
+    return JsonResponse(
+        {
+            "query": search_query,
+            "results": suggestions,
+            "backend": search_payload["backend"],
+            "match_count": search_payload["match_count"],
+        }
+    )
+
+
 def privacy_policy_page_view(request):
     context = {
         **_seo_context(

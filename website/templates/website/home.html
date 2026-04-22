@@ -42,13 +42,20 @@
             </svg>
           </span>
           <input
+            aria-autocomplete="list"
+            aria-controls="search-typeahead-list"
+            aria-expanded="false"
             id="search-request"
+            autocomplete="off"
             name="q"
             placeholder="Search indexed docs, companies, locations, or keywords"
             type="search"
             value="{{ search_query }}"
           />
         </label>
+        <div class="search-home-typeahead" hidden id="search-typeahead" role="presentation">
+          <div class="search-home-typeahead-list" id="search-typeahead-list" role="listbox"></div>
+        </div>
         <div class="search-home-actions">
           <button class="search-home-button search-home-button-primary" type="submit">Search</button>
           <a class="search-home-button search-home-button-secondary" href="/">Reset</a>
@@ -108,7 +115,6 @@
           <nav class="dashboard-pagination" aria-label="Search result pages">
             <div class="search-home-pagination-summary">
               <p class="search-home-results-meta">Page {{ search_page }} of {{ search_total_pages }}</p>
-              <p class="search-home-pagination-copy">Jump across results without losing your place.</p>
             </div>
             <div class="dashboard-pagination-actions search-home-pagination-actions">
               {% if search_has_previous and search_first_page and search_page != search_first_page %}
@@ -154,4 +160,165 @@
       {% endif %}
     </section>
   </div>
+{% endblock %}
+
+{% block extra_head %}
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const input = document.getElementById("search-request");
+      const panel = document.getElementById("search-typeahead");
+      const list = document.getElementById("search-typeahead-list");
+      if (!input || !panel || !list) {
+        return;
+      }
+
+      let abortController = null;
+      let debounceTimer = null;
+      let activeIndex = -1;
+      let suggestions = [];
+
+      const escapeHtml = (value) =>
+        String(value || "").replace(/[&<>"']/g, (character) => {
+          const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          };
+          return entities[character] || character;
+        });
+
+      const closeTypeahead = () => {
+        suggestions = [];
+        activeIndex = -1;
+        list.innerHTML = "";
+        panel.hidden = true;
+        input.setAttribute("aria-expanded", "false");
+        input.removeAttribute("aria-activedescendant");
+      };
+
+      const renderSuggestions = () => {
+        if (!suggestions.length) {
+          closeTypeahead();
+          return;
+        }
+
+        list.innerHTML = suggestions
+          .map((suggestion, index) => {
+            const isActive = index === activeIndex;
+            const summaryMarkup = suggestion.summary
+              ? `<span class="search-home-typeahead-summary">${escapeHtml(suggestion.summary)}</span>`
+              : "";
+            const title = escapeHtml(suggestion.title);
+            return `
+              <a
+                class="search-home-typeahead-item${isActive ? " search-home-typeahead-item-active" : ""}"
+                href="/?q=${encodeURIComponent(suggestion.title)}"
+                id="search-typeahead-option-${index}"
+                role="option"
+                aria-selected="${isActive ? "true" : "false"}"
+                data-index="${index}"
+              >
+                <span class="search-home-typeahead-title">${title}</span>
+                ${summaryMarkup}
+              </a>
+            `;
+          })
+          .join("");
+
+        panel.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        if (activeIndex >= 0) {
+          input.setAttribute("aria-activedescendant", `search-typeahead-option-${activeIndex}`);
+        } else {
+          input.removeAttribute("aria-activedescendant");
+        }
+      };
+
+      const fetchSuggestions = (query) => {
+        if (abortController) {
+          abortController.abort();
+        }
+        abortController = new AbortController();
+        fetch(`/api/search/typeahead?q=${encodeURIComponent(query)}`, {
+          headers: { Accept: "application/json" },
+          signal: abortController.signal,
+        })
+          .then((response) => (response.ok ? response.json() : Promise.reject(new Error("Typeahead failed"))))
+          .then((payload) => {
+            if (input.value.trim() !== query) {
+              return;
+            }
+            suggestions = payload.results || [];
+            activeIndex = -1;
+            renderSuggestions();
+          })
+          .catch((error) => {
+            if (error.name === "AbortError") {
+              return;
+            }
+            closeTypeahead();
+          });
+      };
+
+      input.addEventListener("input", () => {
+        const query = input.value.trim();
+        window.clearTimeout(debounceTimer);
+        if (query.length < 2) {
+          closeTypeahead();
+          return;
+        }
+        debounceTimer = window.setTimeout(() => fetchSuggestions(query), 180);
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (!suggestions.length) {
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          activeIndex = (activeIndex + 1) % suggestions.length;
+          renderSuggestions();
+          return;
+        }
+
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          activeIndex = activeIndex <= 0 ? suggestions.length - 1 : activeIndex - 1;
+          renderSuggestions();
+          return;
+        }
+
+        if (event.key === "Escape") {
+          closeTypeahead();
+          return;
+        }
+
+        if (event.key === "Enter" && activeIndex >= 0) {
+          event.preventDefault();
+          window.location.href = `/?q=${encodeURIComponent(suggestions[activeIndex].title)}`;
+        }
+      });
+
+      list.addEventListener("mousedown", (event) => {
+        const option = event.target.closest("[data-index]");
+        if (!option) {
+          return;
+        }
+        const index = Number(option.dataset.index);
+        if (Number.isInteger(index) && suggestions[index]) {
+          input.value = suggestions[index].title;
+        }
+      });
+
+      document.addEventListener("click", (event) => {
+        if (event.target === input || panel.contains(event.target)) {
+          return;
+        }
+        closeTypeahead();
+      });
+    });
+  </script>
 {% endblock %}
