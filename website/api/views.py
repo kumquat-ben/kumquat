@@ -719,7 +719,7 @@ def jobs_page_view(request):
         **_seo_context(
             request,
             title="Jobs | Kumquat",
-            description="Browse Kumquat job listings imported from Athena-style backend features.",
+            description="Browse Kumquat job listings managed by the integrated scraper backend.",
             path=reverse("jobs"),
         ),
     }
@@ -778,7 +778,7 @@ def companies_page_view(request):
         **_seo_context(
             request,
             title="Companies | Kumquat",
-            description="Browse Kumquat company profiles imported from Athena-style backend features.",
+            description="Browse Kumquat company profiles managed by the integrated jobs backend.",
             path=reverse("companies"),
         ),
     }
@@ -843,6 +843,20 @@ def companies_api_view(request):
             | Q(tags__icontains=query)
         )
     return JsonResponse({"results": [_company_payload(company) for company in companies[:100]]})
+
+
+def jobs_api_docs_page_view(request):
+    return render(
+        request,
+        "dashboard/jobs_api_docs.html",
+        _seo_context(
+            request,
+            title="Jobs API Docs | Kumquat",
+            description="Documentation for scraper, job posting, and manual script APIs.",
+            path=reverse("jobs-api-docs"),
+            index=False,
+        ),
+    )
 
 
 def _superuser_or_redirect(request):

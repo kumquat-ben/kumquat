@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Manual Script URLs · Kumquat{% endblock %}
+
+{% block body_class %}ops-dashboard-page{% endblock %}
+
+{% block extra_head %}
+<link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+>
+<style>
+    body.ops-dashboard-page {
+        min-height: 100vh;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        color: #e8edf7;
+        background:
+            radial-gradient(circle at top left, rgba(26, 188, 156, 0.14), transparent 28%),
+            radial-gradient(circle at top right, rgba(13, 110, 253, 0.16), transparent 28%),
+            linear-gradient(180deg, #07111d 0%, #0a1626 55%, #0d1b2d 100%);
+        font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    .ops-dashboard-page header,
+    .ops-dashboard-page main,
+    .ops-dashboard-page .flash-messages {
+        width: min(100%, 1180px);
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .ops-dashboard-page main {
+        width: 100%;
+        max-width: 1180px;
+        display: flex;
+        justify-content: center;
+        padding: 28px 12px 48px;
+    }
+
+    .ops-dashboard-page header {
+        margin-top: 28px;
+        padding: 20px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 22px;
+        background: rgba(8, 18, 32, 0.8);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+        text-align: center;
+    }
+
+    .ops-dashboard-page header h1,
+    .ops-dashboard-page header nav,
+    .ops-dashboard-page header p {
+        margin: 0;
+    }
+
+    .ops-dashboard-page header h1 a,
+    .ops-dashboard-page header nav a,
+    .ops-dashboard-page header p a {
+        color: #fff;
+        text-decoration: none;
+    }
+
+    .ops-dashboard-page header nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 10px;
+        justify-content: center;
+    }
+
+    .ops-dashboard-page header nav a {
+        color: #73d7ff;
+    }
+
+    .ops-dashboard-page .flash-messages {
+        margin-top: 18px;
+    }
+
+    .ops-dashboard-page .flash-messages ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 10px;
+    }
+
+    .ops-dashboard-page .flash-messages li {
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .dashboard-center {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .dashboard-frame {
+        width: min(100%, 1080px);
+    }
+
+    .glass-card {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        background: rgba(10, 20, 36, 0.84);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(16px);
+    }
+
+    .manual-script-urls-page {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    .manual-script-urls-panel {
+        padding: 1.5rem;
+        border-radius: 24px;
+    }
+
+    .manual-script-urls-toolbar,
+    .manual-script-urls-pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .manual-script-urls-actions,
+    .manual-script-urls-filters {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .manual-script-urls-button,
+    .manual-script-urls-button:visited {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.04);
+        color: #e8edf7;
+        border-radius: 999px;
+        padding: 0.65rem 0.95rem;
+        text-decoration: none;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .manual-script-urls-button:hover {
+        color: #ffffff;
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .manual-script-urls-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+
+    .manual-script-urls-table th,
+    .manual-script-urls-table td {
+        padding: 0.8rem 0.9rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        vertical-align: top;
+        color: #dce6f5;
+    }
+
+    .manual-script-urls-table thead th {
+        border-top: none;
+        font-size: 0.84rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #8ea7c8;
+    }
+
+    .manual-script-urls-muted {
+        color: #99abc5;
+    }
+
+    .manual-script-urls-url {
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .manual-script-urls-url a {
+        color: #7be3ff;
+    }
+
+    .manual-script-urls-url a:hover {
+        color: #a6efff;
+    }
+
+    select.manual-script-select {
+        min-width: 260px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 0.75rem;
+        padding: 0.6rem 0.8rem;
+        background: rgba(6, 15, 28, 0.88);
+        color: #edf4ff;
+    }
+
+    @media (max-width: 900px) {
+        .manual-script-urls-table,
+        .manual-script-urls-table thead,
+        .manual-script-urls-table tbody,
+        .manual-script-urls-table th,
+        .manual-script-urls-table td,
+        .manual-script-urls-table tr {
+            display: block;
+        }
+
+        .manual-script-urls-table thead {
+            display: none;
+        }
+
+        .manual-script-urls-table tr {
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 0.85rem 0;
+        }
+
+        .manual-script-urls-table td {
+            border-top: none;
+            padding: 0.35rem 0;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-center">
+    <div class="dashboard-frame">
+        <div class="manual-script-urls-page">
+            <section class="manual-script-urls-panel glass-card">
+                <div class="manual-script-urls-toolbar">
+                    <div>
+                        <h2 class="h3 mb-2 text-white">Manual Script URL Inventory</h2>
+                        <div class="manual-script-urls-muted">
+                            Cached crawl targets extracted from manual script files.
+                            {% if stats.last_refresh %}Last refresh {{ stats.last_refresh|date:"Y-m-d H:i" }}.{% else %}Cache has not been refreshed yet.{% endif %}
+                        </div>
+                    </div>
+                    <div class="manual-script-urls-actions">
+                        <a class="manual-script-urls-button" href="{% url 'scrapers-manual-urls-api' %}">Open JSON API</a>
+                        <a class="manual-script-urls-button" href="{% url 'jobs-api-docs' %}#manual-script-urls-api">API Docs</a>
+                        <a class="manual-script-urls-button" href="{% url 'scrapers-manual' %}">Back to Manual Scripts</a>
+                    </div>
+                </div>
+
+                <form method="get" class="manual-script-urls-filters mt-4">
+                    <label for="script" class="manual-script-urls-muted">Filter by script</label>
+                    <select id="script" name="script" class="manual-script-select" onchange="this.form.submit()">
+                        <option value="">All scripts</option>
+                        {% for script in scripts %}
+                            <option value="{{ script.name }}"{% if selected_script == script.name %} selected{% endif %}>{{ script.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if selected_script %}
+                        <a class="manual-script-urls-button" href="{% url 'scrapers-manual-urls' %}">Clear Filter</a>
+                    {% endif %}
+                </form>
+
+                {% if urls %}
+                    <table class="manual-script-urls-table">
+                        <thead>
+                            <tr>
+                                <th>Script</th>
+                                <th>Source</th>
+                                <th>URL</th>
+                                <th>File Modified</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in urls %}
+                                <tr>
+                                    <td>{{ entry.script_name }}</td>
+                                    <td>{{ entry.source_name|default:"literal" }}</td>
+                                    <td class="manual-script-urls-url"><a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer">{{ entry.url }}</a></td>
+                                    <td>{{ entry.file_modified_at|date:"Y-m-d H:i:s" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                    <div class="manual-script-urls-pagination mt-3">
+                        <div class="manual-script-urls-muted">
+                            Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} cached URLs.
+                        </div>
+                        {% if page_obj.paginator.num_pages > 1 %}
+                            <div class="manual-script-urls-actions">
+                                {% if page_obj.has_previous %}
+                                    <a class="manual-script-urls-button" href="?{{ query_prefix }}page=1">First</a>
+                                    <a class="manual-script-urls-button" href="?{{ query_prefix }}page={{ page_obj.previous_page_number }}">Previous</a>
+                                {% endif %}
+                                <span class="manual-script-urls-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                                {% if page_obj.has_next %}
+                                    <a class="manual-script-urls-button" href="?{{ query_prefix }}page={{ page_obj.next_page_number }}">Next</a>
+                                    <a class="manual-script-urls-button" href="?{{ query_prefix }}page={{ page_obj.paginator.num_pages }}">Last</a>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <p class="manual-script-urls-muted mb-0 mt-4">No cached URLs found. Use the refresh button on the manual scripts page to parse the files and populate this inventory.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

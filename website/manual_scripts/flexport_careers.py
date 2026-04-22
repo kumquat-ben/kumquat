@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Manual scraper for https://www.flexport.com/company/careers/ (Greenhouse-powered)."""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Iterable, Iterator, List, Optional
+
+import requests
+from bs4 import BeautifulSoup
+
+# ---------------------------------------------------------------------------
+# Django bootstrap
+# ---------------------------------------------------------------------------
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "website.settings")
+
+import django  # noqa: E402
+
+django.setup()
+
+from django.conf import settings  # noqa: E402
+
+from scrapers.models import JobPosting, Scraper  # noqa: E402
+from scrapers.utils import deduplicate_job_postings  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+CAREERS_URL = "https://www.flexport.com/company/careers/"
+GREENHOUSE_API_URL = "https://api.greenhouse.io/v1/boards/flexport/jobs"
+COMPANY_NAME = "Flexport"
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/127.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+REQUEST_TIMEOUT = (10, 30)
+GREENHOUSE_MAX_PAGE_SIZE = 500
+DEFAULT_PAGE_SIZE = GREENHOUSE_MAX_PAGE_SIZE
+DEFAULT_DELAY = 0.25
+DEFAULT_TIMEOUT_SECONDS = max(getattr(settings, "MANUAL_SCRIPT_TIMEOUT_SECONDS", 1800), 120)
+
+SCRAPER_QS = Scraper.objects.filter(company=COMPANY_NAME, url=CAREERS_URL).order_by("id")
+if SCRAPER_QS.exists():
+    SCRAPER = SCRAPER_QS.first()
+    if SCRAPER_QS.count() > 1:
+        logging.warning("Multiple Flexport scraper rows found; using id=%s", SCRAPER.id)
+else:
+    SCRAPER = Scraper.objects.create(
+        company=COMPANY_NAME,
+        url=CAREERS_URL,
+        code="manual-script",
+        interval_hours=24,
+        timeout_seconds=DEFAULT_TIMEOUT_SECONDS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Data structures
+# ---------------------------------------------------------------------------
+@dataclass
+class FlexportJob:
+    job_id: int
+    title: str
+    link: str
+    location: Optional[str]
+    posted_at: Optional[str]
+    description: str
+    metadata: Dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _clean_text(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    soup = BeautifulSoup(text, "html.parser")
+    extracted = soup.get_text("\n", strip=True)
+    lines = [line.strip() for line in extracted.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def _simplify_metadata(entries: Optional[Iterable[Dict[str, Any]]]) -> Dict[str, Any]:
+    simplified: Dict[str, Any] = {}
+    for entry in entries or []:
+        name = entry.get("name")
+        value = entry.get("value")
+        if not name:
+            continue
+        simplified[name] = value
+    return simplified
+
+
+def _build_metadata(raw: Dict[str, Any]) -> Dict[str, Any]:
+    departments = [dept.get("name") for dept in raw.get("departments") or [] if dept.get("name")]
+    offices = [office.get("name") for office in raw.get("offices") or [] if office.get("name")]
+    metadata: Dict[str, Any] = {
+        "greenhouse_job_id": raw.get("id"),
+        "internal_job_id": raw.get("internal_job_id"),
+        "requisition_id": raw.get("requisition_id"),
+        "company_name": raw.get("company_name"),
+        "education_requirement": raw.get("education"),
+        "employment_type": raw.get("employment"),
+        "updated_at": raw.get("updated_at"),
+        "first_published": raw.get("first_published"),
+        "departments": departments,
+        "offices": offices,
+        "location_struct": raw.get("location"),
+        "data_compliance": raw.get("data_compliance"),
+        "custom_fields": _simplify_metadata(raw.get("metadata")),
+    }
+    html_content = raw.get("content")
+    if html_content:
+        metadata["description_html"] = html_content
+    clean_metadata = {key: value for key, value in metadata.items() if value not in (None, "", [], {})}
+    return clean_metadata
+
+
+def _to_listing(raw: Dict[str, Any]) -> Optional[FlexportJob]:
+    job_id = raw.get("id")
+    title = (raw.get("title") or "").strip()
+    link = raw.get("absolute_url") or ""
+    if not (job_id and title and link):
+        return None
+    location_name = (raw.get("location") or {}).get("name") or ""
+    posted_at = raw.get("first_published") or raw.get("updated_at")
+    description_text = _clean_text(raw.get("content"))
+    metadata = _build_metadata(raw)
+    return FlexportJob(
+        job_id=int(job_id),
+        title=title,
+        link=link,
+        location=location_name.strip() or None,
+        posted_at=posted_at,
+        description=description_text,
+        metadata=metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scraper implementation
+# ---------------------------------------------------------------------------
+class FlexportGreenhouseScraper:
+    def __init__(
+        self,
+        *,
+        session: Optional[requests.Session] = None,
+        per_page: int = DEFAULT_PAGE_SIZE,
+        delay: float = DEFAULT_DELAY,
+    ) -> None:
+        self.session = session or requests.Session()
+        self.session.headers.update(DEFAULT_HEADERS)
+        self.per_page = max(1, min(per_page, GREENHOUSE_MAX_PAGE_SIZE))
+        self.delay = max(0.0, delay)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def scrape(self, *, limit: Optional[int] = None) -> Iterator[FlexportJob]:
+        fetched = 0
+        page = 1
+
+        while True:
+            params = {
+                "content": "true",
+                "page": page,
+                "per_page": self.per_page,
+            }
+            response = self.session.get(
+                GREENHOUSE_API_URL,
+                params=params,
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            jobs = payload.get("jobs") or []
+            if not jobs:
+                self.logger.debug("No jobs returned at page=%s; stopping.", page)
+                break
+
+            for raw_job in jobs:
+                listing = _to_listing(raw_job)
+                if not listing:
+                    continue
+                yield listing
+                fetched += 1
+                if limit is not None and fetched >= limit:
+                    return
+                if self.delay:
+                    time.sleep(self.delay)
+
+            if len(jobs) < self.per_page:
+                break
+            page += 1
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+def store_listing(listing: FlexportJob) -> None:
+    JobPosting.objects.update_or_create(
+        scraper=SCRAPER,
+        link=listing.link,
+        defaults={
+            "title": (listing.title or "")[:255],
+            "location": (listing.location or "")[:255],
+            "date": (listing.posted_at or "")[:100],
+            "description": (listing.description or "")[:10000],
+            "metadata": listing.metadata,
+        },
+    )
+
+
+def run_scrape(limit: Optional[int], delay: float) -> int:
+    scraper = FlexportGreenhouseScraper(delay=delay)
+    count = 0
+    for job in scraper.scrape(limit=limit):
+        store_listing(job)
+        count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Flexport careers scraper")
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--delay", type=float, default=DEFAULT_DELAY)
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"])
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = parse_args(argv)
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()))
+    start = time.time()
+    count = run_scrape(args.limit, args.delay)
+    dedupe_summary = deduplicate_job_postings(scraper=SCRAPER)
+    duration = time.time() - start
+    summary = {
+        "company": COMPANY_NAME,
+        "url": CAREERS_URL,
+        "count": count,
+        "elapsed_seconds": duration,
+        "dedupe": dedupe_summary,
+    }
+    logging.info("Summary: %s", json.dumps(summary))
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Scraper Run #{{ run.id }} · Kumquat{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Scraper Run #{{ run.id }}</h2>
+    <p>
+        <strong>Scraper:</strong> {{ run.scraper.company }}<br>
+        <strong>Status:</strong> {{ run.get_status_display }}<br>
+        <strong>Triggered By:</strong> {{ run.get_triggered_by_display }}<br>
+        <strong>Started:</strong> {{ run.started_at|date:"Y-m-d H:i:s" }}<br>
+        <strong>Finished:</strong>
+        {% if run.finished_at %}
+            {{ run.finished_at|date:"Y-m-d H:i:s" }}
+        {% else %}
+            In progress
+        {% endif %}<br>
+        <strong>Duration:</strong> {% if run.duration_ms %}{{ run.duration_ms }} ms{% else %}—{% endif %}<br>
+    </p>
+    {% if run.error %}
+        <div class="error">
+            <strong>Error:</strong> {{ run.error }}
+        </div>
+    {% endif %}
+    <p><a href="{% url 'scrapers-manage' %}">&larr; Back to Scraper Management</a></p>
+</section>
+
+{% if summary %}
+<section>
+    <h3>Run Summary</h3>
+    <ul>
+        <li>Total processed: {{ summary.total|default:"0" }}</li>
+        <li>New jobs stored: {{ summary.created|default:"0" }}</li>
+        <li>Duplicates skipped: {{ summary.duplicates|default:"0" }}</li>
+        <li>Invalid rows: {{ summary.invalid|default:"0" }}</li>
+    </ul>
+</section>
+{% endif %}
+
+{% if logs %}
+<section>
+    <h3>Log Events</h3>
+    <ol>
+        {% for entry in logs %}
+            <li>
+                <strong>{{ entry.step }}</strong>
+                {% if entry.dt %} @ {{ entry.dt|date:"Y-m-d H:i:s" }}{% endif %}
+                {% if entry.detail %} — {{ entry.detail }}{% endif %}
+            </li>
+        {% endfor %}
+    </ol>
+</section>
+{% endif %}
+
+{% if stderr_output %}
+<section>
+    <h3>stderr Output</h3>
+    <pre>{{ stderr_output }}</pre>
+</section>
+{% endif %}
+
+<section>
+    <h3>Payload</h3>
+    {% if payload_pretty %}
+        <pre>{{ payload_pretty }}</pre>
+    {% else %}
+        <p>No payload captured for this run.</p>
+    {% endif %}
+</section>
+{% endblock %}

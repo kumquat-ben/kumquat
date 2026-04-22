@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Job Deduplication · Kumquat{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Job Deduplication</h2>
+    <p class="lead">
+        Identify and remove duplicate job postings by comparing the original job URL. The most recent posting for each URL is kept; older entries are deleted.
+    </p>
+</section>
+
+<section>
+    <h3>Scope</h3>
+    <form method="get" class="filters">
+        <label for="scraper-select">Limit to scraper:</label>
+        <select id="scraper-select" name="scraper" onchange="this.form.submit()">
+            <option value="">All scrapers</option>
+            {% for scraper in scrapers %}
+                <option value="{{ scraper.id }}" {% if active_scraper and scraper.id == active_scraper.id %}selected{% endif %}>
+                    {{ scraper.company }}
+                </option>
+            {% endfor %}
+        </select>
+    </form>
+    {% if active_scraper %}
+        <p class="hint">Currently reviewing duplicates captured by <strong>{{ active_scraper.company }}</strong>.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Actions</h3>
+    <p>
+        Run a dry run to preview the impact or execute a full deduplication. Both actions use the job URL as the deduplication key.
+    </p>
+    <div class="action-row">
+        <form method="post">
+            {% csrf_token %}
+            {% if active_scraper %}
+                <input type="hidden" name="scraper" value="{{ active_scraper.id }}">
+            {% endif %}
+            <button type="submit">Run deduplication now</button>
+        </form>
+        <form method="post">
+            {% csrf_token %}
+            {% if active_scraper %}
+                <input type="hidden" name="scraper" value="{{ active_scraper.id }}">
+            {% endif %}
+            <input type="hidden" name="dry_run" value="1">
+            <button type="submit">Preview (dry run)</button>
+        </form>
+    </div>
+    <p class="hint">Dry runs compute the summary without deleting any records.</p>
+</section>
+
+<section>
+    <h3>Current Duplicate Summary</h3>
+    {% if duplicate_stats.groups %}
+        <ul>
+            <li><strong>Duplicate groups:</strong> {{ duplicate_stats.groups }}</li>
+            <li><strong>Total rows across duplicated URLs:</strong> {{ duplicate_stats.rows }}</li>
+            <li><strong>Rows flagged for removal:</strong> {{ duplicate_stats.rows_to_remove }}</li>
+        </ul>
+        {% if duplicate_stats.remaining_groups %}
+            <p>
+                Showing the top {{ duplicate_stats.previewed_groups }} duplicate group(s).
+                {{ duplicate_stats.remaining_groups }} additional group(s) exist beyond the preview.
+            </p>
+        {% endif %}
+    {% else %}
+        <p>No duplicate job URLs detected for this scope.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Duplicate Preview</h3>
+    {% if duplicate_groups %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Job URL</th>
+                    <th>Total</th>
+                    <th>Most recent posting kept</th>
+                    <th>Duplicate copies (sample)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in duplicate_groups %}
+                    <tr>
+                        <td>
+                            <a href="{{ group.link }}" target="_blank" rel="noopener">
+                                {{ group.link|truncatechars:80 }}
+                            </a>
+                        </td>
+                        <td>{{ group.total }}</td>
+                        <td>
+                            {% if group.keep %}
+                                <div>
+                                    <strong>{{ group.keep.title }}</strong><br>
+                                    {{ group.keep.scraper.company }} &middot; {{ group.keep.created_at|date:"Y-m-d H:i" }}<br>
+                                    <a href="{% url 'job-posting-detail' group.keep.id %}">View posting</a>
+                                </div>
+                            {% else %}
+                                <em>Most recent record unavailable in preview.</em>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if group.duplicates %}
+                                <ul>
+                                    {% for job in group.duplicates %}
+                                        <li>
+                                            <strong>{{ job.title }}</strong><br>
+                                            {{ job.scraper.company }} &middot; {{ job.created_at|date:"Y-m-d H:i" }}<br>
+                                            <a href="{% url 'job-posting-detail' job.id %}">View posting</a>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <em>No older copies captured in this preview.</em>
+                            {% endif %}
+                            {% if group.remaining_count %}
+                                <p><em>{{ group.remaining_count }} additional duplicate(s) not shown.</em></p>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No duplicate groups to preview.</p>
+    {% endif %}
+    <p class="hint">Preview limited to {{ preview_limit }} group(s) and {{ per_group_preview_limit }} entry(ies) per group.</p>
+</section>
+{% endblock %}

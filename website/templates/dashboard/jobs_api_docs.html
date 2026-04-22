@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs API Docs · Kumquat{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Jobs API Documentation</h2>
+    <p class="lead">
+        This page documents the scraper-backed job endpoints, the manual-script URL cache API, and the apply-service workflow that now runs inside Kumquat.
+    </p>
+    <p>
+        Base URLs:
+        <code>/api/jobs/</code>,
+        <code>/api/job-postings/</code>,
+        <code>/api/manual-scripts/urls.json</code>.
+    </p>
+</section>
+
+<section>
+    <h3>1. Search Jobs</h3>
+    <p><strong>Method:</strong> <code>GET</code></p>
+    <p><strong>Endpoint:</strong> <code>/api/jobs/</code></p>
+    <p><strong>Description:</strong> Returns a paginated list of scraper-backed job postings.</p>
+
+    <h4>Example</h4>
+    <pre><code>GET /api/jobs/?search=python&location=remote&page=1&page_size=12</code></pre>
+</section>
+
+<section>
+    <h3>2. Job Posting Dashboard API</h3>
+    <p><strong>Method:</strong> <code>GET</code></p>
+    <p><strong>Endpoint:</strong> <code>/api/job-postings/</code></p>
+    <p><strong>Description:</strong> Returns the scraper dashboard listing used by the internal job operations UI.</p>
+</section>
+
+<section>
+    <h3>3. Manual Script URL Cache</h3>
+    <p><strong>Method:</strong> <code>GET</code></p>
+    <p><strong>Endpoint:</strong> <code>/api/manual-scripts/urls.json</code></p>
+    <p><strong>Description:</strong> Returns cached source URLs extracted from files under <code>website/manual_scripts/</code>.</p>
+
+    <h4>Example</h4>
+    <pre><code>GET /api/manual-scripts/urls.json?script=submit/greenhouse_apply.py&page=1&page_size=25</code></pre>
+
+    <h4>Response Shape</h4>
+    <pre><code>{
+  "count": 1,
+  "page": 1,
+  "page_size": 25,
+  "docs_url": "https://kumquat.info/api/jobs/docs",
+  "filters": {
+    "script": "submit/greenhouse_apply.py"
+  },
+  "results": [
+    {
+      "script_name": "submit/greenhouse_apply.py",
+      "source_name": "GREENHOUSE_URL",
+      "url": "https://job-boards.greenhouse.io/example/jobs/123",
+      "file_modified_at": "2026-04-21T18:00:00+00:00"
+    }
+  ]
+}</code></pre>
+</section>
+
+<section>
+    <h3>4. Apply Service</h3>
+    <p><strong>Methods:</strong> <code>GET</code>, <code>POST</code></p>
+    <p><strong>Endpoint:</strong> <code>/api/job-postings/&lt;id&gt;/apply-service/</code></p>
+    <p><strong>Authentication:</strong> Django session login.</p>
+    <p><strong>Description:</strong> Creates or resumes an application run, stores per-domain credentials, and returns run state for polling.</p>
+
+    <h4>Queue A Run</h4>
+    <pre><code>POST /api/job-postings/42/apply-service/
+{
+  "action": "start",
+  "siteUsername": "applicant@example.com",
+  "sitePassword": "Secret123!"
+}</code></pre>
+
+    <h4>Poll Run State</h4>
+    <pre><code>GET /api/job-postings/42/apply-service/?runId=91</code></pre>
+</section>
+
+<section>
+    <h3>5. Internal Operations Pages</h3>
+    <ul>
+        <li><code>/api/scrapers/</code> manages scraper definitions and run history.</li>
+        <li><code>/api/scrapers/runs/&lt;id&gt;/</code> shows individual scraper run detail.</li>
+        <li><code>/api/manual-scripts/</code> manages the manual script queue and worker controls.</li>
+        <li><code>/api/manual-scripts/urls/</code> shows the cached manual-script URL inventory.</li>
+        <li><code>/api/job-postings/&lt;id&gt;/apply/</code> opens the application manager UI for a job.</li>
+    </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Submission Manager · {{ job.title }}{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Submission Manager</h2>
+    <p class="lead">
+        Apply flow manager for <strong>{{ job.title }}</strong> at {{ job.scraper.company }}.
+    </p>
+    <p>
+        This manager records the first applicant request for a job, identifies a job-specific or fallback submit script from
+        <code>backend/manual_scripts/submit/</code> when possible, and otherwise stores a design-time script requirement entry.
+    </p>
+</section>
+
+<section>
+    <h3>Job Context</h3>
+    <dl>
+        <dt>Company</dt>
+        <dd>{{ job.scraper.company }}</dd>
+
+        <dt>Job Title</dt>
+        <dd>{{ job.title }}</dd>
+
+        <dt>Source Job Page</dt>
+        <dd><a href="{{ job.link }}" target="_blank" rel="noopener">{{ job.link }}</a></dd>
+
+        <dt>Apply URL</dt>
+        <dd>
+            {% if manager.apply_url %}
+                <a href="{{ manager.apply_url }}" target="_blank" rel="noopener">{{ manager.apply_url }}</a>
+            {% else %}
+                No explicit apply URL was detected, so the source job page will be used as the current fallback.
+            {% endif %}
+        </dd>
+    </dl>
+</section>
+
+<section>
+    <h3>Manager Status</h3>
+    <dl>
+        <dt>Resolution</dt>
+        <dd>{{ manager.get_status_display }}</dd>
+
+        <dt>Browser Session</dt>
+        <dd>
+            {% if browser_session_pending %}
+                Pending. A browser session should inspect the live form, identify the submission abstraction, and verify the script strategy.
+            {% else %}
+                {{ manager.get_browser_session_status_display }}
+            {% endif %}
+        </dd>
+
+        <dt>First Requested By</dt>
+        <dd>{% if manager.first_requested_by %}{{ manager.first_requested_by }}{% else %}—{% endif %}</dd>
+
+        <dt>Last Requested By</dt>
+        <dd>{% if manager.last_requested_by %}{{ manager.last_requested_by }}{% else %}—{% endif %}</dd>
+
+        <dt>Total Requests</dt>
+        <dd>{{ manager.request_count }}</dd>
+    </dl>
+</section>
+
+<section>
+    <h3>Saved Site Credential</h3>
+    {% if saved_credential %}
+        <dl>
+            <dt>Domain</dt>
+            <dd>{{ saved_credential.apply_domain }}</dd>
+
+            <dt>Username</dt>
+            <dd>{{ saved_credential.username }}</dd>
+
+            <dt>Login URL</dt>
+            <dd>{% if saved_credential.login_url %}<a href="{{ saved_credential.login_url }}" target="_blank" rel="noopener">{{ saved_credential.login_url }}</a>{% else %}—{% endif %}</dd>
+
+            <dt>Last Used</dt>
+            <dd>{% if saved_credential.last_used_at %}{{ saved_credential.last_used_at }}{% else %}Never{% endif %}</dd>
+        </dl>
+    {% else %}
+        <p>No site credential has been created for this user and apply domain yet.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Script Resolution</h3>
+    {% if manager.matched_script_name %}
+        <p><strong>Matched Submit Script:</strong> <code>{{ manager.matched_script_name }}</code></p>
+    {% endif %}
+
+    {% if candidate_scripts %}
+        <p>Candidate submit scripts identified for this job:</p>
+        <ul>
+            {% for script_name in candidate_scripts %}
+                <li><code>{{ script_name }}</code></li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No submit script candidate was identified yet.</p>
+    {% endif %}
+
+    <p>{{ manager.notes }}</p>
+
+    {% if manager.status == "design_time_script_needed" %}
+        <p>
+            A design-time requirement has been recorded in the database so a submit script can be generated later for this job and form.
+        </p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Latest Application Run</h3>
+    {% if latest_run %}
+        <dl>
+            <dt>Status</dt>
+            <dd>{{ latest_run.get_status_display }}</dd>
+
+            <dt>Script</dt>
+            <dd>{% if latest_run.selected_script_name %}<code>{{ latest_run.selected_script_name }}</code>{% else %}—{% endif %}</dd>
+
+            <dt>Apply Method</dt>
+            <dd>{{ latest_run.get_apply_method_display }}</dd>
+
+            <dt>Current Step</dt>
+            <dd>{% if latest_run.current_step %}{{ latest_run.current_step }}{% else %}—{% endif %}</dd>
+
+            <dt>Form Classification</dt>
+            <dd>{% if latest_run.form_classification %}{{ latest_run.form_classification }}{% else %}—{% endif %}</dd>
+
+            <dt>Verification Prompt</dt>
+            <dd>{% if latest_run.verification_prompt %}{{ latest_run.verification_prompt }}{% else %}—{% endif %}</dd>
+
+            <dt>Submitted At</dt>
+            <dd>{% if latest_run.submitted_at %}{{ latest_run.submitted_at }}{% else %}—{% endif %}</dd>
+        </dl>
+        {% if latest_run.status == "needs_review" %}
+            <p><strong>Systems Review:</strong> This run is waiting for systems-team review and has not been marked as a final failure.</p>
+        {% endif %}
+        {% if latest_run.last_error %}
+            <p><strong>Last Error:</strong> {{ latest_run.last_error }}</p>
+        {% endif %}
+        {% if latest_run.review_notes %}
+            <p><strong>Review Notes:</strong> {{ latest_run.review_notes }}</p>
+        {% endif %}
+        {% if latest_run.last_result %}
+            <pre>{{ latest_run.last_result }}</pre>
+        {% endif %}
+    {% else %}
+        <p>No application run has been started yet for this user.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Form Requirements Snapshot</h3>
+    <pre>{{ manager.requirements_summary }}</pre>
+</section>
+
+<section>
+    <h3>Submit Script Inventory</h3>
+    {% if available_submit_scripts %}
+        <ul>
+            {% for script_name in available_submit_scripts %}
+                <li><code>{{ script_name }}</code></li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No submit scripts currently exist in <code>backend/manual_scripts/submit/</code>.</p>
+    {% endif %}
+</section>
+
+<section>
+    <p><a href="{% url 'job-posting-detail' job.id %}">Back to job details</a></p>
+</section>
+{% endblock %}

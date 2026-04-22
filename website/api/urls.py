@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Benjamin Levin. All Rights Reserved.
 # Unauthorized use or distribution is strictly prohibited.
 from django.contrib.sitemaps.views import sitemap
-from django.urls import path, re_path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 
 from .sitemaps import sitemaps
@@ -37,6 +37,7 @@ from .views import (
     healthz_view,
     home_page_view,
     jobs_api_view,
+    jobs_api_docs_page_view,
     jobs_page_view,
     job_detail_page_view,
     jobs_admin_page_view,
@@ -57,8 +58,10 @@ urlpatterns = [
     path("companies/<slug:slug>", company_detail_page_view, name="company-detail"),
     path("api/jobs", jobs_api_view, name="jobs-api"),
     path("api/companies", companies_api_view, name="companies-api"),
+    path("api/jobs/docs", jobs_api_docs_page_view, name="jobs-api-docs"),
     path("manage/jobs", jobs_admin_page_view, name="manage-jobs"),
     path("manage/companies", companies_admin_page_view, name="manage-companies"),
+    path("", include("scrapers.urls")),
     path("explorer", explorer_home_page_view, name="explorer"),
     path("explorer/blocks/<str:identifier>", explorer_block_page_view, name="explorer-block"),
     path("explorer/transactions/<str:tx_hash>", explorer_transaction_page_view, name="explorer-transaction"),

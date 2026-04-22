@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Scraper Management · Kumquat{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Scraper Management</h2>
+    <p class="lead">
+        Review existing scraper scripts, adjust their schedules, and generate new scrapers using the form below.
+    </p>
+</section>
+
+<section>
+    <h3>Create a New Scraper</h3>
+    <form method="post" class="create-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <div>
+            <label for="id_company">Company</label>
+            {{ create_form.company }}
+            {% if create_form.company.help_text %}<small>{{ create_form.company.help_text }}</small>{% endif %}
+            {% if create_form.company.errors %}
+                <div class="error">{{ create_form.company.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div>
+            <label for="id_url">Target URL</label>
+            {{ create_form.url }}
+            {% if create_form.url.help_text %}<small>{{ create_form.url.help_text }}</small>{% endif %}
+            {% if create_form.url.errors %}
+                <div class="error">{{ create_form.url.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div>
+            <label for="id_interval_hours">Interval (hours)</label>
+            {{ create_form.interval_hours }}
+            {% if create_form.interval_hours.help_text %}<small>{{ create_form.interval_hours.help_text }}</small>{% endif %}
+            {% if create_form.interval_hours.errors %}
+                <div class="error">{{ create_form.interval_hours.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div>
+            <label for="id_timeout_seconds">Timeout (seconds)</label>
+            {{ create_form.timeout_seconds }}
+            {% if create_form.timeout_seconds.help_text %}<small>{{ create_form.timeout_seconds.help_text }}</small>{% endif %}
+            {% if create_form.timeout_seconds.errors %}
+                <div class="error">{{ create_form.timeout_seconds.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div>
+            <label for="id_active">
+                {{ create_form.active }} Schedule immediately
+            </label>
+            {% if create_form.active.help_text %}<small>{{ create_form.active.help_text }}</small>{% endif %}
+            {% if create_form.active.errors %}
+                <div class="error">{{ create_form.active.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <button type="submit">Generate Scraper</button>
+    </form>
+</section>
+
+<section>
+    <h3>Existing Scrapers</h3>
+    {% if scrapers %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Company</th>
+                    <th>URL</th>
+                    <th>Interval (hours)</th>
+                    <th>Timeout (s)</th>
+                    <th>Active</th>
+                    <th>Last Run</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                    <th>Script</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scraper in scrapers %}
+                    <tr>
+                        <td>{{ scraper.id }}</td>
+                        <td>{{ scraper.company }}</td>
+                        <td><a href="{{ scraper.url }}" target="_blank" rel="noopener">{{ scraper.url }}</a></td>
+                        <td>
+                            <form method="post" class="inline-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update">
+                                <input type="hidden" name="scraper_id" value="{{ scraper.id }}">
+                                <input type="number" name="interval_hours" value="{{ scraper.interval_hours }}" min="1" step="1" required>
+                                <input type="number" name="timeout_seconds" value="{{ scraper.timeout_seconds }}" min="30" step="30" required>
+                                <button type="submit">Update</button>
+                            </form>
+                        </td>
+                        <td>{{ scraper.timeout_seconds }}</td>
+                        <td>
+                            {% if scraper.active %}
+                                <span class="status status-active">Active</span>
+                            {% else %}
+                                <span class="status status-paused">Paused</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if scraper.last_run %}
+                                {{ scraper.last_run|date:"Y-m-d H:i" }}
+                            {% else %}
+                                Never
+                            {% endif %}
+                        </td>
+                        <td>{{ scraper.created_at|date:"Y-m-d H:i" }}</td>
+                        <td class="actions">
+                            <form method="post" class="inline-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="toggle">
+                                <input type="hidden" name="scraper_id" value="{{ scraper.id }}">
+                                <button type="submit">
+                                    {% if scraper.active %}Pause{% else %}Activate{% endif %}
+                                </button>
+                            </form>
+                            <form method="post" class="inline-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="run">
+                                <input type="hidden" name="scraper_id" value="{{ scraper.id }}">
+                                <button type="submit">Run Now</button>
+                            </form>
+                        </td>
+                        <td><a href="{% url 'scrapers-code' scraper.id %}">View Script</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No scrapers created yet.</p>
+    {% endif %}
+</section>
+
+<section>
+    <h3>Recent Runs</h3>
+    {% if recent_runs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Scraper</th>
+                    <th>Status</th>
+                    <th>Triggered By</th>
+                    <th>Started</th>
+                    <th>Duration (ms)</th>
+                    <th>New Jobs</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in recent_runs %}
+                    <tr>
+                        <td>{{ run.id }}</td>
+                        <td>{{ run.scraper.company }}</td>
+                        <td>
+                            {% if run.status == "success" %}
+                                <span class="status status-active">Success</span>
+                            {% else %}
+                                <span class="status status-paused">Error</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ run.get_triggered_by_display }}</td>
+                        <td>{{ run.started_at|date:"Y-m-d H:i:s" }}</td>
+                        <td>{% if run.duration_ms %}{{ run.duration_ms }}{% else %}—{% endif %}</td>
+                        <td>
+                            {% with summary=run.payload.summary %}
+                                {% if summary and summary.created %}
+                                    {{ summary.created }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                        <td><a href="{% url 'scrapers-run-detail' run.id %}">View</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No runs recorded yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

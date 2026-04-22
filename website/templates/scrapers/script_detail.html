@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Scraper Script · {{ scraper.company }}{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Scraper Script</h2>
+    <p>
+        <strong>Company:</strong> {{ scraper.company }}<br>
+        <strong>Source URL:</strong> <a href="{{ scraper.url }}" target="_blank" rel="noopener">{{ scraper.url }}</a><br>
+        <strong>Interval:</strong> Every {{ scraper.interval_hours }} hour(s)<br>
+        <strong>Status:</strong> {% if scraper.active %}Active{% else %}Paused{% endif %}
+    </p>
+    <p>
+        <a href="{% url 'scrapers-manage' %}">&larr; Back to Scraper Management</a>
+    </p>
+</section>
+
+<section>
+    <h3>Generated Code</h3>
+    <pre><code>{{ code }}</code></pre>
+</section>
+{% endblock %}

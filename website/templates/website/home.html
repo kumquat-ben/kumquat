@@ -7,6 +7,8 @@
         {% if auth_user.is_superuser %}
           <a class="search-home-link" href="/manage/jobs">Manage Jobs</a>
           <a class="search-home-link" href="/manage/companies">Manage Companies</a>
+          <a class="search-home-link" href="/api/scrapers/">Scrapers</a>
+          <a class="search-home-link" href="/api/manual-scripts/">Manual Scripts</a>
         {% endif %}
         <form action="/auth/logout" class="search-home-inline-form" method="post">
           {% csrf_token %}

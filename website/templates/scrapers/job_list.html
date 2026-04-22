@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Job Postings · Kumquat{% endblock %}
+
+{% block content %}
+<section>
+    <h2>Job Postings</h2>
+    <p class="lead">Listings harvested from scrapers. Filter by scraper and drill into detail pages.</p>
+</section>
+
+<section>
+    <form method="get" class="filters">
+        <label for="scraper-select">Filter by scraper:</label>
+        <select id="scraper-select" name="scraper" onchange="this.form.submit()">
+            <option value="">All scrapers</option>
+            {% for scraper in scrapers %}
+                {% with company=scraper.company|default_if_none:"" %}
+                    {% with url=scraper.url|default_if_none:"" %}
+                        {% with label=company|add:" — "|add:url %}
+                            <option value="{{ scraper.id }}" {% if active_scraper and scraper.id == active_scraper.id %}selected{% endif %} title="{{ label }}">{{ label|truncatechars:40 }}</option>
+                        {% endwith %}
+                    {% endwith %}
+                {% endwith %}
+            {% endfor %}
+        </select>
+        {% if request.GET.page %}
+            <input type="hidden" name="page" value="{{ request.GET.page }}">
+        {% endif %}
+    </form>
+</section>
+
+<section>
+    {% if job_postings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>Date</th>
+                    <th>Dup Hits</th>
+                    <th>Last Crawl</th>
+                    <th>Apply</th>
+                    <th>Link</th>
+                    <th>Captured</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in job_postings %}
+                    <tr>
+                        <td><a href="{% url 'job-posting-detail' job.id %}">{{ job.title }}</a></td>
+                        <td>{{ job.scraper.company }}</td>
+                        <td>{{ job.location|default:"—" }}</td>
+                        <td>{{ job.date|default:"—" }}</td>
+                        <td>{{ job.duplicate_hit_count }}</td>
+                        <td>{{ job.last_crawled_at|date:"Y-m-d H:i" }}</td>
+                        <td><a href="{% url 'job-posting-apply-manager' job.id %}">Open Apply Manager</a></td>
+                        <td><a href="{{ job.link }}" target="_blank" rel="noopener">View source</a></td>
+                        <td>{{ job.created_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if paginator.num_pages > 1 %}
+            <nav class="pagination">
+                {% if page_obj.has_previous %}
+                    <a href="?{% if active_scraper %}scraper={{ active_scraper.id }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">« Prev</a>
+                {% endif %}
+                <span>Page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+                {% if page_obj.has_next %}
+                    <a href="?{% if active_scraper %}scraper={{ active_scraper.id }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next »</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% else %}
+        <p>No job postings found.</p>
+    {% endif %}
+</section>
+{% endblock %}

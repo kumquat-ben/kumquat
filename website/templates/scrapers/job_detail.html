@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ job.title }} · Job Detail{% endblock %}
+
+{% block content %}
+<section>
+    <h2>{{ job.title }}</h2>
+    <p class="lead">Captured from {{ job.scraper.company }} (<a href="{{ job.link }}" target="_blank" rel="noopener">source</a>)</p>
+
+    <p><a href="{% url 'job-posting-apply-manager' job.id %}">Open Apply Manager</a></p>
+    <p>
+        This opens the submission manager, which identifies a job-specific or fallback submit script from <code>backend/manual_scripts/submit/</code> or records that a design-time script is needed for this job.
+    </p>
+
+    <dl>
+        <dt>Company</dt>
+        <dd>{{ job.scraper.company }}</dd>
+
+        <dt>Location</dt>
+        <dd>{{ job.location|default:"—" }}</dd>
+
+        <dt>Date</dt>
+        <dd>{{ job.date|default:"—" }}</dd>
+
+        <dt>Captured</dt>
+        <dd>{{ job.created_at|date:"Y-m-d H:i" }}</dd>
+
+        <dt>Last Crawl Update</dt>
+        <dd>{{ job.last_crawled_at|date:"Y-m-d H:i" }}</dd>
+
+        <dt>Duplicate Hits</dt>
+        <dd>{{ job.duplicate_hit_count }}</dd>
+
+        <dt>Last Duplicate Seen</dt>
+        <dd>{{ job.last_duplicate_seen_at|date:"Y-m-d H:i"|default:"—" }}</dd>
+    </dl>
+</section>
+
+<section>
+    <h3>Description</h3>
+    <div class="job-description">
+        {{ job.description|linebreaks }}
+    </div>
+</section>
+
+{% if metadata %}
+<section>
+    <h3>Metadata</h3>
+    <pre>{{ metadata_pretty }}</pre>
+</section>
+{% endif %}
+
+<section>
+    <a href="{% url 'job-posting-list' %}">« Back to job listings</a>
+</section>
+{% endblock %}
