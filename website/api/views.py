@@ -2044,7 +2044,6 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
       <div class="toolbar">
         <a class="button" href="{back_href}">{back_label}</a>
         <a class="button" href="/dashboard">Dashboard</a>
-        <a class="button" href="/containers">Containers</a>
         <a class="button" href="/sms">SMS Inbox</a>
         <a class="button button-primary" href="/auth/logout">Sign out</a>
       </div>
