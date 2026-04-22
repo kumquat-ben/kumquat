@@ -1035,6 +1035,58 @@ impl<'a> StateStore<'a> {
         }
     }
 
+    /// Get the latest historical account state strictly before `before_height`.
+    pub fn get_latest_account_before_height(
+        &self,
+        address: &[u8],
+        before_height: u64,
+    ) -> Result<Option<AccountState>, StateStoreError> {
+        let addr_str = hex::encode(address);
+        let prefix = format!("state:account:{}:", addr_str);
+        let entries = self.store.scan_prefix(prefix.as_bytes())?;
+
+        let mut latest_height = None;
+        let mut latest_value = None;
+
+        for (key, value) in entries {
+            let key_str = String::from_utf8_lossy(&key);
+            let parts: Vec<&str> = key_str.split(':').collect();
+
+            if parts.len() >= 4 {
+                if let Ok(height) = parts[3].parse::<u64>() {
+                    if height < before_height && latest_height.is_none_or(|current| height > current)
+                    {
+                        latest_height = Some(height);
+                        latest_value = Some(value);
+                    }
+                }
+            }
+        }
+
+        match latest_value {
+            Some(value) => match bincode::deserialize::<AccountState>(&value) {
+                Ok(state) => {
+                    let mut owner = [0u8; 32];
+                    owner.copy_from_slice(address);
+                    Ok(Some(Self::normalize_account_state(state, Some(owner))))
+                }
+                Err(e) => Err(StateStoreError::SerializationError(e.to_string())),
+            },
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_account_state(&self, address: &Hash) -> Result<(), StateStoreError> {
+        let addr_str = hex::encode(address);
+        let key = format!("state:account:{}", addr_str);
+        self.store.delete(key.as_bytes())?;
+        self.account_cache.remove(&addr_str);
+
+        let mut state_root = self.state_root.write().unwrap();
+        *state_root = None;
+        Ok(())
+    }
+
     /// Compatibility-only balance reset helper.
     ///
     /// This rebuilds an account's token inventory from an aggregate balance and must not be used

@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/kumquat-blockchain
-  tag: blockchain-20260420-193246-state-root-cache-fix
+  tag: blockchain-20260422-replayfix-4a23f7b
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -33,10 +33,11 @@ config:
   logLevel: info
   enableApi: true
   enableMetrics: true
-  bootstrapNodes: []
+  bootstrapNodes:
+    - "kumquat-miner-0.kumquat-miner-headless.kumquat.svc.cluster.local:30333"
   dhtBootstrapNodes: []
   maxPeers: 50
-  minPeers: 10
+  minPeers: 1
   discoveryInterval: 30
   connectionTimeout: 10
   handshakeTimeout: 5
@@ -45,7 +46,7 @@ config:
   enableDht: true
   chainId: 1337
   genesisHash: 4d2b2a6b8e2b9a805d23d4e862c40dcadafb25dcb84790cf10f3fca2425fe06c
-  enableMining: true
+  enableMining: false
   miningThreads: 1
   hybridActivationHeight: 0
   targetBlockTime: 5

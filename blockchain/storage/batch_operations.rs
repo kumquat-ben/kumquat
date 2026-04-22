@@ -7,6 +7,7 @@ use crate::storage::kv_store::{KVStore, KVStoreError, WriteBatchOperation};
 use crate::storage::state::AccountState;
 use crate::storage::state_store::{StateStore, StateStoreError};
 use crate::storage::tx_store::{TransactionRecord, TxStore, TxStoreError};
+use std::collections::BTreeSet;
 
 /// Error type for batch operations
 #[derive(Debug, thiserror::Error)]
@@ -416,6 +417,159 @@ mod regression_tests {
             "recalculated root should match second block root"
         );
     }
+
+    #[test]
+    fn rollback_restores_previous_account_state_snapshot() {
+        let temp_dir = tempdir().unwrap();
+        let kv_store = Arc::new(RocksDBStore::new(temp_dir.path()).unwrap());
+        let block_store = Arc::new(BlockStore::new(kv_store.as_ref()));
+        let tx_store = Arc::new(TxStore::new(kv_store.as_ref()));
+        let state_store = Arc::new(StateStore::new(kv_store.as_ref()));
+        let batch_manager = BatchOperationManager::new(
+            kv_store.clone(),
+            block_store.clone(),
+            tx_store,
+            state_store.clone(),
+        );
+
+        let genesis_path = temp_dir.path().join("genesis.toml");
+        let mut genesis_config = crate::tools::genesis::GenesisConfig::default();
+        genesis_config.chain_id = 1337;
+        genesis_config.timestamp = 1_744_067_299;
+        genesis_config.initial_difficulty = 100;
+        genesis_config.save(&genesis_path).unwrap();
+
+        let (mut genesis_block, genesis_accounts) =
+            crate::tools::genesis::generate_genesis(&genesis_path).unwrap();
+        for (address, state) in genesis_accounts {
+            let mut state = state;
+            state.assign_token_owner(address);
+            state.sync_balance_from_tokens();
+            state_store.set_account_state(&address, &state).unwrap();
+        }
+        let genesis_root = state_store
+            .calculate_state_root(0, genesis_block.timestamp)
+            .unwrap();
+        state_store.put_state_root(&genesis_root).unwrap().unwrap();
+        genesis_block.pre_reward_state_root = genesis_root.root_hash;
+        genesis_block.state_root = genesis_root.root_hash;
+        block_store.put_block(&genesis_block).unwrap();
+
+        let miner_a = [7u8; 32];
+        let miner_b = [8u8; 32];
+        let block_one_hash = [11u8; 32];
+        let block_two_hash = [12u8; 32];
+        let timestamp = genesis_block.timestamp + 5;
+
+        let block_one_state_changes = state_store
+            .project_state_changes(1, &[], &miner_a, &[], Some(&block_one_hash))
+            .unwrap();
+        let block_one_projected = state_store
+            .calculate_state_root_with_overrides(1, timestamp, &block_one_state_changes)
+            .unwrap();
+        let block_one_reward_token_ids = crate::storage::block_store::reward_outcome(
+            miner_a,
+            1,
+            &block_one_hash,
+        )
+        .into_iter()
+        .map(|token| token.token_id)
+        .collect::<Vec<_>>();
+        let block_one = Block {
+            height: 1,
+            hash: block_one_hash,
+            prev_hash: genesis_block.hash,
+            timestamp,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner: miner_a,
+            pre_reward_state_root: state_store
+                .calculate_projected_state_root(1, timestamp, &[], &miner_a, &[])
+                .unwrap()
+                .root_hash,
+            reward_token_ids: block_one_reward_token_ids.clone(),
+            result_commitment: crate::storage::block_store::result_commitment(
+                &block_one_hash,
+                &block_one_projected.root_hash,
+                &block_one_reward_token_ids,
+                &[],
+            ),
+            state_root: block_one_projected.root_hash,
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 1,
+            poh_seq: 1,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 200,
+        };
+        batch_manager
+            .commit_block(&block_one, &[], &block_one_state_changes)
+            .unwrap();
+
+        let miner_state_after_block_one = state_store.get_account_state(&miner_a).unwrap();
+
+        batch_manager.rollback_block(1).unwrap();
+
+        assert!(state_store.get_account_state(&miner_a).is_none());
+
+        let block_two_state_changes = state_store
+            .project_state_changes(1, &[], &miner_b, &[], Some(&block_two_hash))
+            .unwrap();
+        let block_two_projected = state_store
+            .calculate_state_root_with_overrides(1, timestamp, &block_two_state_changes)
+            .unwrap();
+        let block_two_reward_token_ids = crate::storage::block_store::reward_outcome(
+            miner_b,
+            1,
+            &block_two_hash,
+        )
+        .into_iter()
+        .map(|token| token.token_id)
+        .collect::<Vec<_>>();
+        let block_two = Block {
+            height: 1,
+            hash: block_two_hash,
+            prev_hash: genesis_block.hash,
+            timestamp,
+            transactions: vec![],
+            conversion_fulfillment_order_ids: vec![],
+            miner: miner_b,
+            pre_reward_state_root: state_store
+                .calculate_projected_state_root(1, timestamp, &[], &miner_b, &[])
+                .unwrap()
+                .root_hash,
+            reward_token_ids: block_two_reward_token_ids.clone(),
+            result_commitment: crate::storage::block_store::result_commitment(
+                &block_two_hash,
+                &block_two_projected.root_hash,
+                &block_two_reward_token_ids,
+                &[],
+            ),
+            state_root: block_two_projected.root_hash,
+            tx_root: crate::crypto::hash::sha256(b"empty_tx_root"),
+            nonce: 2,
+            poh_seq: 2,
+            poh_hash: [0u8; 32],
+            difficulty: 100,
+            total_difficulty: 200,
+        };
+        batch_manager
+            .commit_block(&block_two, &[], &block_two_state_changes)
+            .unwrap();
+
+        let miner_state_after_block_two = state_store.get_account_state(&miner_b).unwrap();
+
+        assert_ne!(miner_state_after_block_one, miner_state_after_block_two);
+        assert_eq!(block_store.get_latest_height(), Some(1));
+        assert_eq!(
+            state_store
+                .get_state_root_at_height(1)
+                .unwrap()
+                .unwrap()
+                .root_hash,
+            block_two.state_root
+        );
+    }
 }
 
 /// Batch operations manager for atomic updates
@@ -561,15 +715,36 @@ impl<'a> BatchOperationManager<'a> {
             let normalized_state =
                 StateStore::normalize_account_state(state.clone(), Some(*address));
             let state_key = format!("state:account:{}", hex::encode(address));
+            let state_history_key = format!("state:account:{}:{}", hex::encode(address), block.height);
             let state_value = bincode::serialize(&normalized_state).map_err(|e| {
                 BatchOperationError::Other(format!("Failed to serialize state: {}", e))
             })?;
 
             batch.push(WriteBatchOperation::Put {
                 key: state_key.as_bytes().to_vec(),
+                value: state_value.clone(),
+            });
+            batch.push(WriteBatchOperation::Put {
+                key: state_history_key.as_bytes().to_vec(),
                 value: state_value,
             });
         }
+
+        let changed_addresses = state_changes
+            .iter()
+            .map(|(address, _)| *address)
+            .collect::<Vec<_>>();
+        let changed_addresses_key = format!("state_changes:{}", block.height);
+        let changed_addresses_value = bincode::serialize(&changed_addresses).map_err(|e| {
+            BatchOperationError::Other(format!(
+                "Failed to serialize changed account index for block {}: {}",
+                block.height, e
+            ))
+        })?;
+        batch.push(WriteBatchOperation::Put {
+            key: changed_addresses_key.as_bytes().to_vec(),
+            value: changed_addresses_value,
+        });
 
         // Calculate and store state root
         let state_root = self
@@ -692,6 +867,81 @@ impl<'a> BatchOperationManager<'a> {
             key: state_root_key.as_bytes().to_vec(),
         });
 
+        let changed_addresses_key = format!("state_changes:{}", block.height);
+        let changed_addresses = match self.store.get(changed_addresses_key.as_bytes())? {
+            Some(bytes) => bincode::deserialize::<Vec<Hash>>(&bytes).map_err(|e| {
+                BatchOperationError::Other(format!(
+                    "Failed to deserialize changed account index for block {}: {}",
+                    block_height, e
+                ))
+            })?,
+            None => Vec::new(),
+        };
+        batch.push(WriteBatchOperation::Delete {
+            key: changed_addresses_key.as_bytes().to_vec(),
+        });
+
+        for address in &changed_addresses {
+            let state_history_key = format!("state:account:{}:{}", hex::encode(address), block.height);
+            batch.push(WriteBatchOperation::Delete {
+                key: state_history_key.as_bytes().to_vec(),
+            });
+
+            match self
+                .state_store
+                .get_latest_account_before_height(address, block.height)
+                .map_err(BatchOperationError::StateStoreError)?
+            {
+                Some(previous_state) => {
+                    let normalized_state =
+                        StateStore::normalize_account_state(previous_state, Some(*address));
+                    let state_key = format!("state:account:{}", hex::encode(address));
+                    let state_value = bincode::serialize(&normalized_state).map_err(|e| {
+                        BatchOperationError::Other(format!(
+                            "Failed to serialize restored state for {}: {}",
+                            hex::encode(address),
+                            e
+                        ))
+                    })?;
+                    batch.push(WriteBatchOperation::Put {
+                        key: state_key.as_bytes().to_vec(),
+                        value: state_value,
+                    });
+                }
+                None => {
+                    let state_key = format!("state:account:{}", hex::encode(address));
+                    batch.push(WriteBatchOperation::Delete {
+                        key: state_key.as_bytes().to_vec(),
+                    });
+                }
+            }
+        }
+
+        let mut affected_senders = BTreeSet::new();
+        for tx in &transactions {
+            affected_senders.insert(tx.sender);
+        }
+        for sender in affected_senders {
+            let sender_nonce_key = format!("tx_sender_nonce:{}", hex::encode(sender));
+            let previous_nonce = self
+                .tx_store
+                .get_transactions_by_sender(&sender)?
+                .into_iter()
+                .filter(|tx| tx.block_height < block_height)
+                .map(|tx| tx.nonce)
+                .max();
+
+            match previous_nonce {
+                Some(nonce) => batch.push(WriteBatchOperation::Put {
+                    key: sender_nonce_key.as_bytes().to_vec(),
+                    value: nonce.to_be_bytes().to_vec(),
+                }),
+                None => batch.push(WriteBatchOperation::Delete {
+                    key: sender_nonce_key.as_bytes().to_vec(),
+                }),
+            }
+        }
+
         // Execute the batch
         self.store
             .write_batch(batch)
@@ -703,6 +953,12 @@ impl<'a> BatchOperationManager<'a> {
             } else {
                 None
             });
+        self.state_store.clear_cache();
+        if block_height > 0 {
+            if let Ok(Some(previous_root)) = self.state_store.get_state_root_at_height(block_height - 1) {
+                self.state_store.set_state_root(previous_root);
+            }
+        }
 
         info!(
             "Rolled back block {} with {} transactions",
