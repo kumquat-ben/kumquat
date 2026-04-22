@@ -72,6 +72,25 @@ ingress:
 
 replicaCount: 2
 
+manualScriptWorker:
+  enabled: true
+  name: manual-script-worker
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 750m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  env:
+    ENABLE_SCRAPER_SCHEDULER: "false"
+    ENABLE_MANUAL_SCRIPT_SCHEDULER: "true"
+    MANUAL_SCRIPT_QUEUE_CONCURRENCY: "2"
+    MANUAL_SCRIPT_QUEUE_POLL_SECONDS: "2"
+    MANUAL_SCRIPT_WORKER_NAMESPACE: "kumquat"
+    MANUAL_SCRIPT_WORKER_DEPLOYMENT: "manual-script-worker"
+
 resources:
   requests:
     cpu: 100m

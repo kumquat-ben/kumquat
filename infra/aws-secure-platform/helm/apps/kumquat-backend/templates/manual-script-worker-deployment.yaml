@@ -1,0 +1,74 @@
+{{- if .Values.manualScriptWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.manualScriptWorker.name }}
+  labels:
+    {{- include "kumquat-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: manual-script-worker
+spec:
+  replicas: {{ .Values.manualScriptWorker.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kumquat-backend.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: manual-script-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kumquat-backend.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: manual-script-worker
+    spec:
+      serviceAccountName: {{ include "kumquat-backend.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manual-script-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-lc"]
+          args:
+            - python manage.py migrate --noinput && exec python manage.py run_manual_script_worker
+          envFrom:
+            - secretRef:
+                name: {{ .Values.env.existingSecret }}
+          env:
+            {{- range $name, $value := .Values.env.common }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $name, $value := .Values.manualScriptWorker.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.manualScriptWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: shared-genesis
+              mountPath: /app/blockchain/genesis.toml
+              subPath: genesis.toml
+              readOnly: true
+            - name: shared-genesis
+              mountPath: /app/blockchain/genesis.ceremony.json
+              subPath: genesis.ceremony.json
+              readOnly: true
+      volumes:
+        - name: shared-genesis
+          configMap:
+            name: {{ include "kumquat-backend.fullname" . }}-shared-genesis
+{{- end }}

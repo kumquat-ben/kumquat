@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
                 ("script_name", models.CharField(max_length=255)),
                 ("source_name", models.CharField(blank=True, max_length=255)),
                 ("url", models.URLField(max_length=1000)),
+                ("url_digest", models.CharField(editable=False, max_length=64)),
                 ("file_modified_at", models.DateTimeField()),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
@@ -26,7 +27,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="manualscriptsourceurl",
             constraint=models.UniqueConstraint(
-                fields=("script_name", "url"),
+                fields=("script_name", "url_digest"),
                 name="unique_manual_script_source_url",
             ),
         ),

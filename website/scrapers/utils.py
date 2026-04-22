@@ -211,7 +211,6 @@ def get_manual_scripts_overview() -> List[Dict[str, Any]]:
         latest_run_queryset = (
             ManualScriptRun.objects.filter(script_name__in=script_names)
             .order_by("script_name", "-scheduled_at", "-id")
-            .distinct("script_name")
         )
         for run in latest_run_queryset:
             latest_runs.setdefault(run.script_name, run)
@@ -374,6 +373,7 @@ def refresh_manual_script_source_url_cache() -> Dict[str, int]:
                     script_name=script_name,
                     source_name=entry["source_name"],
                     url=entry["url"],
+                    url_digest=ManualScriptSourceURL.build_url_digest(entry["url"]),
                     file_modified_at=modified_at,
                 )
                 for entry in parse_manual_script_urls(path)

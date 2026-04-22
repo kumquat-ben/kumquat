@@ -1,3 +1,5 @@
+import hashlib
+
 from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
@@ -155,6 +157,7 @@ class ManualScriptSourceURL(models.Model):
     script_name = models.CharField(max_length=255)
     source_name = models.CharField(max_length=255, blank=True)
     url = models.URLField(max_length=1000)
+    url_digest = models.CharField(max_length=64, editable=False)
     file_modified_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -163,10 +166,18 @@ class ManualScriptSourceURL(models.Model):
         ordering = ["script_name", "source_name", "url"]
         constraints = [
             models.UniqueConstraint(
-                fields=["script_name", "url"],
+                fields=["script_name", "url_digest"],
                 name="unique_manual_script_source_url",
             )
         ]
+
+    @staticmethod
+    def build_url_digest(url: str) -> str:
+        return hashlib.sha256((url or "").strip().encode("utf-8")).hexdigest()
+
+    def save(self, *args, **kwargs):
+        self.url_digest = self.build_url_digest(self.url)
+        return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         source = self.source_name or "literal"
