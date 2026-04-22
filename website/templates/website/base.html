@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ seo.title|default:"Kumquat" }}</title>
+    <title>{% block title %}{{ seo.title|default:"Kumquat" }}{% endblock %}</title>
     <meta name="description" content="{{ seo.description|default:'Kumquat is a digital money product built around a physical cash mental model.' }}" />
     <meta name="keywords" content="{{ seo.keywords|default:'' }}" />
     <meta name="author" content="{{ seo.author|default:'Benjamin Levin' }}" />
@@ -50,8 +50,9 @@
       <script type="application/ld+json">{{ json_ld|safe }}</script>
     {% endfor %}
     <link rel="stylesheet" href="{% static 'website/css/site.css' %}?v={{ asset_version }}" />
+    {% block extra_head %}{% endblock %}
   </head>
-  <body>
+  <body class="{% block body_class %}{% endblock %}">
     <main class="app-shell">
       <div class="page-noise"></div>
       <div class="page-orbit orbit-one"></div>
