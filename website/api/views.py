@@ -6,7 +6,7 @@ import json
 import re
 import secrets
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.db import IntegrityError, connection
-from django.db.models import Max
+from django.db.models import Count, Max
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.dateparse import parse_datetime
@@ -52,6 +52,7 @@ from .node_launcher import (
 )
 from .search import SearchCrawlerError, normalize_crawl_url, search_documents
 from .tasks import schedule_crawl_search_target
+from scrapers.models import JobPosting
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -623,6 +624,10 @@ def _upsert_user_wallet(*, user, wallet_material, replace_existing):
 
 def _build_dashboard_context(request=None):
     User = get_user_model()
+    now = datetime.now(timezone.utc)
+    last_day = now - timedelta(days=1)
+    last_week = now - timedelta(days=7)
+    last_month = now - timedelta(days=30)
     users = [_serialize_user(user) for user in User.objects.order_by("-date_joined", "username")]
     signups = [
         {
@@ -640,6 +645,20 @@ def _build_dashboard_context(request=None):
     auth_context = _launcher_auth_from_request(request) if request is not None else None
     managed_nodes = [_serialize_managed_node(node) for node in _load_managed_nodes(auth_context)]
     launcher_auth = auth_context or {}
+    scraped_jobs_total = JobPosting.objects.count()
+    published_jobs_total = JobListing.objects.count()
+    active_published_jobs = JobListing.objects.filter(is_active=True).count()
+    top_scrapers = [
+        {
+            "company": row["scraper__company"] or "Unknown",
+            "count": row["total"],
+        }
+        for row in (
+            JobPosting.objects.values("scraper__company")
+            .annotate(total=Count("id"))
+            .order_by("-total", "scraper__company")[:5]
+        )
+    ]
     return {
         "stats": {
             "users": len(users),
@@ -648,11 +667,23 @@ def _build_dashboard_context(request=None):
             "inbound_sms": VonageInboundSms.objects.count(),
             "managed_nodes": len(managed_nodes),
             "running_nodes": sum(1 for node in managed_nodes if node["status"] == ManagedNode.STATUS_RUNNING),
+            "scraped_jobs_total": scraped_jobs_total,
+            "scraped_jobs_last_24h": JobPosting.objects.filter(created_at__gte=last_day).count(),
+            "scraped_jobs_last_7d": JobPosting.objects.filter(created_at__gte=last_week).count(),
+            "scraped_jobs_last_30d": JobPosting.objects.filter(created_at__gte=last_month).count(),
+            "published_jobs_total": published_jobs_total,
+            "published_jobs_active": active_published_jobs,
+            "published_jobs_last_24h": JobListing.objects.filter(created_at__gte=last_day).count(),
+            "published_jobs_last_7d": JobListing.objects.filter(created_at__gte=last_week).count(),
+            "published_jobs_last_30d": JobListing.objects.filter(created_at__gte=last_month).count(),
         },
         "users": users,
         "signups": signups,
         "recent_sms": recent_sms,
         "managed_nodes": managed_nodes,
+        "jobs": {
+            "top_scrapers": top_scrapers,
+        },
         "launcher": {
             "enabled": launcher_enabled(),
             "default_image": settings.NODE_LAUNCHER_IMAGE,
@@ -2115,6 +2146,40 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
         `;
       }}
 
+      function renderJobStats(payload) {{
+        const stats = payload.stats || {{}};
+        const topScrapers = (payload.jobs?.top_scrapers || []).map((item) => `
+          <tr>
+            <td>${{escapeHtml(item.company || "Unknown")}}</td>
+            <td>${{escapeHtml(item.count ?? 0)}}</td>
+          </tr>
+        `).join("");
+
+        return `
+          <div class="section panel">
+            <p class="label">Jobs</p>
+            <h2 class="section-heading">Scraped job activity</h2>
+            <div class="grid">
+              <div class="card"><p class="label">Scraped Total</p><p class="value">${{escapeHtml(stats.scraped_jobs_total ?? 0)}}</p></div>
+              <div class="card"><p class="label">Scraped 24h</p><p class="value">${{escapeHtml(stats.scraped_jobs_last_24h ?? 0)}}</p></div>
+              <div class="card"><p class="label">Scraped 7d</p><p class="value">${{escapeHtml(stats.scraped_jobs_last_7d ?? 0)}}</p></div>
+              <div class="card"><p class="label">Scraped 30d</p><p class="value">${{escapeHtml(stats.scraped_jobs_last_30d ?? 0)}}</p></div>
+              <div class="card"><p class="label">Published Total</p><p class="value">${{escapeHtml(stats.published_jobs_total ?? 0)}}</p></div>
+              <div class="card"><p class="label">Published Active</p><p class="value">${{escapeHtml(stats.published_jobs_active ?? 0)}}</p></div>
+              <div class="card"><p class="label">Published 7d</p><p class="value">${{escapeHtml(stats.published_jobs_last_7d ?? 0)}}</p></div>
+              <div class="card"><p class="label">Published 30d</p><p class="value">${{escapeHtml(stats.published_jobs_last_30d ?? 0)}}</p></div>
+            </div>
+            <div class="section">
+              <h3 class="section-heading">Top scraper sources</h3>
+              <table>
+                <thead><tr><th>Scraper</th><th>Jobs stored</th></tr></thead>
+                <tbody>${{topScrapers || '<tr><td colspan="2">No scraped jobs yet.</td></tr>'}}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }}
+
       function attachDashboardHandlers() {{
         const launchForm = document.getElementById("managed-node-launch-form");
         const launchStatus = document.getElementById("managed-node-launch-status");
@@ -2283,6 +2348,9 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             <div class="card"><p class="label">Managed Nodes</p><p class="value">${{escapeHtml(payload.stats?.managed_nodes ?? 0)}}</p></div>
             <div class="card"><p class="label">Running Nodes</p><p class="value">${{escapeHtml(payload.stats?.running_nodes ?? 0)}}</p></div>
           </div>
+          ${{
+            renderJobStats(payload)
+          }}
           ${{
             renderManagedNodes(payload)
           }}
