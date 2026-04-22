@@ -216,6 +216,66 @@ class SearchCommandAnalytics(models.Model):
         return f"{self.channel}:{self.command_count}"
 
 
+class WebsiteCrawlerDefinition(models.Model):
+    SOURCE_DESIGN_TIME = "design_time"
+    SOURCE_RUNTIME = "runtime"
+
+    SOURCE_CHOICES = [
+        (SOURCE_DESIGN_TIME, "Design Time"),
+        (SOURCE_RUNTIME, "Runtime"),
+    ]
+
+    VERTICAL_SMALL_BUSINESS_LAW = "small_business_law"
+    VERTICAL_HOME_IMPROVEMENT = "home_improvement"
+    VERTICAL_GENERAL_LOCAL = "general_local"
+
+    VERTICAL_CHOICES = [
+        (VERTICAL_SMALL_BUSINESS_LAW, "Small Business Law"),
+        (VERTICAL_HOME_IMPROVEMENT, "Home Improvement"),
+        (VERTICAL_GENERAL_LOCAL, "General Local Business"),
+    ]
+
+    name = models.CharField(max_length=160)
+    slug = models.SlugField(max_length=180, unique=True)
+    source_type = models.CharField(max_length=20, choices=SOURCE_CHOICES, default=SOURCE_RUNTIME)
+    vertical = models.CharField(max_length=40, choices=VERTICAL_CHOICES, default=VERTICAL_GENERAL_LOCAL)
+    seed_url = models.URLField(max_length=500)
+    scope_netloc = models.CharField(max_length=255, blank=True, db_index=True)
+    prompt = models.TextField(blank=True)
+    generated_code = models.TextField(blank=True)
+    config = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        get_user_model(),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="website_crawler_definitions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "-updated_at"]
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def build_unique_slug(name):
+        base = slugify(name) or "website-crawler"
+        base = base[:170]
+        candidate = base
+        suffix = 1
+
+        while WebsiteCrawlerDefinition.objects.filter(slug=candidate).exists():
+            suffix_str = str(suffix)
+            truncated_base = base[: max(1, 170 - len(suffix_str) - 1)]
+            candidate = f"{truncated_base}-{suffix_str}"
+            suffix += 1
+        return candidate
+
+
 class CompanyProfile(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=220, unique=True)

@@ -7,6 +7,7 @@ import re
 import secrets
 import base64
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -30,8 +31,17 @@ from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedire
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import EarlyAccessSignup, ManagedNode, SearchCommandAnalytics, SearchCrawlTarget, UserWallet, VonageInboundSms
-from .models import CompanyProfile, JobListing
+from .models import (
+    CompanyProfile,
+    EarlyAccessSignup,
+    JobListing,
+    ManagedNode,
+    SearchCommandAnalytics,
+    SearchCrawlTarget,
+    UserWallet,
+    VonageInboundSms,
+    WebsiteCrawlerDefinition,
+)
 from .address_codec import AddressCodecError, encode_address, normalize_address
 from .node_launcher import (
     delete_container,
@@ -75,6 +85,7 @@ DEFAULT_SEO_KEYWORDS = (
 CURRENCY_SYMBOL = "¤"
 NODE_LAUNCHER_AUTH_SESSION_KEY = "node_launcher_auth"
 EXPLORER_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+DESIGN_TIME_WEBSITE_CRAWLERS_DIR = Path(settings.BASE_DIR) / "website_crawlers" / "design_time"
 
 
 def _currency_label(amount):
@@ -1148,6 +1159,170 @@ def jobs_admin_page_view(request):
         ),
     }
     return render(request, "website/manage_jobs.html", context)
+
+
+def _design_time_website_crawlers():
+    crawlers = []
+    if not DESIGN_TIME_WEBSITE_CRAWLERS_DIR.exists():
+        return crawlers
+
+    for path in sorted(DESIGN_TIME_WEBSITE_CRAWLERS_DIR.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        crawlers.append(
+            {
+                "name": path.stem.replace("_", " ").title(),
+                "filename": path.name,
+                "relative_path": str(path.relative_to(settings.BASE_DIR)),
+            }
+        )
+    return crawlers
+
+
+def website_indexing_admin_page_view(request):
+    denied = _superuser_or_redirect(request)
+    if denied is not None:
+        return denied
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "enqueue_job").strip()
+
+        if action == "enqueue_job":
+            raw_url = (request.POST.get("url") or "").strip()
+            if not raw_url:
+                messages.error(request, "Website URL is required.")
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            try:
+                normalized_url = normalize_crawl_url(raw_url)
+                max_depth = max(0, min(int(request.POST.get("max_depth", 1)), 3))
+                max_pages = max(1, min(int(request.POST.get("max_pages", 25)), 100))
+            except SearchCrawlerError as exc:
+                messages.error(request, str(exc))
+                return HttpResponseRedirect("/manage/website-indexing")
+            except (TypeError, ValueError):
+                messages.error(request, "Max depth and max pages must be valid integers.")
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            parsed_url = urlparse(normalized_url)
+            target, _ = SearchCrawlTarget.objects.update_or_create(
+                normalized_url=normalized_url,
+                defaults={
+                    "url": normalized_url,
+                    "scope_netloc": parsed_url.netloc.lower(),
+                    "status": SearchCrawlTarget.STATUS_QUEUED,
+                    "max_depth": max_depth,
+                    "max_pages": max_pages,
+                    "created_by": request.user,
+                    "last_error": "",
+                    "queued_at": datetime.now(timezone.utc),
+                    "started_at": None,
+                    "finished_at": None,
+                },
+            )
+            dispatch_mode = schedule_crawl_search_target(target.id)
+            messages.success(
+                request,
+                f"Website crawl queued for {target.normalized_url} via {dispatch_mode}.",
+            )
+            return HttpResponseRedirect(f"/manage/website-indexing?selected_job={target.id}")
+
+        if action == "save_runtime_crawler":
+            crawler_id = (request.POST.get("crawler_id") or "").strip()
+            name = (request.POST.get("name") or "").strip()
+            seed_url = (request.POST.get("seed_url") or "").strip()
+            vertical = (
+                request.POST.get("vertical") or WebsiteCrawlerDefinition.VERTICAL_GENERAL_LOCAL
+            ).strip()
+            prompt = (request.POST.get("prompt") or "").strip()
+            generated_code = (request.POST.get("generated_code") or "").strip()
+            is_active = request.POST.get("is_active") == "on"
+
+            if not name:
+                messages.error(request, "Crawler name is required.")
+                return HttpResponseRedirect("/manage/website-indexing")
+            if not seed_url:
+                messages.error(request, "Seed URL is required.")
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            try:
+                normalized_seed_url = normalize_crawl_url(seed_url)
+            except SearchCrawlerError as exc:
+                messages.error(request, str(exc))
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            crawler = (
+                WebsiteCrawlerDefinition.objects.filter(pk=crawler_id).first()
+                if crawler_id
+                else WebsiteCrawlerDefinition(source_type=WebsiteCrawlerDefinition.SOURCE_RUNTIME)
+            )
+            if crawler_id and crawler is None:
+                messages.error(request, "Runtime crawler not found.")
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            candidate_slug = crawler.slug if crawler and crawler.pk else ""
+            if not candidate_slug:
+                candidate_slug = WebsiteCrawlerDefinition.build_unique_slug(name)
+            elif crawler.name != name:
+                candidate_slug = slugify(name) or candidate_slug
+                existing = WebsiteCrawlerDefinition.objects.filter(slug=candidate_slug)
+                if crawler.pk:
+                    existing = existing.exclude(pk=crawler.pk)
+                if existing.exists():
+                    candidate_slug = WebsiteCrawlerDefinition.build_unique_slug(name)
+
+            crawler.name = name
+            crawler.slug = candidate_slug
+            crawler.vertical = vertical
+            crawler.seed_url = normalized_seed_url
+            crawler.scope_netloc = urlparse(normalized_seed_url).netloc.lower()
+            crawler.prompt = prompt
+            crawler.generated_code = generated_code
+            crawler.config = {
+                "target_segments": ["small business law firms", "home improvement businesses"],
+                "storage_mode": "database",
+            }
+            crawler.is_active = is_active
+            if not crawler.pk:
+                crawler.created_by = request.user
+            crawler.save()
+            messages.success(request, "Runtime website crawler saved.")
+            return HttpResponseRedirect(f"/manage/website-indexing?selected_crawler={crawler.id}")
+
+        messages.error(request, "Unknown action.")
+        return HttpResponseRedirect("/manage/website-indexing")
+
+    selected_job_id = (request.GET.get("selected_job") or "").strip()
+    selected_crawler_id = (request.GET.get("selected_crawler") or "").strip()
+    crawl_jobs = SearchCrawlTarget.objects.select_related("created_by").order_by("-updated_at", "-created_at")[:200]
+    runtime_crawlers = WebsiteCrawlerDefinition.objects.order_by("name", "-updated_at")[:200]
+    selected_job = crawl_jobs.filter(pk=selected_job_id).first() if selected_job_id else None
+    selected_crawler = runtime_crawlers.filter(pk=selected_crawler_id).first() if selected_crawler_id else None
+
+    context = {
+        "auth_user": _current_user_context(request),
+        "crawl_jobs": crawl_jobs,
+        "selected_job": selected_job,
+        "runtime_crawlers": runtime_crawlers,
+        "selected_crawler": selected_crawler,
+        "design_time_crawlers": _design_time_website_crawlers(),
+        "vertical_choices": WebsiteCrawlerDefinition.VERTICAL_CHOICES,
+        "crawl_job_stats": {
+            "total": SearchCrawlTarget.objects.count(),
+            "queued": SearchCrawlTarget.objects.filter(status=SearchCrawlTarget.STATUS_QUEUED).count(),
+            "running": SearchCrawlTarget.objects.filter(status=SearchCrawlTarget.STATUS_RUNNING).count(),
+            "completed": SearchCrawlTarget.objects.filter(status=SearchCrawlTarget.STATUS_COMPLETED).count(),
+            "failed": SearchCrawlTarget.objects.filter(status=SearchCrawlTarget.STATUS_FAILED).count(),
+        },
+        **_seo_context(
+            request,
+            title="Website Indexing | Kumquat",
+            description="Manage website crawl jobs and crawler definitions for website indexing.",
+            path=reverse("manage-website-indexing"),
+            index=False,
+        ),
+    }
+    return render(request, "website/manage_website_indexing.html", context)
 
 
 def companies_admin_page_view(request):
@@ -2342,6 +2517,7 @@ def _admin_html_shell(*, title, eyebrow, heading, copy, bootstrap_url, back_href
             links: [
               {{ href: "/manage/companies", text: "Manage companies" }},
               {{ href: "/manage/jobs", text: "Manage jobs" }},
+              {{ href: "/manage/website-indexing", text: "Website indexing" }},
               {{ href: "/companies", text: "Companies" }},
               {{ href: "/jobs", text: "Jobs" }},
             ],

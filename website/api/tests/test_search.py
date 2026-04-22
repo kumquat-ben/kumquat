@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
-from api.models import SearchCommandAnalytics, SearchCrawlTarget, SearchDocument
+from api.models import SearchCommandAnalytics, SearchCrawlTarget, SearchDocument, WebsiteCrawlerDefinition
 from api.search import SearchCrawlerError, crawl_target, normalize_crawl_url
 
 
@@ -47,6 +47,47 @@ class SearchCrawlQueueViewTests(TestCase):
         response = self.client.post("/search/crawl", data={"url": "https://docs.example.com"})
 
         self.assertEqual(response.status_code, 403)
+
+    def test_website_indexing_admin_page_lists_design_time_and_runtime_crawlers(self):
+        self.client.force_login(self.user)
+        WebsiteCrawlerDefinition.objects.create(
+            name="Home Improvement Runtime",
+            slug="home-improvement-runtime",
+            vertical=WebsiteCrawlerDefinition.VERTICAL_HOME_IMPROVEMENT,
+            seed_url="https://homes.example.com/",
+            scope_netloc="homes.example.com",
+            prompt="Generate crawler rules for local home improvement sites.",
+            created_by=self.user,
+        )
+
+        response = self.client.get("/manage/website-indexing")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Website indexing")
+        self.assertContains(response, "Home Improvement Runtime")
+        self.assertContains(response, "example_small_business_law.py")
+
+    def test_website_indexing_admin_can_save_runtime_crawler(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/manage/website-indexing",
+            {
+                "action": "save_runtime_crawler",
+                "name": "Law Firm Runtime",
+                "vertical": WebsiteCrawlerDefinition.VERTICAL_SMALL_BUSINESS_LAW,
+                "seed_url": "law.example.com",
+                "prompt": "Generate crawler rules for local law firms.",
+                "generated_code": "def crawl():\n    return []",
+                "is_active": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        crawler = WebsiteCrawlerDefinition.objects.get()
+        self.assertEqual(crawler.slug, "law-firm-runtime")
+        self.assertEqual(crawler.scope_netloc, "law.example.com")
+        self.assertEqual(crawler.source_type, WebsiteCrawlerDefinition.SOURCE_RUNTIME)
 
 
 class SearchCrawlerTests(TestCase):

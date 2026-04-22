@@ -1,0 +1,151 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="search-home-page">
+    <header class="search-home-topbar">
+      <a class="search-home-link" href="/">Home</a>
+      <a class="search-home-link" href="/dashboard">Dashboard</a>
+      <a class="search-home-link" href="/manage/jobs">Manage Jobs</a>
+      <a class="search-home-link" href="/manage/companies">Manage Companies</a>
+      <form action="/auth/logout" class="search-home-inline-form" method="post">
+        {% csrf_token %}
+        <button class="search-home-link search-home-link-button" type="submit">Sign out</button>
+      </form>
+    </header>
+
+    <section class="search-home-results">
+      <div class="search-home-results-head">
+        <div>
+          <p class="search-home-results-label">Admin</p>
+          <p class="search-home-query">Website indexing</p>
+          <p class="search-home-results-copy">
+            Manage crawl jobs for website indexing and split crawler definitions between design-time repo files and runtime database records.
+          </p>
+        </div>
+      </div>
+
+      {% for message in messages %}
+        <p class="search-home-results-copy">{{ message }}</p>
+      {% endfor %}
+
+      <div class="stats-grid">
+        <article class="stat-card"><p class="section-eyebrow">Total Jobs</p><h3>{{ crawl_job_stats.total }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Queued</p><h3>{{ crawl_job_stats.queued }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Running</p><h3>{{ crawl_job_stats.running }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Completed</p><h3>{{ crawl_job_stats.completed }}</h3></article>
+        <article class="stat-card"><p class="section-eyebrow">Failed</p><h3>{{ crawl_job_stats.failed }}</h3></article>
+      </div>
+
+      <div class="search-home-admin-grid">
+        <section class="search-home-admin-card">
+          <h2>Queue Website Crawl Job</h2>
+          <form action="/manage/website-indexing" class="search-home-admin-form" method="post">
+            {% csrf_token %}
+            <input name="action" type="hidden" value="enqueue_job" />
+            <label>Website URL<input name="url" type="url" value="{{ selected_job.url|default:'' }}" /></label>
+            <label>Max depth<input max="3" min="0" name="max_depth" type="number" value="{{ selected_job.max_depth|default:1 }}" /></label>
+            <label>Max pages<input max="100" min="1" name="max_pages" type="number" value="{{ selected_job.max_pages|default:25 }}" /></label>
+            <button class="search-home-button search-home-button-primary" type="submit">Queue crawl job</button>
+          </form>
+
+          {% if selected_job %}
+            <div class="search-home-result-item" style="margin-top: 1rem;">
+              <p class="search-home-result-url">{{ selected_job.scope_netloc }}</p>
+              <h2>{{ selected_job.normalized_url }}</h2>
+              <p>Status: {{ selected_job.get_status_display }} · Documents: {{ selected_job.document_count }}</p>
+              {% if selected_job.last_error %}<p>{{ selected_job.last_error }}</p>{% endif %}
+            </div>
+          {% endif %}
+        </section>
+
+        <section class="search-home-admin-card">
+          <h2>Website Crawl Jobs</h2>
+          <div class="search-home-results-list">
+            {% for job in crawl_jobs %}
+              <article class="search-home-result-item">
+                <p class="search-home-result-url">{{ job.scope_netloc }}</p>
+                <h2><a href="/manage/website-indexing?selected_job={{ job.id }}">{{ job.normalized_url }}</a></h2>
+                <p>{{ job.get_status_display }} · depth {{ job.max_depth }} · pages {{ job.max_pages }} · docs {{ job.document_count }}</p>
+              </article>
+            {% empty %}
+              <div class="search-home-empty"><p>No website crawl jobs yet.</p></div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <div class="search-home-admin-grid">
+        <section class="search-home-admin-card">
+          <h2>{{ selected_crawler|yesno:"Edit Runtime Crawler,Create Runtime Crawler" }}</h2>
+          <form action="/manage/website-indexing" class="search-home-admin-form" method="post">
+            {% csrf_token %}
+            <input name="action" type="hidden" value="save_runtime_crawler" />
+            <input name="crawler_id" type="hidden" value="{{ selected_crawler.id|default:'' }}" />
+            <label>Name<input name="name" type="text" value="{{ selected_crawler.name|default:'' }}" /></label>
+            <label>Vertical
+              <select name="vertical">
+                {% for value, label in vertical_choices %}
+                  <option value="{{ value }}" {% if selected_crawler.vertical == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Seed URL<input name="seed_url" type="url" value="{{ selected_crawler.seed_url|default:'' }}" /></label>
+            <label>Generation prompt<textarea name="prompt" rows="6">{{ selected_crawler.prompt|default:'Focus on small business law firms, home improvement businesses, and other local-service sites where navigation and service pages matter for discovery.' }}</textarea></label>
+            <label>Generated code<textarea name="generated_code" rows="10">{{ selected_crawler.generated_code|default:'' }}</textarea></label>
+            <label class="search-home-checkbox"><input name="is_active" type="checkbox" {% if selected_crawler.is_active or not selected_crawler %}checked{% endif %} /> Active</label>
+            <button class="search-home-button search-home-button-primary" type="submit">Save runtime crawler</button>
+          </form>
+        </section>
+
+        <section class="search-home-admin-card">
+          <h2>Runtime Crawlers</h2>
+          <div class="search-home-results-list">
+            {% for crawler in runtime_crawlers %}
+              <article class="search-home-result-item">
+                <p class="search-home-result-url">{{ crawler.get_vertical_display }} · {{ crawler.scope_netloc|default:"No scope" }}</p>
+                <h2><a href="/manage/website-indexing?selected_crawler={{ crawler.id }}">{{ crawler.name }}</a></h2>
+                <p>{{ crawler.seed_url }}{% if not crawler.is_active %} · inactive{% endif %}</p>
+              </article>
+            {% empty %}
+              <div class="search-home-empty"><p>No runtime crawler definitions yet.</p></div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <div class="search-home-admin-grid">
+        <section class="search-home-admin-card">
+          <h2>Design-Time Crawlers</h2>
+          <p class="search-home-results-copy">Repo-backed crawlers live under <code>website/website_crawlers/design_time</code>.</p>
+          <div class="search-home-results-list">
+            {% for crawler in design_time_crawlers %}
+              <article class="search-home-result-item">
+                <p class="search-home-result-url">{{ crawler.relative_path }}</p>
+                <h2>{{ crawler.name }}</h2>
+                <p>{{ crawler.filename }}</p>
+              </article>
+            {% empty %}
+              <div class="search-home-empty"><p>No design-time crawlers found yet.</p></div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="search-home-admin-card">
+          <h2>Target Use</h2>
+          <div class="search-home-results-list">
+            <article class="search-home-result-item">
+              <p class="search-home-result-url">Primary segment</p>
+              <h2>Small business law firms</h2>
+              <p>Service pages, attorney bios, office locations, and intake/contact pages are likely crawl targets.</p>
+            </article>
+            <article class="search-home-result-item">
+              <p class="search-home-result-url">Primary segment</p>
+              <h2>Home improvement businesses</h2>
+              <p>Service-area pages, portfolio/project galleries, quote forms, and local landing pages are likely crawl targets.</p>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+{% endblock %}
