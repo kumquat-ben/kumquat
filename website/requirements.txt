@@ -16,3 +16,4 @@ playwright==1.52.0
 reportlab==4.4.1
 django-elasticsearch-dsl==8.2
 elasticsearch-dsl==8.15.4
+Scrapy==2.13.0

@@ -11,7 +11,10 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
+from elastic_transport import ConnectionError as ElasticsearchConnectionError
+from elasticsearch import ApiError
 
+from .documents import SearchDocumentDocument
 from .models import SearchCrawlTarget, SearchDocument
 
 
@@ -240,11 +243,53 @@ def _build_snippet(text, query):
 def search_documents(query, limit=5):
     query = (query or "").strip()
     if not query:
-        return {"results": [], "document_count": SearchDocument.objects.count(), "match_count": 0}
+        return {
+            "results": [],
+            "document_count": SearchDocument.objects.count(),
+            "match_count": 0,
+            "backend": "database",
+        }
 
     tokens = _tokenize(query)
     if not tokens:
-        return {"results": [], "document_count": SearchDocument.objects.count(), "match_count": 0}
+        return {
+            "results": [],
+            "document_count": SearchDocument.objects.count(),
+            "match_count": 0,
+            "backend": "database",
+        }
+
+    try:
+        search = SearchDocumentDocument.search()
+        search = search.query(
+            "multi_match",
+            query=query,
+            fields=["title^3", "summary^2", "content"],
+            fuzziness="AUTO",
+        )[:limit]
+        response = search.execute()
+    except (ElasticsearchConnectionError, ApiError):
+        response = None
+    if response is not None:
+        results = []
+        for hit in response:
+            content = getattr(hit, "content", "") or getattr(hit, "summary", "")
+            results.append(
+                {
+                    "title": getattr(hit, "title", "") or getattr(hit, "normalized_url", ""),
+                    "url": getattr(hit, "normalized_url", ""),
+                    "summary": getattr(hit, "summary", ""),
+                    "snippet": _build_snippet(content, query),
+                    "score": getattr(hit.meta, "score", 0),
+                    "crawled_at": getattr(hit, "crawled_at", None),
+                }
+            )
+        return {
+            "results": results,
+            "document_count": SearchDocument.objects.count(),
+            "match_count": len(results),
+            "backend": "elasticsearch",
+        }
 
     combined_filter = Q()
     for token in tokens:
@@ -275,4 +320,5 @@ def search_documents(query, limit=5):
         "results": scored_results[:limit],
         "document_count": SearchDocument.objects.count(),
         "match_count": len(scored_results),
+        "backend": "database",
     }

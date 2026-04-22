@@ -3,7 +3,13 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
-from api.models import SearchCommandAnalytics, SearchCrawlTarget, SearchDocument, WebsiteCrawlerDefinition
+from api.models import (
+    SearchCommandAnalytics,
+    SearchCrawlTarget,
+    SearchDocument,
+    WebsiteCrawlerDefinition,
+    WebsiteDiscoveredDomain,
+)
 from api.search import SearchCrawlerError, crawl_target, normalize_crawl_url
 
 
@@ -88,6 +94,53 @@ class SearchCrawlQueueViewTests(TestCase):
         self.assertEqual(crawler.slug, "law-firm-runtime")
         self.assertEqual(crawler.scope_netloc, "law.example.com")
         self.assertEqual(crawler.source_type, WebsiteCrawlerDefinition.SOURCE_RUNTIME)
+
+    def test_website_indexing_admin_can_launch_scrapy_discovery(self):
+        self.client.force_login(self.user)
+        crawler = WebsiteCrawlerDefinition.objects.create(
+            name="Discovery Runtime",
+            slug="discovery-runtime",
+            seed_url="https://seed.example.com/",
+            scope_netloc="seed.example.com",
+            created_by=self.user,
+        )
+
+        with patch("api.views.schedule_domain_discovery", return_value="inline") as schedule_mock:
+            response = self.client.post(
+                "/manage/website-indexing",
+                {"action": "discover_domains_scrapy", "crawler_id": crawler.id},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        schedule_mock.assert_called_once_with(crawler.id)
+
+    def test_website_indexing_admin_can_queue_scrapy_crawl_for_discovered_domain(self):
+        self.client.force_login(self.user)
+        crawler = WebsiteCrawlerDefinition.objects.create(
+            name="Discovery Runtime",
+            slug="discovery-runtime",
+            seed_url="https://seed.example.com/",
+            scope_netloc="seed.example.com",
+            created_by=self.user,
+        )
+        discovered = WebsiteDiscoveredDomain.objects.create(
+            crawler_definition=crawler,
+            domain="docs.partner.example",
+            normalized_url="https://docs.partner.example/",
+            source_url="https://seed.example.com/resources",
+        )
+
+        with patch("api.views.schedule_crawl_search_target", return_value="inline") as schedule_mock:
+            response = self.client.post(
+                "/manage/website-indexing",
+                {"action": "crawl_discovered_domain_scrapy", "discovered_domain_id": discovered.id},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        discovered.refresh_from_db()
+        self.assertEqual(discovered.status, WebsiteDiscoveredDomain.STATUS_QUEUED)
+        self.assertEqual(discovered.crawl_target.crawl_backend, SearchCrawlTarget.BACKEND_SCRAPY)
+        schedule_mock.assert_called_once_with(discovered.crawl_target_id)
 
 
 class SearchCrawlerTests(TestCase):

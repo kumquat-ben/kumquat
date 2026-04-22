@@ -38,6 +38,7 @@ from .models import (
     ManagedNode,
     SearchCommandAnalytics,
     SearchCrawlTarget,
+    WebsiteDiscoveredDomain,
     UserWallet,
     VonageInboundSms,
     WebsiteCrawlerDefinition,
@@ -61,7 +62,7 @@ from .node_launcher import (
     upstream_rpc_url,
 )
 from .search import SearchCrawlerError, normalize_crawl_url, search_documents
-from .tasks import schedule_crawl_search_target
+from .tasks import schedule_crawl_search_target, schedule_domain_discovery
 from scrapers.models import JobPosting
 from scrapers.search import search_jobs
 
@@ -324,6 +325,7 @@ def _serialize_search_crawl_target(target):
         "url": target.url,
         "normalized_url": target.normalized_url,
         "scope_netloc": target.scope_netloc,
+        "crawl_backend": target.crawl_backend,
         "status": target.status,
         "max_depth": target.max_depth,
         "max_pages": target.max_pages,
@@ -1187,7 +1189,7 @@ def website_indexing_admin_page_view(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "enqueue_job").strip()
 
-        if action == "enqueue_job":
+        if action in {"enqueue_job", "enqueue_job_scrapy"}:
             raw_url = (request.POST.get("url") or "").strip()
             if not raw_url:
                 messages.error(request, "Website URL is required.")
@@ -1210,6 +1212,11 @@ def website_indexing_admin_page_view(request):
                 defaults={
                     "url": normalized_url,
                     "scope_netloc": parsed_url.netloc.lower(),
+                    "crawl_backend": (
+                        SearchCrawlTarget.BACKEND_SCRAPY
+                        if action == "enqueue_job_scrapy"
+                        else SearchCrawlTarget.BACKEND_BASIC
+                    ),
                     "status": SearchCrawlTarget.STATUS_QUEUED,
                     "max_depth": max_depth,
                     "max_pages": max_pages,
@@ -1223,7 +1230,7 @@ def website_indexing_admin_page_view(request):
             dispatch_mode = schedule_crawl_search_target(target.id)
             messages.success(
                 request,
-                f"Website crawl queued for {target.normalized_url} via {dispatch_mode}.",
+                f"Website crawl queued for {target.normalized_url} via {target.get_crawl_backend_display().lower()} ({dispatch_mode}).",
             )
             return HttpResponseRedirect(f"/manage/website-indexing?selected_job={target.id}")
 
@@ -1289,6 +1296,60 @@ def website_indexing_admin_page_view(request):
             messages.success(request, "Runtime website crawler saved.")
             return HttpResponseRedirect(f"/manage/website-indexing?selected_crawler={crawler.id}")
 
+        if action == "discover_domains_scrapy":
+            crawler_id = (request.POST.get("crawler_id") or "").strip()
+            crawler = WebsiteCrawlerDefinition.objects.filter(pk=crawler_id).first()
+            if crawler is None:
+                messages.error(request, "Crawler not found.")
+                return HttpResponseRedirect("/manage/website-indexing")
+            dispatch_mode = schedule_domain_discovery(crawler.id)
+            messages.success(
+                request,
+                f"Scrapy discovery launched for {crawler.name} ({dispatch_mode}).",
+            )
+            return HttpResponseRedirect(f"/manage/website-indexing?selected_crawler={crawler.id}")
+
+        if action == "crawl_discovered_domain_scrapy":
+            discovered_id = (request.POST.get("discovered_domain_id") or "").strip()
+            discovered = (
+                WebsiteDiscoveredDomain.objects.select_related("crawler_definition")
+                .filter(pk=discovered_id)
+                .first()
+            )
+            if discovered is None:
+                messages.error(request, "Discovered domain not found.")
+                return HttpResponseRedirect("/manage/website-indexing")
+
+            parsed_url = urlparse(discovered.normalized_url)
+            target, _ = SearchCrawlTarget.objects.update_or_create(
+                normalized_url=discovered.normalized_url,
+                defaults={
+                    "url": discovered.normalized_url,
+                    "scope_netloc": parsed_url.netloc.lower(),
+                    "crawl_backend": SearchCrawlTarget.BACKEND_SCRAPY,
+                    "status": SearchCrawlTarget.STATUS_QUEUED,
+                    "max_depth": 1,
+                    "max_pages": 25,
+                    "created_by": request.user,
+                    "last_error": "",
+                    "queued_at": datetime.now(timezone.utc),
+                    "started_at": None,
+                    "finished_at": None,
+                },
+            )
+            discovered.crawl_target = target
+            discovered.status = WebsiteDiscoveredDomain.STATUS_QUEUED
+            discovered.last_error = ""
+            discovered.save(update_fields=["crawl_target", "status", "last_error", "updated_at"])
+            dispatch_mode = schedule_crawl_search_target(target.id)
+            messages.success(
+                request,
+                f"Queued Scrapy crawl for discovered domain {discovered.domain} ({dispatch_mode}).",
+            )
+            return HttpResponseRedirect(
+                f"/manage/website-indexing?selected_crawler={discovered.crawler_definition_id}"
+            )
+
         messages.error(request, "Unknown action.")
         return HttpResponseRedirect("/manage/website-indexing")
 
@@ -1298,6 +1359,13 @@ def website_indexing_admin_page_view(request):
     runtime_crawlers = WebsiteCrawlerDefinition.objects.order_by("name", "-updated_at")[:200]
     selected_job = crawl_jobs.filter(pk=selected_job_id).first() if selected_job_id else None
     selected_crawler = runtime_crawlers.filter(pk=selected_crawler_id).first() if selected_crawler_id else None
+    discovered_domains = (
+        WebsiteDiscoveredDomain.objects.select_related("crawl_target")
+        .filter(crawler_definition=selected_crawler)
+        .order_by("domain", "-last_seen_at")[:200]
+        if selected_crawler
+        else WebsiteDiscoveredDomain.objects.none()
+    )
 
     context = {
         "auth_user": _current_user_context(request),
@@ -1305,6 +1373,7 @@ def website_indexing_admin_page_view(request):
         "selected_job": selected_job,
         "runtime_crawlers": runtime_crawlers,
         "selected_crawler": selected_crawler,
+        "discovered_domains": discovered_domains,
         "design_time_crawlers": _design_time_website_crawlers(),
         "vertical_choices": WebsiteCrawlerDefinition.VERTICAL_CHOICES,
         "crawl_job_stats": {

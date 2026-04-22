@@ -47,12 +47,20 @@
             <label>Max pages<input max="100" min="1" name="max_pages" type="number" value="{{ selected_job.max_pages|default:25 }}" /></label>
             <button class="search-home-button search-home-button-primary" type="submit">Queue crawl job</button>
           </form>
+          <form action="/manage/website-indexing" class="search-home-admin-form" method="post" style="margin-top: 0.75rem;">
+            {% csrf_token %}
+            <input name="action" type="hidden" value="enqueue_job_scrapy" />
+            <label>Website URL<input name="url" type="url" value="{{ selected_job.url|default:'' }}" /></label>
+            <label>Max depth<input max="3" min="0" name="max_depth" type="number" value="{{ selected_job.max_depth|default:1 }}" /></label>
+            <label>Max pages<input max="100" min="1" name="max_pages" type="number" value="{{ selected_job.max_pages|default:25 }}" /></label>
+            <button class="search-home-button search-home-button-secondary" type="submit">Start Scrapy crawl</button>
+          </form>
 
           {% if selected_job %}
             <div class="search-home-result-item" style="margin-top: 1rem;">
               <p class="search-home-result-url">{{ selected_job.scope_netloc }}</p>
               <h2>{{ selected_job.normalized_url }}</h2>
-              <p>Status: {{ selected_job.get_status_display }} · Documents: {{ selected_job.document_count }}</p>
+              <p>Status: {{ selected_job.get_status_display }} · Backend: {{ selected_job.get_crawl_backend_display }} · Documents: {{ selected_job.document_count }}</p>
               {% if selected_job.last_error %}<p>{{ selected_job.last_error }}</p>{% endif %}
             </div>
           {% endif %}
@@ -65,7 +73,7 @@
               <article class="search-home-result-item">
                 <p class="search-home-result-url">{{ job.scope_netloc }}</p>
                 <h2><a href="/manage/website-indexing?selected_job={{ job.id }}">{{ job.normalized_url }}</a></h2>
-                <p>{{ job.get_status_display }} · depth {{ job.max_depth }} · pages {{ job.max_pages }} · docs {{ job.document_count }}</p>
+                <p>{{ job.get_status_display }} · {{ job.get_crawl_backend_display }} · depth {{ job.max_depth }} · pages {{ job.max_pages }} · docs {{ job.document_count }}</p>
               </article>
             {% empty %}
               <div class="search-home-empty"><p>No website crawl jobs yet.</p></div>
@@ -105,6 +113,12 @@
                 <p class="search-home-result-url">{{ crawler.get_vertical_display }} · {{ crawler.scope_netloc|default:"No scope" }}</p>
                 <h2><a href="/manage/website-indexing?selected_crawler={{ crawler.id }}">{{ crawler.name }}</a></h2>
                 <p>{{ crawler.seed_url }}{% if not crawler.is_active %} · inactive{% endif %}</p>
+                <form action="/manage/website-indexing" class="search-home-admin-form" method="post">
+                  {% csrf_token %}
+                  <input name="action" type="hidden" value="discover_domains_scrapy" />
+                  <input name="crawler_id" type="hidden" value="{{ crawler.id }}" />
+                  <button class="search-home-button search-home-button-secondary" type="submit">Discover domains with Scrapy</button>
+                </form>
               </article>
             {% empty %}
               <div class="search-home-empty"><p>No runtime crawler definitions yet.</p></div>
@@ -112,6 +126,33 @@
           </div>
         </section>
       </div>
+
+      {% if selected_crawler %}
+        <div class="search-home-admin-grid">
+          <section class="search-home-admin-card">
+            <h2>Discovered Domains</h2>
+            <p class="search-home-results-copy">Scrapy discovers external domains from the selected seed site and lets you queue them as crawl targets.</p>
+            <div class="search-home-results-list">
+              {% for domain in discovered_domains %}
+                <article class="search-home-result-item">
+                  <p class="search-home-result-url">{{ domain.source_url|default:selected_crawler.seed_url }}</p>
+                  <h2>{{ domain.domain }}</h2>
+                  <p>{{ domain.get_status_display }} · seen {{ domain.discovery_count }} time{{ domain.discovery_count|pluralize }} · {{ domain.normalized_url }}</p>
+                  <form action="/manage/website-indexing" class="search-home-admin-form" method="post">
+                    {% csrf_token %}
+                    <input name="action" type="hidden" value="crawl_discovered_domain_scrapy" />
+                    <input name="discovered_domain_id" type="hidden" value="{{ domain.id }}" />
+                    <button class="search-home-button search-home-button-primary" type="submit">Crawl discovered domain with Scrapy</button>
+                  </form>
+                  {% if domain.last_error %}<p>{{ domain.last_error }}</p>{% endif %}
+                </article>
+              {% empty %}
+                <div class="search-home-empty"><p>No domains discovered for this crawler yet.</p></div>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      {% endif %}
 
       <div class="search-home-admin-grid">
         <section class="search-home-admin-card">

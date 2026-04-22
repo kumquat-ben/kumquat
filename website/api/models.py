@@ -134,6 +134,14 @@ class UserWallet(models.Model):
 
 
 class SearchCrawlTarget(models.Model):
+    BACKEND_BASIC = "basic"
+    BACKEND_SCRAPY = "scrapy"
+
+    BACKEND_CHOICES = [
+        (BACKEND_BASIC, "Basic"),
+        (BACKEND_SCRAPY, "Scrapy"),
+    ]
+
     STATUS_QUEUED = "queued"
     STATUS_RUNNING = "running"
     STATUS_COMPLETED = "completed"
@@ -149,6 +157,7 @@ class SearchCrawlTarget(models.Model):
     url = models.URLField(unique=True)
     normalized_url = models.URLField(unique=True)
     scope_netloc = models.CharField(max_length=255, db_index=True)
+    crawl_backend = models.CharField(max_length=16, choices=BACKEND_CHOICES, default=BACKEND_BASIC)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_QUEUED)
     max_depth = models.PositiveIntegerField(default=1)
     max_pages = models.PositiveIntegerField(default=25)
@@ -172,6 +181,57 @@ class SearchCrawlTarget(models.Model):
 
     def __str__(self):
         return self.normalized_url
+
+
+class WebsiteDiscoveredDomain(models.Model):
+    STATUS_NEW = "new"
+    STATUS_QUEUED = "queued"
+    STATUS_CRAWLED = "crawled"
+    STATUS_FAILED = "failed"
+    STATUS_IGNORED = "ignored"
+
+    STATUS_CHOICES = [
+        (STATUS_NEW, "New"),
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_CRAWLED, "Crawled"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_IGNORED, "Ignored"),
+    ]
+
+    crawler_definition = models.ForeignKey(
+        "WebsiteCrawlerDefinition",
+        on_delete=models.CASCADE,
+        related_name="discovered_domains",
+    )
+    crawl_target = models.ForeignKey(
+        "SearchCrawlTarget",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="discovered_domains",
+    )
+    source_url = models.URLField(max_length=500, blank=True)
+    domain = models.CharField(max_length=255, db_index=True)
+    normalized_url = models.URLField(max_length=500)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_NEW)
+    discovery_count = models.PositiveIntegerField(default=1)
+    last_error = models.TextField(blank=True)
+    discovered_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["domain", "-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["crawler_definition", "domain"],
+                name="unique_discovered_domain_per_crawler",
+            ),
+        ]
+
+    def __str__(self):
+        return self.domain
 
 
 class SearchDocument(models.Model):

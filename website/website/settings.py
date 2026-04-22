@@ -181,7 +181,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "django_elasticsearch_dsl",
-    "api",
+    "api.apps.ApiConfig",
     "scrapers.apps.ScrapersConfig",
 ]
 
