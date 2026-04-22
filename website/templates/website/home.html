@@ -86,6 +86,45 @@
       {% endif %}
     </section>
 
+    <section class="search-home-results" id="suggest-domain">
+      <div class="search-home-results-head">
+        <div>
+          <p class="search-home-results-label">Suggest A Domain</p>
+          <p class="search-home-query">Submit a domain for crawl review.</p>
+        </div>
+      </div>
+      <p class="search-home-results-copy">
+        Anyone can suggest a domain. New, valid domains are queued into the existing Scrapy crawl workflow unless they look like parked pages.
+      </p>
+      {% for message in messages %}
+        <p class="search-home-results-copy">{{ message }}</p>
+      {% endfor %}
+      <form action="/suggest-domain" class="search-home-form" method="post">
+        {% csrf_token %}
+        <label class="search-home-input-wrap" for="suggest-domain-input">
+          <span class="search-home-input-label">Domain or URL</span>
+          <input id="suggest-domain-input" name="url" placeholder="example.com or https://example.com" type="text" />
+        </label>
+        <div class="search-home-actions">
+          <button class="search-home-button search-home-button-primary" type="submit">Suggest domain</button>
+        </div>
+      </form>
+      <div class="search-home-results-list">
+        {% for suggestion in recent_domain_suggestions %}
+          <article class="search-home-result-item">
+            <a class="search-home-result-url" href="{{ suggestion.normalized_url }}" rel="noreferrer" target="_blank">{{ suggestion.normalized_url }}</a>
+            <h2>{{ suggestion.scope_netloc|default:suggestion.normalized_url }}</h2>
+            <p>{{ suggestion.get_status_display }}{% if suggestion.crawl_target %} · crawl {{ suggestion.crawl_target.get_status_display|lower }}{% endif %}</p>
+            {% if suggestion.message %}<p>{{ suggestion.message }}</p>{% endif %}
+          </article>
+        {% empty %}
+          <div class="search-home-empty">
+            <p>No domain suggestions yet.</p>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="search-home-results" aria-live="polite" role="status">
       <div class="search-home-results-head">
         <div>

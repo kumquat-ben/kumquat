@@ -276,6 +276,48 @@ class SearchCommandAnalytics(models.Model):
         return f"{self.channel}:{self.command_count}"
 
 
+class DomainCrawlSuggestion(models.Model):
+    STATUS_QUEUED = "queued"
+    STATUS_DUPLICATE = "duplicate"
+    STATUS_REJECTED = "rejected"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_QUEUED, "Queued"),
+        (STATUS_DUPLICATE, "Duplicate"),
+        (STATUS_REJECTED, "Rejected"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    submitted_url = models.URLField(max_length=500)
+    normalized_url = models.URLField(max_length=500, db_index=True)
+    scope_netloc = models.CharField(max_length=255, db_index=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    message = models.TextField(blank=True)
+    crawl_target = models.ForeignKey(
+        "SearchCrawlTarget",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="suggestions",
+    )
+    submitted_by = models.ForeignKey(
+        get_user_model(),
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="domain_crawl_suggestions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.normalized_url
+
+
 class WebsiteCrawlerDefinition(models.Model):
     SOURCE_DESIGN_TIME = "design_time"
     SOURCE_RUNTIME = "runtime"

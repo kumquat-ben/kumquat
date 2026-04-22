@@ -33,6 +33,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     CompanyProfile,
+    DomainCrawlSuggestion,
     EarlyAccessSignup,
     JobListing,
     ManagedNode,
@@ -61,7 +62,7 @@ from .node_launcher import (
     tail_logs,
     upstream_rpc_url,
 )
-from .search import SearchCrawlerError, normalize_crawl_url, search_documents
+from .search import SearchCrawlerError, is_probable_parking_page, normalize_crawl_url, search_documents
 from .tasks import schedule_crawl_search_target, schedule_domain_discovery
 from scrapers.models import JobPosting
 from scrapers.search import search_jobs
@@ -335,6 +336,67 @@ def _serialize_search_crawl_target(target):
         "started_at": target.started_at.isoformat() if target.started_at else None,
         "finished_at": target.finished_at.isoformat() if target.finished_at else None,
     }
+
+
+def _build_crawl_target(*, normalized_url, created_by, max_depth=1, max_pages=25, crawl_backend=SearchCrawlTarget.BACKEND_SCRAPY):
+    parsed_url = urlparse(normalized_url)
+    target, created = SearchCrawlTarget.objects.update_or_create(
+        normalized_url=normalized_url,
+        defaults={
+            "url": normalized_url,
+            "scope_netloc": parsed_url.netloc.lower(),
+            "crawl_backend": crawl_backend,
+            "status": SearchCrawlTarget.STATUS_QUEUED,
+            "max_depth": max_depth,
+            "max_pages": max_pages,
+            "created_by": created_by,
+            "last_error": "",
+            "queued_at": datetime.now(timezone.utc),
+            "started_at": None,
+            "finished_at": None,
+        },
+    )
+    return target, created
+
+
+def _submit_domain_crawl_suggestion(*, raw_url, user=None):
+    normalized_url = normalize_crawl_url(raw_url)
+    scope_netloc = urlparse(normalized_url).netloc.lower()
+
+    suggestion = DomainCrawlSuggestion(
+        submitted_url=normalized_url,
+        normalized_url=normalized_url,
+        scope_netloc=scope_netloc,
+        submitted_by=user if getattr(user, "is_authenticated", False) else None,
+    )
+
+    existing_target = SearchCrawlTarget.objects.filter(normalized_url=normalized_url).first()
+    if existing_target is not None:
+        suggestion.status = DomainCrawlSuggestion.STATUS_DUPLICATE
+        suggestion.message = "This domain is already in the crawl queue or has already been crawled."
+        suggestion.crawl_target = existing_target
+        suggestion.save()
+        return suggestion, existing_target, "duplicate"
+
+    if is_probable_parking_page(normalized_url):
+        suggestion.status = DomainCrawlSuggestion.STATUS_REJECTED
+        suggestion.message = "This domain looks like a parked domain, so no crawl job was created."
+        suggestion.save()
+        return suggestion, None, "rejected"
+
+    target, _ = _build_crawl_target(
+        normalized_url=normalized_url,
+        created_by=user if getattr(user, "is_authenticated", False) else None,
+        max_depth=1,
+        max_pages=25,
+        crawl_backend=SearchCrawlTarget.BACKEND_SCRAPY,
+    )
+    suggestion.status = DomainCrawlSuggestion.STATUS_QUEUED
+    suggestion.message = "Domain suggestion accepted and queued for a Scrapy crawl."
+    suggestion.crawl_target = target
+    suggestion.save()
+    dispatch_mode = schedule_crawl_search_target(target.id)
+    return suggestion, target, dispatch_mode
 
 
 def _home_search_context(search_query, page_number):
@@ -830,6 +892,7 @@ def home_page_view(request):
         "auth_user": _current_user_context(request),
         "search_query": search_query,
         "search_submitted": bool(search_query),
+        "recent_domain_suggestions": DomainCrawlSuggestion.objects.select_related("crawl_target")[:8],
         **search_context,
         **_seo_context(
             request,
@@ -1208,26 +1271,16 @@ def website_indexing_admin_page_view(request):
                 messages.error(request, "Max depth and max pages must be valid integers.")
                 return HttpResponseRedirect("/manage/website-indexing")
 
-            parsed_url = urlparse(normalized_url)
-            target, _ = SearchCrawlTarget.objects.update_or_create(
+            target, _ = _build_crawl_target(
                 normalized_url=normalized_url,
-                defaults={
-                    "url": normalized_url,
-                    "scope_netloc": parsed_url.netloc.lower(),
-                    "crawl_backend": (
-                        SearchCrawlTarget.BACKEND_SCRAPY
-                        if action == "enqueue_job_scrapy"
-                        else SearchCrawlTarget.BACKEND_BASIC
-                    ),
-                    "status": SearchCrawlTarget.STATUS_QUEUED,
-                    "max_depth": max_depth,
-                    "max_pages": max_pages,
-                    "created_by": request.user,
-                    "last_error": "",
-                    "queued_at": datetime.now(timezone.utc),
-                    "started_at": None,
-                    "finished_at": None,
-                },
+                created_by=request.user,
+                max_depth=max_depth,
+                max_pages=max_pages,
+                crawl_backend=(
+                    SearchCrawlTarget.BACKEND_SCRAPY
+                    if action == "enqueue_job_scrapy"
+                    else SearchCrawlTarget.BACKEND_BASIC
+                ),
             )
             dispatch_mode = schedule_crawl_search_target(target.id)
             messages.success(
@@ -1322,22 +1375,12 @@ def website_indexing_admin_page_view(request):
                 messages.error(request, "Discovered domain not found.")
                 return HttpResponseRedirect("/manage/website-indexing")
 
-            parsed_url = urlparse(discovered.normalized_url)
-            target, _ = SearchCrawlTarget.objects.update_or_create(
+            target, _ = _build_crawl_target(
                 normalized_url=discovered.normalized_url,
-                defaults={
-                    "url": discovered.normalized_url,
-                    "scope_netloc": parsed_url.netloc.lower(),
-                    "crawl_backend": SearchCrawlTarget.BACKEND_SCRAPY,
-                    "status": SearchCrawlTarget.STATUS_QUEUED,
-                    "max_depth": 1,
-                    "max_pages": 25,
-                    "created_by": request.user,
-                    "last_error": "",
-                    "queued_at": datetime.now(timezone.utc),
-                    "started_at": None,
-                    "finished_at": None,
-                },
+                created_by=request.user,
+                max_depth=1,
+                max_pages=25,
+                crawl_backend=SearchCrawlTarget.BACKEND_SCRAPY,
             )
             discovered.crawl_target = target
             discovered.status = WebsiteDiscoveredDomain.STATUS_QUEUED
@@ -1398,6 +1441,42 @@ def website_indexing_admin_page_view(request):
         ),
     }
     return render(request, "website/manage_website_indexing.html", context)
+
+
+def domain_suggestion_submit_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    raw_url = (request.POST.get("url") or "").strip()
+    if not raw_url:
+        messages.error(request, "A domain or website URL is required.")
+        return HttpResponseRedirect("/#suggest-domain")
+
+    try:
+        suggestion, target, outcome = _submit_domain_crawl_suggestion(raw_url=raw_url, user=request.user)
+    except SearchCrawlerError as exc:
+        messages.error(request, str(exc))
+        return HttpResponseRedirect("/#suggest-domain")
+    except Exception as exc:
+        normalized_fallback = raw_url[:500]
+        DomainCrawlSuggestion.objects.create(
+            submitted_url=normalized_fallback,
+            normalized_url=normalized_fallback,
+            scope_netloc="",
+            status=DomainCrawlSuggestion.STATUS_FAILED,
+            message=str(exc),
+            submitted_by=request.user if request.user.is_authenticated else None,
+        )
+        messages.error(request, "The domain suggestion could not be processed.")
+        return HttpResponseRedirect("/#suggest-domain")
+
+    if outcome == "duplicate":
+        messages.info(request, suggestion.message)
+    elif outcome == "rejected":
+        messages.error(request, suggestion.message)
+    else:
+        messages.success(request, f"{suggestion.message} Crawl target: {target.normalized_url} ({outcome}).")
+    return HttpResponseRedirect("/#suggest-domain")
 
 
 def companies_admin_page_view(request):
@@ -1670,21 +1749,12 @@ def search_crawl_enqueue_view(request):
     except (TypeError, ValueError):
         return JsonResponse({"error": "max_depth and max_pages must be integers."}, status=400)
 
-    parsed_url = urlparse(normalized_url)
-    target, _ = SearchCrawlTarget.objects.update_or_create(
+    target, _ = _build_crawl_target(
         normalized_url=normalized_url,
-        defaults={
-            "url": normalized_url,
-            "scope_netloc": parsed_url.netloc.lower(),
-            "status": SearchCrawlTarget.STATUS_QUEUED,
-            "max_depth": max_depth,
-            "max_pages": max_pages,
-            "created_by": request.user,
-            "last_error": "",
-            "queued_at": datetime.now(timezone.utc),
-            "started_at": None,
-            "finished_at": None,
-        },
+        created_by=request.user,
+        max_depth=max_depth,
+        max_pages=max_pages,
+        crawl_backend=SearchCrawlTarget.BACKEND_BASIC,
     )
     dispatch_mode = schedule_crawl_search_target(target.id)
     target.refresh_from_db()

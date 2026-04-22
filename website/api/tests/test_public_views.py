@@ -5,7 +5,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from django.test import Client, TestCase
 
-from api.models import EarlyAccessSignup
+from api.models import DomainCrawlSuggestion, EarlyAccessSignup, SearchCrawlTarget
 from api.address_codec import encode_address
 from scrapers.models import JobPosting, Scraper
 
@@ -20,8 +20,50 @@ class HomePageViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
-        self.assertContains(response, "Search all jobs.")
+        self.assertContains(response, "Suggest A Domain")
         self.assertContains(response, ">Search<", html=False)
+
+    def test_public_domain_suggestion_queues_new_scrapy_crawl(self):
+        with (
+            patch("api.views.is_probable_parking_page", return_value=False),
+            patch("api.views.schedule_crawl_search_target", return_value="inline") as schedule_mock,
+        ):
+            response = self.client.post("/suggest-domain", {"url": "docs.example.com"})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/#suggest-domain")
+        suggestion = DomainCrawlSuggestion.objects.get()
+        target = SearchCrawlTarget.objects.get()
+        self.assertEqual(suggestion.status, DomainCrawlSuggestion.STATUS_QUEUED)
+        self.assertEqual(suggestion.crawl_target, target)
+        self.assertEqual(target.crawl_backend, SearchCrawlTarget.BACKEND_SCRAPY)
+        schedule_mock.assert_called_once_with(target.id)
+
+    def test_public_domain_suggestion_rejects_parking_page(self):
+        with patch("api.views.is_probable_parking_page", return_value=True):
+            response = self.client.post("/suggest-domain", {"url": "parked.example.com"})
+
+        self.assertEqual(response.status_code, 302)
+        suggestion = DomainCrawlSuggestion.objects.get()
+        self.assertEqual(suggestion.status, DomainCrawlSuggestion.STATUS_REJECTED)
+        self.assertFalse(SearchCrawlTarget.objects.exists())
+
+    def test_public_domain_suggestion_marks_existing_target_as_duplicate(self):
+        existing = SearchCrawlTarget.objects.create(
+            url="https://docs.example.com/",
+            normalized_url="https://docs.example.com/",
+            scope_netloc="docs.example.com",
+            crawl_backend=SearchCrawlTarget.BACKEND_SCRAPY,
+        )
+
+        with patch("api.views.schedule_crawl_search_target") as schedule_mock:
+            response = self.client.post("/suggest-domain", {"url": "docs.example.com"})
+
+        self.assertEqual(response.status_code, 302)
+        suggestion = DomainCrawlSuggestion.objects.get()
+        self.assertEqual(suggestion.status, DomainCrawlSuggestion.STATUS_DUPLICATE)
+        self.assertEqual(suggestion.crawl_target, existing)
+        schedule_mock.assert_not_called()
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):
         with patch(

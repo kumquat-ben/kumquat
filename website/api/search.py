@@ -20,6 +20,20 @@ from .models import SearchCrawlTarget, SearchDocument
 
 TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
 WHITESPACE_RE = re.compile(r"\s+")
+PARKING_PAGE_MARKERS = (
+    "domain for sale",
+    "buy this domain",
+    "this domain is for sale",
+    "this web page is parked",
+    "this domain is parked",
+    "parked free",
+    "sedo domain parking",
+    "hugedomains",
+    "afternic",
+    "parkingcrew",
+    "bodis",
+    "dan.com",
+)
 
 
 class SearchCrawlerError(Exception):
@@ -128,6 +142,20 @@ def _fetch_html(url):
         charset = response.headers.get_content_charset() or "utf-8"
         body = response.read().decode(charset, errors="replace")
         return status, body
+
+
+def is_probable_parking_page(url, fetch_html=_fetch_html):
+    try:
+        status_code, html = fetch_html(url)
+    except (HTTPError, URLError, SearchCrawlerError):
+        return False
+
+    if status_code >= 400:
+        return False
+
+    page_payload = _extract_page_payload(html)
+    combined = f"{page_payload['title']} {page_payload['text']}".lower()
+    return any(marker in combined for marker in PARKING_PAGE_MARKERS)
 
 
 def _same_scope(candidate_url, scope_netloc):
