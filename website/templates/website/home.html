@@ -5,13 +5,6 @@
   <div class="search-home-page">
     <header class="search-home-topbar">
       {% if auth_user %}
-        {% if auth_user.is_superuser %}
-          <a class="search-home-link" href="https://kumquat.info/dashboard" rel="noreferrer" target="_blank">Dashboard</a>
-          <a class="search-home-link" href="/manage/jobs">Manage Jobs</a>
-          <a class="search-home-link" href="/manage/companies">Manage Companies</a>
-          <a class="search-home-link" href="/api/scrapers/">Scrapers</a>
-          <a class="search-home-link" href="/api/manual-scripts/">Manual Scripts</a>
-        {% endif %}
         <form action="/auth/logout" class="search-home-inline-form" method="post">
           {% csrf_token %}
           <button class="search-home-link search-home-link-button" type="submit">Sign out</button>
@@ -28,7 +21,7 @@
       <a class="search-home-brand" href="/">Kumquat</a>
       <h1 class="search-home-title" id="search-box-title">Agent-friendly search for the web and the CLI.</h1>
       <p class="search-home-subtitle">
-        Run searches in the browser, hit the CLI endpoint from your agents, and keep a running count of command activity.
+        Run searches in the browser or hit the CLI endpoint from your agents.
       </p>
       <form action="/" class="search-home-form" method="get" role="search">
         <label class="search-home-input-wrap" for="search-request">
@@ -55,15 +48,11 @@
           <p class="search-home-feature-kicker">Agent Ready</p>
           <p class="search-home-feature-copy">Returns structured results so tools and agents can consume search output directly.</p>
         </article>
-        <article class="search-home-feature-card">
-          <p class="search-home-feature-kicker">CLI Analytics</p>
-          <p class="search-home-feature-copy">{{ cli_command_count }} CLI search command{{ cli_command_count|pluralize }} recorded.</p>
-        </article>
       </div>
       {% if auth_user %}
         <p class="search-home-note">
           Signed in as {{ auth_user.first_name|default:auth_user.full_name }}.
-          {% if auth_user.is_superuser %}Use the admin links above to manage jobs and companies.{% endif %}
+          {% if auth_user.is_superuser %}<a href="/dashboard">Open the dashboard</a> for admin tools.{% endif %}
         </p>
       {% else %}
         <p class="search-home-note">

@@ -70,6 +70,55 @@
 
       <section class="dashboard-card">
         <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Admin Links</p>
+            <h3>Operations shortcuts</h3>
+          </div>
+        </div>
+        <div class="managed-node-actions">
+          <a class="button button-secondary" href="/manage/jobs">Manage jobs</a>
+          <a class="button button-secondary" href="/manage/companies">Manage companies</a>
+          <a class="button button-secondary" href="/api/scrapers/">Scrapers</a>
+          <a class="button button-secondary" href="/api/manual-scripts/">Manual scripts</a>
+          <a class="button button-secondary" href="/sms">SMS inbox</a>
+        </div>
+      </section>
+
+      <section class="dashboard-card">
+        <div class="dashboard-card-header">
+          <div>
+            <p class="section-eyebrow">Search Analytics</p>
+            <h3>Command usage</h3>
+          </div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Commands</th>
+                <th>Last Command</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in dashboard.search_analytics %}
+                <tr>
+                  <td>{{ item.channel }}</td>
+                  <td>{{ item.command_count }}</td>
+                  <td>{{ item.last_command_at|default:"Never" }}</td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="3">No search analytics recorded yet.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dashboard-card">
+        <div class="dashboard-card-header">
           <div class="dashboard-tabs" role="tablist" aria-label="Dashboard data views">
             <a class="dashboard-tab {% if active_tab == 'signups' %}dashboard-tab-active{% endif %}" href="?tab=signups">Early signups</a>
             <a class="dashboard-tab {% if active_tab == 'users' %}dashboard-tab-active{% endif %}" href="?tab=users">Users</a>

@@ -713,6 +713,13 @@ def _build_dashboard_context(request=None):
             .order_by("-total", "scraper__company")[:5]
         )
     ]
+    search_analytics = list(
+        SearchCommandAnalytics.objects.order_by("channel").values(
+            "channel",
+            "command_count",
+            "last_command_at",
+        )
+    )
     return {
         "stats": {
             "users": len(users),
@@ -738,6 +745,7 @@ def _build_dashboard_context(request=None):
         "jobs": {
             "top_scrapers": top_scrapers,
         },
+        "search_analytics": search_analytics,
         "launcher": {
             "enabled": launcher_enabled(),
             "default_image": settings.NODE_LAUNCHER_IMAGE,
@@ -769,12 +777,10 @@ def home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
     page_number = request.GET.get("page") or 1
     search_context = _home_search_context(search_query, page_number)
-    cli_analytics = SearchCommandAnalytics.objects.filter(channel="cli").first()
     context = {
         "auth_user": _current_user_context(request),
         "search_query": search_query,
         "search_submitted": bool(search_query),
-        "cli_command_count": cli_analytics.command_count if cli_analytics else 0,
         **search_context,
         **_seo_context(
             request,
