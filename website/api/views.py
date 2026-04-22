@@ -53,6 +53,7 @@ from .node_launcher import (
 from .search import SearchCrawlerError, normalize_crawl_url, search_documents
 from .tasks import schedule_crawl_search_target
 from scrapers.models import JobPosting
+from scrapers.search import search_jobs
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -326,35 +327,37 @@ def _serialize_search_crawl_target(target):
 def _home_search_context(search_query):
     if not search_query:
         return {
-            "search_reply": "Search the web with Kumquat.",
+            "search_reply": "Search all indexed jobs with Kumquat.",
             "search_results": [],
             "search_status_label": "Ready",
             "search_status_class": "",
         }
 
+    search_payload = search_jobs(search_query, limit=10)
+    if search_payload["results"]:
+        return {
+            "search_reply": f'Found {search_payload["match_count"]} job results for “{search_query}”.',
+            "search_results": search_payload["results"],
+            "search_status_label": (
+                "Live"
+                if search_payload["backend"] == "elasticsearch"
+                else "Fallback"
+            ),
+            "search_status_class": (
+                "search-status-pill-live"
+                if search_payload["backend"] == "elasticsearch"
+                else "search-status-pill-pending"
+            ),
+        }
+
     return {
-        "search_reply": (
-            f"Search functionality for “{search_query}” is not live yet. "
-            "This page is currently a placeholder for the upcoming search engine."
+        "search_reply": f"No indexed jobs matched “{search_query}”.",
+        "search_results": [],
+        "search_status_label": (
+            "Live"
+            if search_payload["backend"] == "elasticsearch"
+            else "Fallback"
         ),
-        "search_results": [
-            {
-                "title": "Kumquat Search",
-                "snippet": "A clean search homepage is now in place. Result ranking, indexing, and live retrieval will be added next.",
-                "url": "https://kumquat.info/",
-            },
-            {
-                "title": "Search Infrastructure",
-                "snippet": "Query parsing, indexing, crawling, and result scoring are planned but not connected to this screen yet.",
-                "url": "https://kumquat.info/jobs",
-            },
-            {
-                "title": "Product Direction",
-                "snippet": "Kumquat is pivoting toward a search experience with a minimal interface centered on query entry and readable results.",
-                "url": "https://github.com/kumquat-ben/kumquat",
-            },
-        ],
-        "search_status_label": "Preview",
         "search_status_class": "search-status-pill-pending",
     }
 

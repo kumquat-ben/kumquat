@@ -2,6 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 locals {
   mysql_release_name          = "kumquat-mysql"
+  elasticsearch_release_name  = "kumquat-elasticsearch"
   backend_secret_name         = "kumquat-backend-env"
   mysql_bootstrap_secret_name = "kumquat-mysql-bootstrap"
   mysql_backup_secret_name    = "kumquat-mysql-backup-aws"
@@ -464,6 +465,26 @@ resource "kubernetes_secret_v1" "backend_env" {
   }
 }
 
+resource "helm_release" "elasticsearch" {
+  name             = local.elasticsearch_release_name
+  chart            = "${path.module}/../../helm/apps/kumquat-elasticsearch"
+  namespace        = kubernetes_namespace_v1.kumquat.metadata[0].name
+  create_namespace = false
+
+  values = [yamlencode({
+    persistence = {
+      storageClassName = var.mysql_storage_class_name
+    }
+    nodeSelector = {
+      workload = "application"
+    }
+  })]
+
+  depends_on = [
+    kubernetes_storage_class_v1.mysql,
+  ]
+}
+
 resource "helm_release" "backend" {
   name             = "kumquat-backend"
   chart            = "${path.module}/../../helm/apps/kumquat-backend"
@@ -489,6 +510,8 @@ resource "helm_release" "backend" {
         GUNICORN_THREADS             = "2"
         GUNICORN_TIMEOUT             = "60"
         NODE_LAUNCHER_ENABLED        = "true"
+        ELASTICSEARCH_URL            = "http://${local.elasticsearch_release_name}:9200"
+        ELASTICSEARCH_INDEX_PREFIX   = "kumquat"
       }
     }
     ingress = {
@@ -525,6 +548,7 @@ resource "helm_release" "backend" {
 
   depends_on = [
     helm_release.mysql_cluster,
+    helm_release.elasticsearch,
     kubernetes_secret_v1.backend_env,
   ]
 }

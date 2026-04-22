@@ -51,6 +51,8 @@ env:
     NODE_LAUNCHER_STORAGE_CLASS_NAME: "kumquat-mysql-gp3"
     NODE_LAUNCHER_STORAGE_SIZE: "20Gi"
     NODE_LAUNCHER_NODE_SELECTOR: "workload=application"
+    ELASTICSEARCH_URL: "http://kumquat-elasticsearch:9200"
+    ELASTICSEARCH_INDEX_PREFIX: "kumquat"
 
 service:
   port: 8000
@@ -120,3 +122,6 @@ nodeLauncher:
     name: ""
   rbac:
     create: true
+
+searchIndex:
+  enabled: true

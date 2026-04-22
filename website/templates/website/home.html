@@ -24,14 +24,14 @@
 
     <section class="search-home-hero" aria-labelledby="search-box-title">
       <a class="search-home-brand" href="/">Kumquat</a>
-      <h1 class="search-home-title" id="search-box-title">Search the web.</h1>
+      <h1 class="search-home-title" id="search-box-title">Search all jobs.</h1>
       <form action="/" class="search-home-form" method="get" role="search">
         <label class="search-home-input-wrap" for="search-request">
           <span class="search-home-input-label">Search</span>
           <input
             id="search-request"
             name="q"
-            placeholder="Search Kumquat"
+            placeholder="Search jobs by title, company, location, or keywords"
             type="search"
             value="{{ search_query }}"
           />
@@ -61,9 +61,9 @@
         <div>
           <p class="search-home-results-label">Results</p>
           {% if search_submitted %}
-            <p class="search-home-query">Showing preview results for “{{ search_query }}”</p>
+            <p class="search-home-query">Showing job search results for “{{ search_query }}”</p>
           {% else %}
-            <p class="search-home-query">Search results will appear here.</p>
+            <p class="search-home-query">Indexed job results will appear here.</p>
           {% endif %}
         </div>
         <span class="search-status-pill {{ search_status_class }}">{{ search_status_label }}</span>
@@ -83,7 +83,7 @@
         </div>
       {% else %}
         <div class="search-home-empty">
-          <p>Try a query to preview the upcoming search results layout.</p>
+          <p>Try a query to search indexed jobs.</p>
         </div>
       {% endif %}
     </section>

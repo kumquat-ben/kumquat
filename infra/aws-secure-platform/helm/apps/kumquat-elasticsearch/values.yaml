@@ -1,0 +1,41 @@
+image:
+  repository: docker.elastic.co/elasticsearch/elasticsearch
+  tag: 8.15.3
+  pullPolicy: IfNotPresent
+
+service:
+  port: 9200
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+persistence:
+  enabled: true
+  storageClassName: kumquat-mysql-gp3
+  size: 30Gi
+
+nodeSelector:
+  workload: application
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+esConfig:
+  clusterName: kumquat-search
+  nodeName: kumquat-elasticsearch
+  javaOpts: -Xms1g -Xmx1g
+  securityEnabled: false

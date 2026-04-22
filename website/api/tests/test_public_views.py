@@ -5,8 +5,9 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from django.test import Client, TestCase
 
-from api.models import EarlyAccessSignup, SearchDocument
+from api.models import EarlyAccessSignup
 from api.address_codec import encode_address
+from scrapers.models import JobPosting, Scraper
 
 
 class HomePageViewTests(TestCase):
@@ -17,35 +18,49 @@ class HomePageViewTests(TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Beta")
-        self.assertContains(response, "currently in beta")
         self.assertContains(response, 'role="search"', html=False)
         self.assertContains(response, 'name="q"', html=False)
-        self.assertContains(response, "Search Kumquat.")
+        self.assertContains(response, "Search all jobs.")
         self.assertContains(response, ">Search<", html=False)
 
     def test_home_page_echoes_submitted_query_in_reply_panel(self):
-        response = self.client.get("/", {"q": "find kumquat wallet docs"})
+        with patch("api.views.search_jobs", return_value={"results": [], "match_count": 0, "backend": "elasticsearch"}):
+            response = self.client.get("/", {"q": "python backend"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "find kumquat wallet docs")
-        self.assertContains(response, "No search results are available yet.")
+        self.assertContains(response, "python backend")
+        self.assertContains(response, "No indexed jobs matched")
 
     def test_home_page_renders_indexed_search_results(self):
-        SearchDocument.objects.create(
-            url="https://docs.example.com/wallet",
-            normalized_url="https://docs.example.com/wallet",
-            title="Kumquat Wallet Guide",
-            summary="Wallet setup for Kumquat users.",
-            content="Kumquat wallet setup and denomination transfer guide.",
+        scraper = Scraper.objects.create(company="Example Co", url="https://example.com/jobs", code="[]")
+        JobPosting.objects.create(
+            scraper=scraper,
+            title="Senior Python Engineer",
+            location="San Francisco, CA",
+            link="https://example.com/jobs/python",
+            description="Build search and indexing systems.",
         )
 
-        response = self.client.get("/", {"q": "wallet guide"})
+        with patch(
+            "api.views.search_jobs",
+            return_value={
+                "results": [
+                    {
+                        "title": "Senior Python Engineer | Example Co",
+                        "summary": "San Francisco, CA | Build search and indexing systems.",
+                        "url": "https://example.com/jobs/python",
+                    }
+                ],
+                "match_count": 1,
+                "backend": "elasticsearch",
+            },
+        ):
+            response = self.client.get("/", {"q": "python engineer"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Live results")
-        self.assertContains(response, "Kumquat Wallet Guide")
-        self.assertContains(response, "https://docs.example.com/wallet")
+        self.assertContains(response, "Live")
+        self.assertContains(response, "Senior Python Engineer")
+        self.assertContains(response, "https://example.com/jobs/python")
 
 
 class EarlyAccessSignupViewTests(TestCase):

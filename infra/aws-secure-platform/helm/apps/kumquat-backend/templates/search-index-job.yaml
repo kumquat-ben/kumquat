@@ -1,0 +1,45 @@
+{{- if .Values.searchIndex.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kumquat-backend.fullname" . }}-search-index
+  labels:
+    {{- include "kumquat-backend.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "kumquat-backend.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: search-index
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-lc"]
+          args:
+            - python manage.py search_index --rebuild -f --models scrapers.jobposting
+          envFrom:
+            - secretRef:
+                name: {{ .Values.env.existingSecret }}
+          env:
+            {{- range $name, $value := .Values.env.common }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+{{- end }}

@@ -14,3 +14,5 @@ cloudscraper==1.2.71
 openai==1.75.0
 playwright==1.52.0
 reportlab==4.4.1
+django-elasticsearch-dsl==8.2
+elasticsearch-dsl==8.15.4

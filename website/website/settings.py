@@ -167,6 +167,8 @@ MANUAL_SCRIPT_QUEUE_POLL_SECONDS = int(env("MANUAL_SCRIPT_QUEUE_POLL_SECONDS", "
 JOB_APPLICATION_QUEUE_CONCURRENCY = int(env("JOB_APPLICATION_QUEUE_CONCURRENCY", "2"))
 JOB_APPLICATION_QUEUE_POLL_SECONDS = int(env("JOB_APPLICATION_QUEUE_POLL_SECONDS", "2"))
 JOB_APPLY_SCRIPT_TIMEOUT_SECONDS = int(env("JOB_APPLY_SCRIPT_TIMEOUT_SECONDS", "45"))
+ELASTICSEARCH_URL = env("ELASTICSEARCH_URL", "http://localhost:9200").strip()
+ELASTICSEARCH_INDEX_PREFIX = env("ELASTICSEARCH_INDEX_PREFIX", "kumquat").strip() or "kumquat"
 STATIC_VERSION = static_version()
 
 INSTALLED_APPS = [
@@ -178,8 +180,9 @@ INSTALLED_APPS = [
     "django.contrib.sitemaps",
     "django.contrib.staticfiles",
     "rest_framework",
+    "django_elasticsearch_dsl",
     "api",
-    "scrapers",
+    "scrapers.apps.ScrapersConfig",
 ]
 
 MIDDLEWARE = [
@@ -250,6 +253,16 @@ STATICFILES_DIRS = [PROJECT_STATIC_DIR] if PROJECT_STATIC_DIR.exists() else []
 STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+ELASTICSEARCH_DSL = {
+    "default": {
+        "hosts": ELASTICSEARCH_URL,
+    }
+}
+
+ELASTICSEARCH_DSL_AUTOSYNC = env_bool("ELASTICSEARCH_DSL_AUTOSYNC", True)
+ELASTICSEARCH_DSL_AUTO_REFRESH = env_bool("ELASTICSEARCH_DSL_AUTO_REFRESH", True)
+ELASTICSEARCH_DSL_SIGNAL_PROCESSOR = "django_elasticsearch_dsl.signals.RealTimeSignalProcessor"
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True

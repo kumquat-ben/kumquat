@@ -21,6 +21,8 @@ class ScrapersConfig(AppConfig):
             if sys.argv[1] in {"migrate", "collectstatic", "shell", "run_manual_script_worker"}:
                 return
 
+        from . import documents  # noqa: F401
+
         # Import late to avoid scheduler setup during migrations before apps loaded.
         from .tasks import start_scheduler
 
