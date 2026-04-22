@@ -3,6 +3,18 @@
 {% block content %}
   <div class="search-home-page">
     <header class="search-home-topbar">
+      {% if auth_user %}
+        {% if auth_user.is_superuser %}
+          <a class="search-home-link" href="/manage/jobs">Manage Jobs</a>
+          <a class="search-home-link" href="/manage/companies">Manage Companies</a>
+        {% endif %}
+        <form action="/auth/logout" class="search-home-inline-form" method="post">
+          {% csrf_token %}
+          <button class="search-home-link search-home-link-button" type="submit">Sign out</button>
+        </form>
+      {% else %}
+        <a class="search-home-link" href="/auth/sign-in">Sign in</a>
+      {% endif %}
       <a class="search-home-link" href="https://github.com/kumquat-ben/kumquat" rel="noreferrer" target="_blank">
         GitHub
       </a>
@@ -27,7 +39,14 @@
           <a class="search-home-button search-home-button-secondary" href="/">Reset</a>
         </div>
       </form>
-      <p class="search-home-note">Minimal search interface now. Live search features come next.</p>
+      {% if auth_user %}
+        <p class="search-home-note">
+          Signed in as {{ auth_user.first_name|default:auth_user.full_name }}.
+          {% if auth_user.is_superuser %}Use the admin links above to manage jobs and companies.{% endif %}
+        </p>
+      {% else %}
+        <p class="search-home-note">Sign in to manage jobs and companies. Live search features come next.</p>
+      {% endif %}
     </section>
 
     <section class="search-home-results" aria-live="polite" role="status">

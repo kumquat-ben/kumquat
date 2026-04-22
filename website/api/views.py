@@ -845,6 +845,177 @@ def companies_api_view(request):
     return JsonResponse({"results": [_company_payload(company) for company in companies[:100]]})
 
 
+def _superuser_or_redirect(request):
+    if not request.user.is_authenticated:
+        return HttpResponseRedirect("/auth/sign-in")
+    if not request.user.is_superuser:
+        return JsonResponse({"error": "Superuser access required."}, status=403)
+    return None
+
+
+def jobs_admin_page_view(request):
+    denied = _superuser_or_redirect(request)
+    if denied is not None:
+        return denied
+
+    if request.method == "POST":
+        job_id = (request.POST.get("job_id") or "").strip()
+        company_id = (request.POST.get("company_id") or "").strip()
+        title = (request.POST.get("title") or "").strip()
+        slug = (request.POST.get("slug") or "").strip()
+        location = (request.POST.get("location") or "").strip()
+        normalized_location = (request.POST.get("normalized_location") or "").strip()
+        employment_type = (request.POST.get("employment_type") or "").strip()
+        salary = (request.POST.get("salary") or "").strip()
+        excerpt = (request.POST.get("excerpt") or "").strip()
+        description = (request.POST.get("description") or "").strip()
+        apply_url = (request.POST.get("apply_url") or "").strip()
+        source = (request.POST.get("source") or "").strip()
+        is_active = request.POST.get("is_active") == "on"
+
+        if not title:
+            messages.error(request, "Title is required.")
+            return HttpResponseRedirect("/manage/jobs")
+
+        company = None
+        if company_id:
+            company = CompanyProfile.objects.filter(pk=company_id).first()
+
+        if job_id:
+            job = JobListing.objects.filter(pk=job_id).first()
+            if job is None:
+                messages.error(request, "Job not found.")
+                return HttpResponseRedirect("/manage/jobs")
+        else:
+            job = JobListing()
+
+        candidate_slug = slug or (job.slug if job.pk else "")
+        if not candidate_slug:
+            candidate_slug = JobListing.build_unique_slug(title)
+        elif not job.pk or job.slug != candidate_slug:
+            existing = JobListing.objects.filter(slug=candidate_slug)
+            if job.pk:
+                existing = existing.exclude(pk=job.pk)
+            if existing.exists():
+                candidate_slug = JobListing.build_unique_slug(title)
+
+        job.company = company
+        job.title = title
+        job.slug = candidate_slug
+        job.location = location
+        job.normalized_location = normalized_location
+        job.employment_type = employment_type
+        job.salary = salary
+        job.excerpt = excerpt
+        job.description = description
+        job.apply_url = apply_url
+        job.source = source
+        job.is_active = is_active
+        job.save()
+        messages.success(request, "Job saved.")
+        return HttpResponseRedirect(f"/manage/jobs?selected={job.id}")
+
+    selected_id = (request.GET.get("selected") or "").strip()
+    selected_job = JobListing.objects.filter(pk=selected_id).select_related("company").first() if selected_id else None
+    context = {
+        "auth_user": _current_user_context(request),
+        "jobs": JobListing.objects.select_related("company").order_by("-updated_at", "-created_at")[:200],
+        "companies": CompanyProfile.objects.order_by("name"),
+        "selected_job": selected_job,
+        **_seo_context(
+            request,
+            title="Manage Jobs | Kumquat",
+            description="Internal Kumquat jobs management.",
+            path=reverse("manage-jobs"),
+            index=False,
+        ),
+    }
+    return render(request, "website/manage_jobs.html", context)
+
+
+def companies_admin_page_view(request):
+    denied = _superuser_or_redirect(request)
+    if denied is not None:
+        return denied
+
+    if request.method == "POST":
+        company_id = (request.POST.get("company_id") or "").strip()
+        name = (request.POST.get("name") or "").strip()
+        slug = (request.POST.get("slug") or "").strip()
+        website = (request.POST.get("website") or "").strip()
+        info = (request.POST.get("info") or "").strip()
+        source = (request.POST.get("source") or "").strip()
+        source_url = (request.POST.get("source_url") or "").strip()
+        yc_url = (request.POST.get("yc_url") or "").strip()
+        batch = (request.POST.get("batch") or "").strip()
+        status_value = (request.POST.get("status") or "").strip()
+        employees = (request.POST.get("employees") or "").strip()
+        location = (request.POST.get("location") or "").strip()
+        tags = (request.POST.get("tags") or "").strip()
+        linkedin_url = (request.POST.get("linkedin_url") or "").strip()
+        twitter_url = (request.POST.get("twitter_url") or "").strip()
+        cb_url = (request.POST.get("cb_url") or "").strip()
+        careers_url = (request.POST.get("careers_url") or "").strip()
+
+        if not name:
+            messages.error(request, "Company name is required.")
+            return HttpResponseRedirect("/manage/companies")
+
+        if company_id:
+            company = CompanyProfile.objects.filter(pk=company_id).first()
+            if company is None:
+                messages.error(request, "Company not found.")
+                return HttpResponseRedirect("/manage/companies")
+        else:
+            company = CompanyProfile()
+
+        candidate_slug = slug or (company.slug if company.pk else "")
+        if not candidate_slug:
+            candidate_slug = CompanyProfile.build_unique_slug(name)
+        elif not company.pk or company.slug != candidate_slug:
+            existing = CompanyProfile.objects.filter(slug=candidate_slug)
+            if company.pk:
+                existing = existing.exclude(pk=company.pk)
+            if existing.exists():
+                candidate_slug = CompanyProfile.build_unique_slug(name)
+
+        company.name = name
+        company.slug = candidate_slug
+        company.website = website
+        company.info = info
+        company.source = source
+        company.source_url = source_url
+        company.yc_url = yc_url
+        company.batch = batch
+        company.status = status_value
+        company.employees = employees
+        company.location = location
+        company.tags = tags
+        company.linkedin_url = linkedin_url
+        company.twitter_url = twitter_url
+        company.cb_url = cb_url
+        company.careers_url = careers_url
+        company.save()
+        messages.success(request, "Company saved.")
+        return HttpResponseRedirect(f"/manage/companies?selected={company.id}")
+
+    selected_id = (request.GET.get("selected") or "").strip()
+    selected_company = CompanyProfile.objects.filter(pk=selected_id).first() if selected_id else None
+    context = {
+        "auth_user": _current_user_context(request),
+        "companies": CompanyProfile.objects.order_by("name")[:200],
+        "selected_company": selected_company,
+        **_seo_context(
+            request,
+            title="Manage Companies | Kumquat",
+            description="Internal Kumquat company management.",
+            path=reverse("manage-companies"),
+            index=False,
+        ),
+    }
+    return render(request, "website/manage_companies.html", context)
+
+
 def explorer_home_page_view(request):
     search_query = (request.GET.get("q") or "").strip()
     if search_query:

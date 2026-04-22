@@ -1,0 +1,72 @@
+{% extends "website/base.html" %}
+
+{% block content %}
+  <div class="search-home-page">
+    <header class="search-home-topbar">
+      <a class="search-home-link" href="/">Home</a>
+      <a class="search-home-link" href="/manage/companies">Manage Companies</a>
+      <form action="/auth/logout" class="search-home-inline-form" method="post">
+        {% csrf_token %}
+        <button class="search-home-link search-home-link-button" type="submit">Sign out</button>
+      </form>
+    </header>
+
+    <section class="search-home-results">
+      <div class="search-home-results-head">
+        <div>
+          <p class="search-home-results-label">Admin</p>
+          <p class="search-home-query">Manage jobs</p>
+        </div>
+      </div>
+
+      {% for message in messages %}
+        <p class="search-home-results-copy">{{ message }}</p>
+      {% endfor %}
+
+      <div class="search-home-admin-grid">
+        <section class="search-home-admin-card">
+          <h2>{{ selected_job|yesno:"Edit Job,Create Job" }}</h2>
+          <form action="/manage/jobs" class="search-home-admin-form" method="post">
+            {% csrf_token %}
+            <input name="job_id" type="hidden" value="{{ selected_job.id|default:'' }}" />
+            <label>Title<input name="title" type="text" value="{{ selected_job.title|default:'' }}" /></label>
+            <label>Slug<input name="slug" type="text" value="{{ selected_job.slug|default:'' }}" /></label>
+            <label>Company
+              <select name="company_id">
+                <option value="">No company</option>
+                {% for company in companies %}
+                  <option value="{{ company.id }}" {% if selected_job.company_id == company.id %}selected{% endif %}>{{ company.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Location<input name="location" type="text" value="{{ selected_job.location|default:'' }}" /></label>
+            <label>Normalized location<input name="normalized_location" type="text" value="{{ selected_job.normalized_location|default:'' }}" /></label>
+            <label>Employment type<input name="employment_type" type="text" value="{{ selected_job.employment_type|default:'' }}" /></label>
+            <label>Salary<input name="salary" type="text" value="{{ selected_job.salary|default:'' }}" /></label>
+            <label>Apply URL<input name="apply_url" type="url" value="{{ selected_job.apply_url|default:'' }}" /></label>
+            <label>Source<input name="source" type="text" value="{{ selected_job.source|default:'' }}" /></label>
+            <label>Excerpt<textarea name="excerpt" rows="4">{{ selected_job.excerpt|default:'' }}</textarea></label>
+            <label>Description<textarea name="description" rows="10">{{ selected_job.description|default:'' }}</textarea></label>
+            <label class="search-home-checkbox"><input name="is_active" type="checkbox" {% if selected_job.is_active or not selected_job %}checked{% endif %} /> Active</label>
+            <button class="search-home-button search-home-button-primary" type="submit">Save job</button>
+          </form>
+        </section>
+
+        <section class="search-home-admin-card">
+          <h2>Existing Jobs</h2>
+          <div class="search-home-results-list">
+            {% for job in jobs %}
+              <article class="search-home-result-item">
+                <p class="search-home-result-url">{{ job.company.name|default:"No company" }}</p>
+                <h2><a href="/manage/jobs?selected={{ job.id }}">{{ job.title }}</a></h2>
+                <p>{{ job.location }}{% if job.employment_type %} · {{ job.employment_type }}{% endif %}</p>
+              </article>
+            {% empty %}
+              <div class="search-home-empty"><p>No jobs yet.</p></div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+{% endblock %}

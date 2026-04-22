@@ -147,17 +147,29 @@ input:focus {
 .search-home-topbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 1.25rem;
   padding: 0.25rem 0 3rem;
+}
+
+.search-home-inline-form {
+  margin: 0;
 }
 
 .search-home-link {
   color: #5f6368;
   font-size: 0.92rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .search-home-link:hover {
   text-decoration: underline;
+}
+
+.search-home-link-button {
+  cursor: pointer;
 }
 
 .search-home-hero {
@@ -337,6 +349,62 @@ input:focus {
   margin-top: 1.5rem;
   padding: 1rem 0;
   color: #5f6368;
+}
+
+.search-home-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.search-home-admin-card {
+  padding: 1.25rem;
+  border: 1px solid #ebebeb;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.search-home-admin-card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.search-home-admin-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.search-home-admin-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #3c4043;
+  font-size: 0.9rem;
+}
+
+.search-home-admin-form select,
+.search-home-admin-form textarea {
+  width: 100%;
+  border: 1px solid #dfe1e5;
+  border-radius: 12px;
+  background: #fff;
+  color: #202124;
+  padding: 0.85rem 1rem;
+  font: inherit;
+}
+
+.search-home-checkbox {
+  grid-auto-flow: column;
+  justify-content: start;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+@media (max-width: 900px) {
+  .search-home-admin-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .site-nav {
