@@ -701,6 +701,30 @@ def home_page_view(request):
     return render(request, "website/home.html", context)
 
 
+def privacy_policy_page_view(request):
+    context = {
+        **_seo_context(
+            request,
+            title="Privacy Policy | Kumquat",
+            description="Read how Kumquat handles account, usage, and contact information.",
+            path=reverse("privacy-policy"),
+        ),
+    }
+    return render(request, "website/privacy_policy.html", context)
+
+
+def terms_of_service_page_view(request):
+    context = {
+        **_seo_context(
+            request,
+            title="Terms of Service | Kumquat",
+            description="Read the terms that govern access to and use of the Kumquat website.",
+            path=reverse("terms-of-service"),
+        ),
+    }
+    return render(request, "website/terms_of_service.html", context)
+
+
 def jobs_page_view(request):
     query = (request.GET.get("q") or "").strip()
     jobs = JobListing.objects.filter(is_active=True).select_related("company")

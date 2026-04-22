@@ -42,9 +42,11 @@ from .views import (
     job_detail_page_view,
     jobs_admin_page_view,
     messages_view,
+    privacy_policy_page_view,
     robots_txt_view,
     search_crawl_enqueue_view,
     sign_in_page_view,
+    terms_of_service_page_view,
     vonage_sms_callback_view,
     wallet_generate_view,
     wallet_regenerate_view,
@@ -52,6 +54,8 @@ from .views import (
 
 urlpatterns = [
     path("", home_page_view, name="home"),
+    path("privacy-policy", privacy_policy_page_view, name="privacy-policy"),
+    path("terms", terms_of_service_page_view, name="terms-of-service"),
     path("jobs", jobs_page_view, name="jobs"),
     path("jobs/<slug:slug>", job_detail_page_view, name="job-detail"),
     path("companies", companies_page_view, name="companies"),
