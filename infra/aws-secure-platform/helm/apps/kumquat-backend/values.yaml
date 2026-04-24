@@ -2,7 +2,7 @@
 # Unauthorized use or distribution is strictly prohibited.
 image:
   repository: 351381968847.dkr.ecr.us-west-2.amazonaws.com/website-backend
-  tag: backend-20260421-231558-683319e-amd64
+  tag: backend-20260422-093842-66ef3ba-amd64
   pullPolicy: IfNotPresent
   pullSecrets:
     - ecr-pull-secret
@@ -95,11 +95,32 @@ manualScriptWorker:
 
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
+    cpu: 250m
     memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+probes:
+  startup:
+    enabled: true
+    path: /healthz
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 12
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 nodeSelector:
   workload: application
